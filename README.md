@@ -35,11 +35,11 @@ FILES:
 
 ## Keywords
 
-Daily flow nad monthly flow
-Disaggregation
-Flow duration curve
-Exceedence curve (string of data without being linked to a date)
-12 exceedence curves. 
+- Daily flow and monthly flow
+- Disaggregation
+- Flow duration curve
+- Exceedence curve (string of data without being linked to a date)
+- 12 exceedence curves.
 
 ## How to Use
 
