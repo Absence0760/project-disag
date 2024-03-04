@@ -26,6 +26,21 @@ This tool facilitates the analysis and manipulation of water flow data from two 
 
    *Note: The code -99 is used to denote instances with no available data.*
 
+## Example
+
+Here is a step-by-step example with screenshots:
+
+FILES:
+.DAY and .MON
+
+## Keywords
+
+Daily flow nad monthly flow
+Disaggregation
+Flow duration curve
+Exceedence curve (string of data without being linked to a date)
+12 exceedence curves. 
+
 ## How to Use
 
 1. Clone the repository to your local machine:
