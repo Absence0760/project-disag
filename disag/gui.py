@@ -27,11 +27,9 @@ class DisagApp(tk.Tk):
     # ------------------------------------------------------------------
 
     def _build_ui(self):
-        outer_pad = {'padx': 10, 'pady': 5}
-
         # ── File inputs ────────────────────────────────────────────────
         files_frame = ttk.LabelFrame(self, text='Input / Output Files')
-        files_frame.grid(row=0, column=0, sticky='ew', **outer_pad, pady=(10, 4))
+        files_frame.grid(row=0, column=0, sticky='ew', padx=10, pady=(10, 4))
 
         file_rows = [
             ('NS Monthly File (to be disaggregated)', 'mon',    'open',  True),
@@ -65,7 +63,7 @@ class DisagApp(tk.Tk):
 
         # ── Method selection ───────────────────────────────────────────
         method_frame = ttk.LabelFrame(self, text='Disaggregation Method')
-        method_frame.grid(row=1, column=0, sticky='ew', **outer_pad)
+        method_frame.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
         self._method_var = tk.IntVar(value=0)
         for i, label in enumerate(METHOD_LABELS.values()):
@@ -84,7 +82,7 @@ class DisagApp(tk.Tk):
 
         # ── Buttons ───────────────────────────────────────────────────
         btn_bar = ttk.Frame(self)
-        btn_bar.grid(row=3, column=0, sticky='ew', **outer_pad, pady=(2, 10))
+        btn_bar.grid(row=3, column=0, sticky='ew', padx=10, pady=(2, 10))
 
         ttk.Button(btn_bar, text='Cancel', command=self.destroy).pack(side='left')
 

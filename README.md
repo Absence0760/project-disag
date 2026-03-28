@@ -17,6 +17,13 @@ source is preserved in [`delphi_files/`](delphi_files/).
 Python 3.8 or later. No third-party packages — only the standard library
 (`tkinter`, `calendar`, `argparse`).
 
+> **macOS note:** Apple's Xcode Command Line Tools Python has a broken tkinter
+> on macOS 15 (Sequoia). Use Homebrew Python instead:
+> ```bash
+> brew install python@3.13 python-tk@3.13
+> python3.13 -m disag
+> ```
+
 ---
 
 ## Running the tool

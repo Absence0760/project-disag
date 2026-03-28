@@ -51,6 +51,21 @@ def main():
     args = parser.parse_args()
 
     if args.gui:
+        try:
+            import tkinter as _tk
+            _tk.Tk().destroy()          # smoke-test before importing our GUI
+        except Exception as exc:
+            print(
+                f'Cannot open GUI: {exc}\n\n'
+                'tkinter is not working with this Python installation.\n'
+                'On macOS, fix it with:\n'
+                '    brew install python@3.13 python-tk@3.13\n'
+                '    python3.13 -m disag\n\n'
+                'To run without a GUI use --no-gui (see --help).',
+                file=__import__('sys').stderr,
+            )
+            raise SystemExit(1)
+
         from .gui import DisagApp
         app = DisagApp()
         app.mainloop()
