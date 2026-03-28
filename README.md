@@ -1,49 +1,86 @@
 # disag
 
-## Overview
+Disaggregate monthly streamflow data to daily flows.
 
-This tool facilitates the analysis and manipulation of water flow data from two input files. The process involves handling monthly and daily values, ensuring synchronization of dates, performing exceedance calculations, and generating new files with matched exceedance values. Additionally, the tool converts daily numbers to percentages and creates new daily values based on the calculated percentages. Finally, the tool converts the data from millions of cubic meters per day to cubic meters per second, with a special code (-99) indicating no data.
+Given a monthly generated flow record (Mm3/month) and one or two observed daily
+flow records (m3/s), `disag` distributes each monthly total across the days of
+that month in proportion to the shape of the observed daily record.
 
-## Instructions
+This is a Python port of the original Delphi/Pascal tool **Disag-MD** (first
+written by AJ Greyling in 1991, last updated by H Beuster in 2007). The original
+source is preserved in [`delphi_files/`](delphi_files/).
 
-1. **Select two input files:**
-   - Monthly values (millions cubic meters/month)
-   - Daily values (cubic meters/second) representing the flow rate in cubic meters passing per second.
+---
 
-   Ensure that the dates in both files start at the same year and month for accurate analysis.
+## Requirements
 
-2. **Run the tool to perform the following steps:**
+Python 3.8 or later. No third-party packages — only the standard library
+(`tkinter`, `calendar`, `argparse`).
 
-   a. Separate exceedance values from both files and create new files.
+---
 
-   b. Match exceedance values considering millions of cubic meters per month.
+## Running the tool
 
-   c. Convert daily numbers to percentages.
+### GUI (default)
 
-   d. Generate new daily values based on the calculated percentages.
+```bash
+python3 -m disag
+```
 
-   e. Convert from millions of cubic meters per day to cubic meters per second.
+The window lets you browse for input files, choose a disaggregation method, and
+click **Disaggregate!**.
 
-   *Note: The code -99 is used to denote instances with no available data.*
+### Command line
 
-## Example
+```bash
+python3 -m disag --no-gui \
+    --method 0 \
+    --monthly  path/to/generated.mon \
+    --daily1   path/to/observed.day \
+    --output   path/to/output.day \
+    --report   path/to/output.rep
+```
 
-Here is a step-by-step example with screenshots:
+Run `python3 -m disag --help` for full usage.
 
-FILES:
-.DAY and .MON
+---
 
-## Keywords
+## Disaggregation methods
 
-- Daily flow and monthly flow
-- Disaggregation
-- Flow duration curve
-- Exceedence curve (string of data without being linked to a date)
-- 12 exceedence curves.
+| # | Name | Daily files needed |
+|---|------|--------------------|
+| 0 | **One disaggregator** — use daily file 1 as the shape | 1 |
+| 1 | **Patch with similar month** — use file 1; fill missing days from the calendar month in another year whose monthly volume is closest | 1 |
+| 2 | **Patch with file 2** — use file 1; fill missing days from file 2 | 2 |
+| 3 | **Incremental** — pattern = (daily file 1) − (daily file 2) | 2 |
+| 4 | **Even distribution** — equal flow on every day of the month | 0 |
 
-## How to Use
+See [docs/algorithm.md](docs/algorithm.md) for the full formula and details on
+how missing data is handled for each method.
 
-1. Clone the repository to your local machine:
+---
 
-   ```bash
-   git clone git@github.com:Absence0760/disag.git
+## Files
+
+| Extension | Description |
+|-----------|-------------|
+| `.mon` / `.nat` / `.cur` | Monthly input — one record per hydro year (Oct–Sep), values in Mm3/month |
+| `.day` | Daily input or output — one record per calendar month, values in m3/s |
+| `.rep` | Text report — logs any months where patching or fallback was applied |
+
+See [docs/file-formats.md](docs/file-formats.md) for the exact file layout.
+
+---
+
+## Project layout
+
+```
+disag/              Python package
+  files.py          File I/O (read/write .day and .mon)
+  algorithm.py      Core disaggregation logic
+  gui.py            Tkinter GUI
+  __main__.py       Entry point (GUI + CLI)
+
+delphi_files/       Original Delphi/Pascal source (reference only)
+docs/               Detailed technical documentation
+```
