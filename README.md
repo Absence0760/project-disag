@@ -48,6 +48,17 @@ python3 -m disag --no-gui \
     --report   path/to/output.rep
 ```
 
+**Example using test files:**
+
+```bash
+python3 -m disag --no-gui \
+    --method 0 \
+    --monthly  ./testfiles/SINDILA.MON \
+    --daily1   ./testfiles/RUKOKI-l.DAY \
+    --output   ./test_output.day \
+    --report   ./test_output.rep
+```
+
 Run `python3 -m disag --help` for full usage.
 
 ---
@@ -88,6 +99,40 @@ disag/              Python package
   gui.py            Tkinter GUI
   __main__.py       Entry point (GUI + CLI)
 
+exceed/             Exceedance analysis package
+  files.py          File I/O (read .day and .mon)
+  algorithm.py      Frequency/exceedance calculation
+  __main__.py       CLI entry point
+
 delphi_files/       Original Delphi/Pascal source (reference only)
 docs/               Detailed technical documentation
 ```
+
+---
+
+## exceed — Flow frequency (exceedance) analysis
+
+Calculate flow frequency curves for monthly and daily streamflow data. Produces 12 separate exceedance analyses (one per calendar month).
+
+### Usage
+
+```bash
+# Monthly exceedance analysis
+python3 -m exceed --monthly path/to/file.mon --output path/to/report.rep
+
+# Daily exceedance analysis
+python3 -m exceed --daily path/to/file.day --output path/to/report.rep
+
+# Both monthly and daily
+python3 -m exceed --monthly file.mon --daily file.day --output report.rep
+```
+
+**Example using test files:**
+
+```bash
+python3 -m exceed --monthly ./testfiles/SINDILA.MON \
+                  --daily ./testfiles/RUKOKI-l.DAY \
+                  --output ./exceedance.rep
+```
+
+Run `python3 -m exceed --help` for full usage.

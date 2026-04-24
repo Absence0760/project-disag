@@ -74,7 +74,7 @@ def main():
     # ── CLI mode ──────────────────────────────────────────────────────
     from .algorithm import DisagMethod, METHOD_NAMES, NO_FILES, disaggregate
     from .files import read_daily_file, read_monthly_file, write_daily_file
-    from .gui import _write_report
+    from .report import write_report
 
     method = DisagMethod(args.method)
     no_files = NO_FILES[method]
@@ -114,7 +114,7 @@ def main():
     write_daily_file(args.output, records, header_info)
 
     print(f'Report    : {args.report}')
-    _write_report(args.report, method, report_lines)
+    write_report(args.report, method, report_lines)
 
     print(f'\nDone — {len(records)} months written.')
     if report_lines:

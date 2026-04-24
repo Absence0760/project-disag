@@ -2,7 +2,6 @@
 
 import os
 import tkinter as tk
-from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
 from .algorithm import (
@@ -13,6 +12,7 @@ from .algorithm import (
     disaggregate,
 )
 from .files import read_daily_file, read_monthly_file, write_daily_file
+from .report import write_report
 
 
 class DisagApp(tk.Tk):
@@ -213,7 +213,7 @@ class DisagApp(tk.Tk):
             write_daily_file(self._vars['dayout'].get(), records, header_info)
 
             self._set_status('Writing report…')
-            _write_report(self._vars['rep'].get(), method, report_lines)
+            write_report(self._vars['rep'].get(), method, report_lines)
 
             msg = f'Done — {len(records)} months written.'
             self._set_status(msg)
@@ -228,20 +228,3 @@ class DisagApp(tk.Tk):
     def _set_status(self, text: str):
         self._status_var.set(text)
         self.update_idletasks()
-
-
-# ---------------------------------------------------------------------------
-# Report writer (shared with CLI)
-# ---------------------------------------------------------------------------
-
-def _write_report(path: str, method: DisagMethod, report_lines: list) -> None:
-    dash = '-' * 80
-    with open(path, 'w') as fh:
-        fh.write(dash + '\n')
-        fh.write(f'Disag Report  : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
-        fh.write(f'Method        : {METHOD_NAMES[method]}\n')
-        fh.write(dash + '\n')
-        for line in report_lines:
-            fh.write(line + '\n')
-        fh.write(dash + '\n')
-        fh.write(f'Total adjustments : {len(report_lines)}\n')
