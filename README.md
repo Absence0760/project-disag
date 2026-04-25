@@ -38,7 +38,10 @@ python packaging/build.py --clean
 ```
 
 PyInstaller does not cross-compile, so each OS must be built on a matching
-machine (or via the GitHub Actions matrix above).
+machine (or via the GitHub Actions matrix above). For full per-platform
+build instructions — including a Docker recipe for building Linux binaries
+on a Mac, code-signing notes, and troubleshooting — see
+[docs/building.md](docs/building.md).
 
 ## Running from source
 
