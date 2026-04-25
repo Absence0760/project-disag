@@ -9,6 +9,7 @@ from .algorithm import (
     METHOD_NAMES,
     NO_FILES,
     DisagMethod,
+    count_coverage,
     disaggregate,
 )
 from .files import read_daily_file, read_monthly_file, write_daily_file
@@ -213,11 +214,25 @@ class DisagApp(tk.Tk):
             write_daily_file(self._vars['dayout'].get(), records, header_info)
 
             self._set_status('Writing report…')
-            write_report(self._vars['rep'].get(), method, report_lines)
+            write_report(self._vars['rep'].get(), method, report_lines, records)
 
-            msg = f'Done — {len(records)} months written.'
-            self._set_status(msg)
-            messagebox.showinfo('Disaggregation complete', msg)
+            disagg, missing = count_coverage(records)
+            pct_missing = (missing / len(records) * 100) if records else 0
+            msg = (f'Done — {len(records)} months written\n'
+                   f'  Disaggregated: {disagg}\n'
+                   f'  Missing:       {missing} ({pct_missing:.0f}%)')
+            if report_lines:
+                msg += f'\n  Adjustments logged: {len(report_lines)}'
+            self._set_status(f'Done — {disagg}/{len(records)} months disaggregated.')
+
+            if pct_missing > 50 and method == DisagMethod.ONE_FILE:
+                msg += (f'\n\nWARNING: most months are missing because the daily '
+                        f'input has gaps and Method 0 drops any month with even '
+                        f'one missing day. Try Method 1 to patch missing days '
+                        f'from a similar month in another year.')
+                messagebox.showwarning('Disaggregation complete', msg)
+            else:
+                messagebox.showinfo('Disaggregation complete', msg)
 
         except Exception as exc:
             self._set_status(f'Error: {exc}')

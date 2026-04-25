@@ -60,6 +60,16 @@ NO_FILES = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+def count_coverage(records: list) -> tuple[int, int]:
+    """Return (disaggregated_count, missing_count) for a list of DailyRecord.
+
+    A month counts as disaggregated only if every day has a non-negative
+    value — the algorithm marks months all-or-nothing missing.
+    """
+    disagg = sum(1 for r in records if all(v >= 0 for v in r.v))
+    return disagg, len(records) - disagg
+
+
 def _inc_month(year: int, month: int) -> tuple:
     month += 1
     if month > 12:

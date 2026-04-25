@@ -74,7 +74,13 @@ def main():
         return
 
     # ── CLI mode ──────────────────────────────────────────────────────
-    from .algorithm import DisagMethod, METHOD_NAMES, NO_FILES, disaggregate
+    from .algorithm import (
+        DisagMethod,
+        METHOD_NAMES,
+        NO_FILES,
+        count_coverage,
+        disaggregate,
+    )
     from .files import read_daily_file, read_monthly_file, write_daily_file
     from .report import write_report
 
@@ -116,11 +122,25 @@ def main():
     write_daily_file(args.output, records, header_info)
 
     print(f'Report    : {args.report}')
-    write_report(args.report, method, report_lines)
+    write_report(args.report, method, report_lines, records)
 
-    print(f'\nDone — {len(records)} months written.')
+    disagg, missing = count_coverage(records)
+    pct_missing = (missing / len(records) * 100) if records else 0
+
+    print(f'\nDone — {len(records)} months written '
+          f'({disagg} disaggregated, {missing} missing).')
     if report_lines:
         print(f'{len(report_lines)} adjustment(s) logged to {args.report}')
+
+    if pct_missing > 50 and method == DisagMethod.ONE_FILE:
+        print(
+            f'\nWARNING: {pct_missing:.0f}% of output months are missing data.\n'
+            f'  The daily input has gaps and Method 0 drops any month with\n'
+            f'  even one missing day. Try Method 1 (--method 1) to patch\n'
+            f'  missing days from the closest-volume same-month in another\n'
+            f'  year. Each patch will be logged in the report.',
+            file=sys.stderr,
+        )
 
 
 if __name__ == '__main__':
