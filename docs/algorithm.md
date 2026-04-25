@@ -54,14 +54,13 @@ The entire month is marked missing if any day in file 1 is missing.
 
 Same as method 0, but if any day in file 1 is missing the tool searches all
 other years for a **complete** month of the same calendar month whose generated
-monthly volume is closest to the target month. If a suitable year is found, its
-daily record is used as a substitute for the entire month. The substitution is
-logged in the report file.
+monthly volume is closest to the target month. If a suitable year is found, it
+is used as a day-level patch: on each day where file 1 is valid, file 1 is
+used; on each day where file 1 is missing (value `< 0`), that day's value is
+taken from the patch year's daily record. The substitution is logged once per
+month in the report file.
 
 If no complete substitute month exists, the output month is set to missing.
-
-For individual days: file 1 data is preferred over the patch year wherever
-file 1 is valid.
 
 ---
 

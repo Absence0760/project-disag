@@ -67,21 +67,20 @@ def main():
         parser.error('At least one input file (--monthly or --daily) is required')
     
     monthly_exceedance = {}
-    
+    month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                   'July', 'August', 'September', 'October', 'November', 'December']
+
     # Process monthly data
     if args.monthly:
         print(f'Reading monthly file: {args.monthly}')
         monthly_data = read_monthly_file(args.monthly)
-        
-        month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                       'July', 'August', 'September', 'October', 'November', 'December']
-        
+
         print(f'Calculating exceedance ({args.intervals} intervals)...')
         for month in range(1, 13):
             if month not in monthly_data or not monthly_data[month]:
                 print(f'  {month_names[month]}: no data')
                 continue
-            
+
             result = calculate_monthly_exceedance(monthly_data[month], args.intervals)
             monthly_exceedance[month] = {
                 'flow_values': result.flow_values,
@@ -91,15 +90,12 @@ def main():
                 'total_count': result.total_count,
             }
             print(f'  {month_names[month]}: {result.total_count} values')
-    
+
     # Process daily data
     if args.daily:
         print(f'Reading daily file: {args.daily}')
         daily_data = read_daily_file(args.daily)
-        
-        month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                       'July', 'August', 'September', 'October', 'November', 'December']
-        
+
         print(f'Calculating exceedance ({args.intervals} intervals)...')
         for month in range(1, 13):
             if month not in daily_data or not daily_data[month]:

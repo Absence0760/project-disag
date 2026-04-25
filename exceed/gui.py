@@ -15,7 +15,6 @@ from .files import (
     read_monthly_file,
     write_exceedance_report,
     write_seasonal_exceedance_report,
-    write_matching_report,
 )
 
 
@@ -26,6 +25,7 @@ class ExceedApp(tk.Tk):
         super().__init__()
         self.title('Flow Frequency (Exceedance) Analysis')
         self.resizable(False, True)
+        self._last_dir = os.getcwd()
         self._build_ui()
     
     def _build_ui(self):
@@ -167,15 +167,28 @@ class ExceedApp(tk.Tk):
         
         # Load default 2-season
         self._load_season_preset()
-        
+
+        # ── Intervals selection ────────────────────────────────────────
+        intervals_frame = ttk.LabelFrame(parent, text='Frequency Distribution')
+        intervals_frame.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
+
+        ttk.Label(intervals_frame, text='Number of intervals:').grid(
+            row=0, column=0, sticky='w', padx=8, pady=5)
+
+        self._seasonal_intervals_var = tk.IntVar(value=20)
+        ttk.Spinbox(
+            intervals_frame, from_=5, to=100,
+            textvariable=self._seasonal_intervals_var, width=10,
+        ).grid(row=0, column=1, sticky='w', padx=8, pady=5)
+
         # ── Status and button ───────────────────────────────────────────
         self._seasonal_status_var = tk.StringVar(value='Configure seasons and select files.')
         ttk.Label(parent, textvariable=self._seasonal_status_var,
                   foreground='#555', anchor='w').grid(
-            row=2, column=0, columnspan=2, sticky='ew', padx=10)
-        
+            row=3, column=0, columnspan=2, sticky='ew', padx=10)
+
         btn_bar = ttk.Frame(parent)
-        btn_bar.grid(row=3, column=0, columnspan=2, sticky='ew', padx=10, pady=(2, 10))
+        btn_bar.grid(row=4, column=0, columnspan=2, sticky='ew', padx=10, pady=(2, 10))
         
         ttk.Button(btn_bar, text='Cancel', command=self.destroy).pack(side='left')
         
@@ -252,72 +265,72 @@ class ExceedApp(tk.Tk):
     
     def _browse(self, key: str, mode: str):
         """Browse for a file (basic tab)."""
-        initial = os.getcwd()
         filetypes_map = {
             'mon': [('Monthly flow files', '*.mon *.nat *.cur'), ('All files', '*.*')],
             'day': [('Daily flow files', '*.day'), ('All files', '*.*')],
             'rep': [('Report files', '*.rep')],
         }
         ext_map = {'rep': '.rep'}
-        
+
         if mode == 'open':
             path = filedialog.askopenfilename(
-                initialdir=initial,
+                initialdir=self._last_dir,
                 filetypes=filetypes_map.get(key, [('All', '*.*')]))
         else:
             path = filedialog.asksaveasfilename(
-                initialdir=initial,
+                initialdir=self._last_dir,
                 defaultextension=ext_map.get(key, ''),
                 filetypes=filetypes_map.get(key, [('All', '*.*')]),
             )
-        
+
         if path:
+            self._last_dir = os.path.dirname(path)
             self._vars[key].set(path)
             if key == 'mon' and not self._vars['rep'].get():
                 base = os.path.splitext(path)[0]
                 self._vars['rep'].set(base + '.rep')
-    
+
     def _browse_seasonal_monthly(self):
         """Browse for monthly file (seasonal tab)."""
-        initial = os.getcwd()
         path = filedialog.askopenfilename(
-            initialdir=initial,
+            initialdir=self._last_dir,
             filetypes=[('Monthly flow files', '*.mon *.nat *.cur'), ('All files', '*.*')])
         if path:
+            self._last_dir = os.path.dirname(path)
             self._seasonal_mon_var.set(path)
-    
+
     def _browse_seasonal_report(self):
         """Browse for report file (seasonal tab)."""
-        initial = os.getcwd()
         path = filedialog.asksaveasfilename(
-            initialdir=initial,
+            initialdir=self._last_dir,
             defaultextension='.rep',
             filetypes=[('Report files', '*.rep')])
         if path:
+            self._last_dir = os.path.dirname(path)
             self._seasonal_rep_var.set(path)
-    
+
     def _browse_matching(self, key: str, mode: str):
         """Browse for a file (matching tab)."""
-        initial = os.getcwd()
         filetypes_map = {
             'match_mon': [('Monthly flow files', '*.mon *.nat *.cur'), ('All files', '*.*')],
             'match_day': [('Daily flow files', '*.day'), ('All files', '*.*')],
             'match_rep': [('Report files', '*.rep')],
         }
         ext_map = {'match_rep': '.rep'}
-        
+
         if mode == 'open':
             path = filedialog.askopenfilename(
-                initialdir=initial,
+                initialdir=self._last_dir,
                 filetypes=filetypes_map.get(key, [('All', '*.*')]))
         else:
             path = filedialog.asksaveasfilename(
-                initialdir=initial,
+                initialdir=self._last_dir,
                 defaultextension=ext_map.get(key, ''),
                 filetypes=filetypes_map.get(key, [('All', '*.*')]),
             )
-        
+
         if path:
+            self._last_dir = os.path.dirname(path)
             self._match_vars[key].set(path)
     
     def _load_season_preset(self):
@@ -455,7 +468,7 @@ class ExceedApp(tk.Tk):
             monthly_data = read_monthly_file(self._seasonal_mon_var.get())
             
             self._seasonal_status_var.set('Calculating seasonal exceedance…')
-            num_intervals = self._intervals_var.get()
+            num_intervals = self._seasonal_intervals_var.get()
             
             # Build seasons dict from checkboxes
             seasons = {}

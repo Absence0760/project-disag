@@ -294,9 +294,14 @@ def disaggregate(
     else:
         start_daily = obs_starts[0]
 
-    # Monthly file start: first hydro year (always October)
+    # Monthly file start: first hydro year (always October).
+    # read_monthly_file keys each row starting at (hydro_year, 10), so the
+    # minimum key's month is always 10. If a caller supplies a dict whose
+    # first key is January–September, step back to the October that started
+    # that hydro year.
     first_mon = min(gen_monthly.keys())
-    monthly_start = (first_mon[0], 10) if first_mon[1] <= 10 else (first_mon[0] + 1, 10)
+    hydro_year = first_mon[0] if first_mon[1] >= 10 else first_mon[0] - 1
+    monthly_start = (hydro_year, 10)
 
     start_ym = max(start_daily, monthly_start)
 

@@ -80,7 +80,7 @@ gives you four ways to handle it:
 | # | Method | What it does when day *d* is missing in file 1 |
 |---|--------|------------------------------------------------|
 | 0 | One disaggregator | Mark the **whole month** as missing |
-| 1 | Patch with similar month | Substitute the entire month from another year whose generated volume is closest, provided that year's June is complete |
+| 1 | Patch with similar month | Fill in each missing day from another year whose generated volume for that calendar month is closest, provided that year's instance of the same month is complete |
 | 2 | Patch with file 2 | Use file 1 where present, fall back to file 2 otherwise |
 | 3 | Incremental | Use `(file 1 − file 2)` as the shape (sub-catchment runoff) |
 | 4 | Even distribution | Constant flow on every day — used when no observed record exists at all |

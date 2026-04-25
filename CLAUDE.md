@@ -64,9 +64,11 @@ brew install python@3.13 python-tk@3.13
 python3.13 -m disag
 ```
 
-The `__main__.py` for both packages does a `tk.Tk().destroy()` smoke-test
-before importing the GUI, and prints this hint when it fails. Don't paper
-over the import error — print the hint.
+The `__main__.py` for both packages does an `import tkinter` check before
+importing the GUI, and prints the Homebrew hint if it fails. Do NOT change
+this to `tk.Tk().destroy()` — instantiating a Tk root before the real app
+root corrupts state on macOS 26 + Tk 9 (PAC trap in
+`Tk_MacOSXGetTkWindow`). Don't paper over the import error — print the hint.
 
 ### Daily file format quirks
 

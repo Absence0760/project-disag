@@ -152,23 +152,27 @@ Calculate flow frequency curves for monthly and daily streamflow data. Produces 
 
 ### Usage
 
+The default (no arguments) opens the GUI. Pass `--no-gui` with the file flags
+to run from the command line:
+
 ```bash
 # Monthly exceedance analysis
-python3 -m exceed --monthly path/to/file.mon --output path/to/report.rep
+python3 -m exceed --no-gui --monthly path/to/file.mon --output path/to/report.rep
 
 # Daily exceedance analysis
-python3 -m exceed --daily path/to/file.day --output path/to/report.rep
+python3 -m exceed --no-gui --daily path/to/file.day --output path/to/report.rep
 
 # Both monthly and daily
-python3 -m exceed --monthly file.mon --daily file.day --output report.rep
+python3 -m exceed --no-gui --monthly file.mon --daily file.day --output report.rep
 ```
 
 **Example using test files:**
 
 ```bash
-python3 -m exceed --monthly ./testfiles/SINDILA.MON \
-                  --daily ./testfiles/RUKOKI-l.DAY \
-                  --output ./exceedance.rep
+python3 -m exceed --no-gui \
+    --monthly ./testfiles/SINDILA.MON \
+    --daily   ./testfiles/RUKOKI-l.DAY \
+    --output  ./exceedance.rep
 ```
 
 Run `python3 -m exceed --help` for full usage. Algorithm details and the

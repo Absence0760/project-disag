@@ -19,7 +19,6 @@ import calendar
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 MISSING = -99.99
 DAILY_HEADER_LINES = 12
@@ -135,11 +134,6 @@ def read_monthly_file(path: str) -> dict:
     return result
 
 
-def get_file_start_ym(records: dict) -> tuple:
-    """Return (year, month) of the earliest record in a dict keyed by (y, m)."""
-    return min(records.keys()) if records else (9999, 12)
-
-
 # ---------------------------------------------------------------------------
 # Writer
 # ---------------------------------------------------------------------------
@@ -161,7 +155,7 @@ def write_daily_file(path: str, records: list, header_info: dict) -> None:
         fh.write(f'Disag method  : {header_info.get("method_str", "")}\n')     # 7
         fh.write('-\n')                                                          # 8
         fh.write('-\n')                                                          # 9
-        fh.write(f'Run Date      : {datetime.now()}\n')                         # 10
+        fh.write(f'Run Date      : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')  # 10
         fh.write(dash + '\n')                                                   # 11
         fh.write('\n')                                                           # 12
 

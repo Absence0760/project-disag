@@ -120,8 +120,11 @@ Plain text log produced alongside each output file. It records:
 Disag Report  : 2026-03-28 14:32:01
 Method        : Distrib with file 1, Patched with similar month
 --------------------------------------------------------------------------------
-1975   3 Observed daily flow < 0,   Patched with 1982   3
-1981   8 Observed monthly flow <= 0,   Gen Flow=   5.123
+1975  3 Observed daily flow < 0,   Patched with 1982  3
+1981  8 Observed monthly flow <= 0,   Gen Flow=   5.123
 --------------------------------------------------------------------------------
-Total adjustments : 2
+Months written     : 840
+  Disaggregated    : 838
+  Missing (-99.99) : 2  (0.2%)
+Total adjustments  : 2
 ```

@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             artifact_name: disag-linux-x64
           - os: macos-latest
             artifact_name: disag-macos-arm64
@@ -61,8 +61,12 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "artifacts/${{ matrix.artifact_name }}.zip" ./dist/disag.exe ./dist/exceed.exe README.md docs/
           else
-            tar -czf "artifacts/${{ matrix.artifact_name }}.tar.gz" -C dist disag exceed
-            tar -rzf "artifacts/${{ matrix.artifact_name }}.tar.gz" README.md docs/ || true
+            # -z is not valid in -r (append) mode on GNU tar or bsdtar, so
+            # emit the binaries and the docs in a single -c invocation,
+            # switching the working directory with repeated -C.
+            tar -czf "artifacts/${{ matrix.artifact_name }}.tar.gz" \
+              -C dist disag exceed \
+              -C "$GITHUB_WORKSPACE" README.md docs
           fi
 
       - name: Upload artifact
@@ -83,7 +87,10 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Pinned to v2.6.2 SHA — third-party action with contents: write.
+        # Bump the SHA when upgrading; verify at
+        # https://github.com/softprops/action-gh-release/releases
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
           files: artifacts/*
           generate_release_notes: true

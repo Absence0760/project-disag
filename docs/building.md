@@ -36,9 +36,9 @@ a release.
 
 | Artefact | OS / arch | Contains |
 |----------|-----------|----------|
-| `disag-windows-x64.zip` | Windows x86-64 | `disag.exe`, `exceed.exe` |
-| `disag-macos-arm64.tar.gz` | macOS Apple Silicon | `disag`, `exceed` |
-| `disag-linux-x64.tar.gz` | Linux x86-64 (Ubuntu 22.04 glibc) | `disag`, `exceed` |
+| `disag-windows-x64.zip` | Windows x86-64 | `disag.exe`, `exceed.exe`, `README.md`, `docs/` |
+| `disag-macos-arm64.tar.gz` | macOS Apple Silicon | `disag`, `exceed`, `README.md`, `docs/` |
+| `disag-linux-x64.tar.gz` | Linux x86-64 (Ubuntu 22.04 glibc) | `disag`, `exceed`, `README.md`, `docs/` |
 
 ### Adding more architectures
 
@@ -254,7 +254,6 @@ the binary produces identical output to running from source.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `SIGTRAP` / `Trace trap: 5` on macOS GUI launch | (Now-fixed) Old `__main__.py` did `Tk().destroy()` smoke-test that corrupted state on macOS 26 | Pull latest `main` |
 | "developer cannot be verified" on macOS | Gatekeeper / quarantine | `xattr -d com.apple.quarantine ./disag` or notarise (see §2) |
 | "Windows protected your PC" SmartScreen | Unsigned `.exe` | Click **More info → Run anyway**, or sign with EV cert |
 | `version `GLIBC_2.34' not found` on older Linux | Built on newer glibc than target | Rebuild on older OS / Docker image (§4) |

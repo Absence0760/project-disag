@@ -8,9 +8,9 @@ script on each OS, or use the GitHub Actions workflow at
 
 Usage
 -----
-    python packaging/build.py             # build both apps for current OS
-    python packaging/build.py --app disag # build only disag
-    python packaging/build.py --clean     # remove build/ and dist/ first
+    python3 packaging/build.py             # build both apps for current OS
+    python3 packaging/build.py --app disag # build only disag
+    python3 packaging/build.py --clean     # remove build/ and dist/ first
 """
 
 from __future__ import annotations

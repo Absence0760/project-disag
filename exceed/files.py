@@ -2,57 +2,50 @@
 
 from typing import Dict, List
 
-from disag.files import read_daily_file as _read_daily_records
+from disag.files import MONTHLY_HEADER_LINES, read_daily_file as _read_daily_records
 
 
 def read_monthly_file(filepath: str) -> Dict[int, List[float]]:
     """
     Read monthly flow data file.
-    
+
     Format: Hydro year rows (Oct-Sep) with 12 month columns.
     Returns dict: month_number (1-12 for Jan-Dec) -> list of values
-    
+
     Args:
         filepath: Path to .mon file
-        
+
     Returns:
         Dictionary mapping calendar month (1-12) to list of flow values
     """
     monthly_data = {i: [] for i in range(1, 13)}  # Jan(1) to Dec(12)
-    
+
     with open(filepath, 'r') as f:
         lines = f.readlines()
-    
-    # Skip header lines until we find the year column
-    data_start = 0
-    for i, line in enumerate(lines):
-        if line.strip().startswith('Year'):
-            data_start = i + 1
-            break
-    
-    if data_start == 0:
-        raise ValueError("Could not find data header in file")
-    
-    # Process data lines
-    for line in lines[data_start:]:
+
+    # Skip the fixed free-form header (matches disag.files.read_monthly_file
+    # and the docs/file-formats.md spec).
+    for line in lines[MONTHLY_HEADER_LINES:]:
         line = line.strip()
         if not line or line.startswith('-'):
             continue
-        
+
         # Parse line: Year followed by 12 monthly values
         parts = line.split()
         if len(parts) < 13:
             continue
-        
+
         try:
             year = int(parts[0])
         except ValueError:
             continue
-        
+        if year < 1900:
+            year += 1900
+
         # Extract 12 months (Oct-Sep in hydro year format)
         # Map to calendar months: Oct=10, Nov=11, Dec=12, Jan=1, Feb=2, ..., Sep=9
         hydro_months = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-        
+
         for i, cal_month in enumerate(hydro_months):
             try:
                 value = float(parts[i + 1])
@@ -61,7 +54,7 @@ def read_monthly_file(filepath: str) -> Dict[int, List[float]]:
             # Spec: any negative value is the missing-data sentinel.
             if value >= 0:
                 monthly_data[cal_month].append(value)
-    
+
     return monthly_data
 
 
@@ -90,45 +83,59 @@ def read_daily_file(filepath: str) -> Dict[int, List[float]]:
     return daily_data
 
 
-def write_exceedance_report(filepath: str, monthly_exceedance: Dict[int, Dict]) -> None:
+def write_exceedance_report(filepath: str, monthly_exceedance: Dict) -> None:
     """
     Write exceedance analysis report to file.
-    
+
+    Accepts monthly results keyed by calendar-month int (1-12) and daily
+    results keyed by string `daily_<month>` (e.g. `daily_1` for January).
+    Monthly sections are written first, followed by daily sections.
+
     Args:
         filepath: Output file path
-        monthly_exceedance: Dict of {month: {flow_values, exceedance_pct, ...}}
+        monthly_exceedance: Dict mapping either int month or `daily_<month>`
+            string to {flow_values, exceedance_pct, ...}
     """
     from datetime import datetime
-    
+
     month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
                    'July', 'August', 'September', 'October', 'November', 'December']
-    
+
+    def _write_section(f, heading, result):
+        f.write(f'{heading}\n')
+        f.write('-' * 80 + '\n')
+        f.write(f'Total values: {result["total_count"]}  '
+               f'Below range: {result["count_below"]}  '
+               f'Above range: {result["count_above"]}\n\n')
+
+        f.write('Exceedance%    Flow Value\n')
+        f.write('-' * 30 + '\n')
+
+        flows = result['flow_values']
+        exceedances = result['exceedance_pct']
+
+        for i in range(len(flows)):
+            f.write(f'{exceedances[i]:8.2f}%     {flows[i]:12.3f}\n')
+
+        f.write('\n')
+
     with open(filepath, 'w') as f:
         f.write('-' * 80 + '\n')
         f.write(f'Exceedance Analysis Report  : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
         f.write('-' * 80 + '\n\n')
-        
+
         for month in range(1, 13):
             if month not in monthly_exceedance:
                 continue
-            
-            result = monthly_exceedance[month]
-            f.write(f'{month_names[month].upper()}\n')
-            f.write('-' * 80 + '\n')
-            f.write(f'Total values: {result["total_count"]}  '
-                   f'Below range: {result["count_below"]}  '
-                   f'Above range: {result["count_above"]}\n\n')
-            
-            f.write('Exceedance%    Flow Value\n')
-            f.write('-' * 30 + '\n')
-            
-            flows = result['flow_values']
-            exceedances = result['exceedance_pct']
-            
-            for i in range(len(flows)):
-                f.write(f'{exceedances[i]:8.2f}%     {flows[i]:12.3f}\n')
-            
-            f.write('\n')
+            _write_section(f, f'MONTHLY - {month_names[month].upper()}',
+                           monthly_exceedance[month])
+
+        for month in range(1, 13):
+            key = f'daily_{month}'
+            if key not in monthly_exceedance:
+                continue
+            _write_section(f, f'DAILY - {month_names[month].upper()}',
+                           monthly_exceedance[key])
 
 
 def write_seasonal_exceedance_report(
@@ -169,46 +176,3 @@ def write_seasonal_exceedance_report(
             f.write('\n')
 
 
-def write_matching_report(
-    filepath: str,
-    matches: List,
-    month: int = None,
-    season: str = None
-) -> None:
-    """
-    Write exceedance matching report (monthly vs daily).
-    
-    Args:
-        filepath: Output file path
-        matches: List of matching exceedance values
-        month: Calendar month (1-12) if monthly comparison
-        season: Season name if seasonal comparison
-    """
-    from datetime import datetime
-    
-    month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December']
-    
-    with open(filepath, 'w') as f:
-        f.write('-' * 80 + '\n')
-        f.write(f'Exceedance Matching Report  : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
-        f.write('-' * 80 + '\n\n')
-        
-        if month:
-            f.write(f'Comparison: {month_names[month]} (Monthly vs Daily)\n')
-        elif season:
-            f.write(f'Comparison: {season} Season (Monthly vs Daily)\n')
-        
-        f.write('-' * 80 + '\n\n')
-        
-        f.write('Exceedance%  Flow Monthly   Flow Daily  Difference\n')
-        f.write('-' * 60 + '\n')
-        
-        for match in matches:
-            f.write(f'{match["exceed_monthly"]:8.2f}%   '
-                   f'{match["flow_monthly"]:12.3f}    '
-                   f'{match["flow_daily"]:12.3f}    '
-                   f'{match["diff"]:8.2f}%\n')
-        
-        f.write('\n')
-        f.write(f'Total matches (within 5% tolerance): {len(matches)}\n')
