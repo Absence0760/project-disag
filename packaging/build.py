@@ -1,7 +1,7 @@
 """Cross-platform PyInstaller build driver.
 
 Builds single-file executables for both `disag` and `exceed` on whatever OS
-this script is run on. PyInstaller does not cross-compile — to produce
+this script is run on. PyInstaller does not cross-compile -- to produce
 binaries for all three platforms (Windows / macOS / Ubuntu), run this
 script on each OS, or use the GitHub Actions workflow at
 `.github/workflows/release.yml`.
@@ -63,7 +63,7 @@ def _build_one(app: str) -> Path:
         "--specpath", str(ROOT / "build"),
         str(launcher),
     ]
-    print("→", " ".join(cmd))
+    print(">", " ".join(cmd))
     subprocess.run(cmd, check=True, cwd=ROOT)
 
     suffix = ".exe" if platform.system() == "Windows" else ""
