@@ -119,3 +119,109 @@ def calculate_monthly_exceedance(values: list, num_intervals: int = 20) -> Excee
         calc.process_value(value)
     
     return calc.calculate_result()
+
+
+# ── Season definitions ────────────────────────────────────────────────
+
+SEASON_PRESETS = {
+    2: {  # 2-season: wet/dry (Hydro year Oct-Sep)
+        'Wet Season': [10, 11, 12, 1, 2, 3],    # Oct-Mar
+        'Dry Season': [4, 5, 6, 7, 8, 9],       # Apr-Sep
+    },
+    3: {  # 3-season: Winter/Spring/Summer+Fall
+        'Summer': [6, 7, 8],                     # Jun-Aug
+        'Fall': [9, 10, 11],                     # Sep-Nov
+        'Winter': [12, 1, 2, 3, 4, 5],           # Dec-May
+    },
+    4: {  # 4-season: Calendar seasons
+        'Winter': [12, 1, 2],                    # Dec-Feb
+        'Spring': [3, 4, 5],                     # Mar-May
+        'Summer': [6, 7, 8],                     # Jun-Aug
+        'Fall': [9, 10, 11],                     # Sep-Nov
+    },
+}
+
+
+def get_season_presets(num_seasons: int) -> dict:
+    """Get default season definitions for a given number of seasons."""
+    return SEASON_PRESETS.get(num_seasons, {})
+
+
+def calculate_seasonal_exceedance(
+    monthly_data: dict,
+    seasons: dict,
+    num_intervals: int = 20
+) -> dict:
+    """
+    Calculate exceedance grouped by seasons.
+    
+    Args:
+        monthly_data: Dict mapping month (1-12) to list of values
+        seasons: Dict mapping season name to list of months
+        num_intervals: Number of intervals for frequency distribution
+        
+    Returns:
+        Dict mapping season name to ExceedanceResult
+    """
+    results = {}
+    
+    for season_name, months in seasons.items():
+        season_values = []
+        
+        for month in months:
+            if month in monthly_data:
+                season_values.extend(monthly_data[month])
+        
+        if season_values:
+            results[season_name] = calculate_monthly_exceedance(
+                season_values, num_intervals)
+    
+    return results
+
+
+def match_exceedance_values(
+    monthly_result: ExceedanceResult,
+    daily_result: ExceedanceResult,
+    tolerance_pct: float = 5.0
+) -> list:
+    """
+    Find matching exceedance values between monthly and daily analyses.
+    
+    Returns list of matches where |exceed_monthly - exceed_daily| <= tolerance.
+    
+    Args:
+        monthly_result: Monthly exceedance result
+        daily_result: Daily exceedance result
+        tolerance_pct: Exceedance percentage tolerance for matching
+        
+    Returns:
+        List of dicts: {flow_monthly, exceed_monthly, flow_daily, exceed_daily, diff}
+    """
+    matches = []
+    
+    # For each monthly exceedance, find closest daily exceedance
+    for i, exceed_m in enumerate(monthly_result.exceedance_pct):
+        flow_m = monthly_result.flow_values[i]
+        
+        # Find best matching daily exceedance
+        best_diff = tolerance_pct + 1
+        best_match = None
+        
+        for j, exceed_d in enumerate(daily_result.exceedance_pct):
+            flow_d = daily_result.flow_values[j]
+            diff = abs(exceed_m - exceed_d)
+            
+            if diff < best_diff:
+                best_diff = diff
+                best_match = {
+                    'flow_monthly': flow_m,
+                    'exceed_monthly': exceed_m,
+                    'flow_daily': flow_d,
+                    'exceed_daily': exceed_d,
+                    'diff': diff,
+                }
+        
+        if best_match and best_diff <= tolerance_pct:
+            matches.append(best_match)
+    
+    return matches

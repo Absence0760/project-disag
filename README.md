@@ -101,8 +101,9 @@ disag/              Python package
 
 exceed/             Exceedance analysis package
   files.py          File I/O (read .day and .mon)
-  algorithm.py      Frequency/exceedance calculation
-  __main__.py       CLI entry point
+  algorithm.py      Frequency/exceedance & seasonal grouping
+  gui.py            Tkinter GUI (basic, seasonal, matching tabs)
+  __main__.py       CLI + GUI entry point
 
 delphi_files/       Original Delphi/Pascal source (reference only)
 docs/               Detailed technical documentation
