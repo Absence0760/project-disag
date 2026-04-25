@@ -51,18 +51,20 @@ def main():
     args = parser.parse_args()
 
     if args.gui:
+        # Import-only check — do NOT instantiate Tk() here. On macOS 26 + Tk 9
+        # creating then destroying a Tk root before the real app's Tk root
+        # corrupts state and triggers a PAC trap inside Tk_MacOSXGetTkWindow.
         try:
-            import tkinter as _tk
-            _tk.Tk().destroy()          # smoke-test before importing our GUI
-        except Exception as exc:
+            import tkinter  # noqa: F401
+        except ImportError as exc:
             print(
                 f'Cannot open GUI: {exc}\n\n'
-                'tkinter is not working with this Python installation.\n'
+                'tkinter is not available in this Python installation.\n'
                 'On macOS, fix it with:\n'
                 '    brew install python@3.13 python-tk@3.13\n'
                 '    python3.13 -m disag\n\n'
                 'To run without a GUI use --no-gui (see --help).',
-                file=__import__('sys').stderr,
+                file=sys.stderr,
             )
             raise SystemExit(1)
 

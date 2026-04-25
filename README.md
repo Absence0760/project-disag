@@ -15,7 +15,32 @@ source is preserved in [`delphi_files/`](delphi_files/).
 
 ---
 
-## Requirements
+## Download (pre-built executables)
+
+Pre-built single-file executables for Windows, macOS, and Linux are produced
+by [`.github/workflows/release.yml`](.github/workflows/release.yml) and
+attached to each tagged release on GitHub. Each archive contains both
+`disag` and `exceed` and has no Python dependency — just download, unpack,
+and run:
+
+| Platform | Archive | How to run |
+|----------|---------|-----------|
+| Windows  | `disag-windows-x64.zip`  | Unzip, double-click `disag.exe` (GUI) or run from `cmd` (CLI) |
+| macOS    | `disag-macos-arm64.tar.gz` | `tar xzf … && ./disag` (you may need to allow it in System Settings → Privacy & Security on first run) |
+| Linux    | `disag-linux-x64.tar.gz` | `tar xzf … && ./disag` |
+
+To build them yourself on the current OS:
+
+```bash
+pip install pyinstaller
+python packaging/build.py --clean
+# → dist/disag, dist/exceed (or .exe on Windows)
+```
+
+PyInstaller does not cross-compile, so each OS must be built on a matching
+machine (or via the GitHub Actions matrix above).
+
+## Running from source
 
 Python 3.8 or later. No third-party packages — only the standard library
 (`tkinter`, `calendar`, `argparse`).

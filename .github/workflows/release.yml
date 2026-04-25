@@ -1,0 +1,89 @@
+name: Build executables
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: disag-linux-x64
+          - os: macos-latest
+            artifact_name: disag-macos-arm64
+          - os: windows-latest
+            artifact_name: disag-windows-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Tk on Ubuntu
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk tk-dev
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build executables
+        run: python packaging/build.py --clean
+
+      - name: Smoke-test binaries (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ./dist/disag --help
+          ./dist/exceed --help
+
+      - name: Smoke-test binaries (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\dist\disag.exe --help
+          .\dist\exceed.exe --help
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "artifacts/${{ matrix.artifact_name }}.zip" ./dist/disag.exe ./dist/exceed.exe README.md docs/
+          else
+            tar -czf "artifacts/${{ matrix.artifact_name }}.tar.gz" -C dist disag exceed
+            tar -rzf "artifacts/${{ matrix.artifact_name }}.tar.gz" README.md docs/ || true
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/*
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
