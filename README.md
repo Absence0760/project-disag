@@ -6,6 +6,9 @@ Given a monthly generated flow record (Mm3/month) and one or two observed daily
 flow records (m3/s), `disag` distributes each monthly total across the days of
 that month in proportion to the shape of the observed daily record.
 
+For a plain-language explanation of the problem this project solves — with
+worked examples — see [docs/problem.md](docs/problem.md).
+
 This is a Python port of the original Delphi/Pascal tool **Disag-MD** (first
 written by AJ Greyling in 1991, last updated by H Beuster in 2007). The original
 source is preserved in [`delphi_files/`](delphi_files/).
@@ -76,6 +79,10 @@ Run `python3 -m disag --help` for full usage.
 See [docs/algorithm.md](docs/algorithm.md) for the full formula and details on
 how missing data is handled for each method.
 
+See [CLAUDE.md](CLAUDE.md) for working notes — repo layout, gotchas, and
+how to verify changes — when extending this project (with or without
+Claude Code).
+
 ---
 
 ## Files
@@ -136,4 +143,5 @@ python3 -m exceed --monthly ./testfiles/SINDILA.MON \
                   --output ./exceedance.rep
 ```
 
-Run `python3 -m exceed --help` for full usage.
+Run `python3 -m exceed --help` for full usage. Algorithm details and the
+seasonal / matching modes are documented in [docs/exceed.md](docs/exceed.md).
