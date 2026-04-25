@@ -73,9 +73,17 @@ the daily distribution at corresponding exceedance levels.
 
 ## Missing-value handling
 
-Any value `< -99.0` is treated as missing and excluded from the input set
-before any min/max or interval computation. There is no patching/backfill
-in the exceed tool — missing days are simply dropped.
+Per the file-format spec ([file-formats.md](file-formats.md)), **any
+negative value** is the missing-data sentinel — `-99.99` and `-99.990` are
+the conventional ones, but `-999`, `-50`, `-1`, etc. are equally valid.
+The exceed reader filters out any value `< 0` before min/max or interval
+computation.
+
+There is no patching or backfill in the exceed tool. Missing days are
+simply dropped, so a calendar month's sample size = (years with data) ×
+(days in month) − (missing days). The disag tool does provide patching
+methods (1, 2, 4) that *replace* missing daily values; see
+[algorithm.md](algorithm.md) for those.
 
 ## CLI
 

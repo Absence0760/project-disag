@@ -2,10 +2,7 @@
 
 from typing import Dict, List
 
-from disag.files import (
-    MISSING,
-    read_daily_file as _read_daily_records,
-)
+from disag.files import read_daily_file as _read_daily_records
 
 
 def read_monthly_file(filepath: str) -> Dict[int, List[float]]:
@@ -59,9 +56,11 @@ def read_monthly_file(filepath: str) -> Dict[int, List[float]]:
         for i, cal_month in enumerate(hydro_months):
             try:
                 value = float(parts[i + 1])
-                monthly_data[cal_month].append(value)
             except (ValueError, IndexError):
-                pass
+                continue
+            # Spec: any negative value is the missing-data sentinel.
+            if value >= 0:
+                monthly_data[cal_month].append(value)
     
     return monthly_data
 
@@ -81,9 +80,11 @@ def read_daily_file(filepath: str) -> Dict[int, List[float]]:
     daily_data: Dict[int, List[float]] = {i: [] for i in range(1, 13)}
     records = _read_daily_records(filepath)
 
+    # Spec: any negative value is the missing-data sentinel (docs/file-formats.md).
+    # Drop them before exceedance analysis; the exceed tool does not patch.
     for (_year, month), rec in records.items():
         for v in rec.v:
-            if v > MISSING + 0.01:
+            if v >= 0:
                 daily_data[month].append(v)
 
     return daily_data
