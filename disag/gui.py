@@ -242,8 +242,9 @@ class DisagApp(tk.Tk):
             if pct_missing > 50 and method == DisagMethod.ONE_FILE:
                 msg += (f'\n\nWARNING: most months are missing because the daily '
                         f'input has gaps and Method 0 drops any month with even '
-                        f'one missing day. Try Method 1 to patch missing days '
-                        f'from a similar month in another year.')
+                        f'one missing day. Try Method 1 (closest-volume similar '
+                        f'month) or Method 5 (exceedance-percentile match) to '
+                        f'patch missing days.')
                 messagebox.showwarning('Disaggregation complete', msg)
             else:
                 messagebox.showinfo('Disaggregation complete', msg)

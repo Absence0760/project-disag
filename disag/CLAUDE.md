@@ -1,7 +1,7 @@
 # disag — package notes for Claude Code
 
 Disaggregate monthly streamflow (Mm3/month) into daily flow (m3/s) using one
-of five methods. Python port of the Delphi `Disag-MD` tool.
+of six methods. Python port of the Delphi `Disag-MD` tool.
 
 See [../docs/algorithm.md](../docs/algorithm.md) for the formula and
 per-method behaviour, and [../docs/file-formats.md](../docs/file-formats.md)

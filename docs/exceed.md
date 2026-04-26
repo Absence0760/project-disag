@@ -82,7 +82,7 @@ computation.
 There is no patching or backfill in the exceed tool. Missing days are
 simply dropped, so a calendar month's sample size = (years with data) ×
 (days in month) − (missing days). The disag tool does provide patching
-methods (1, 2, 4) that *replace* missing daily values; see
+methods (1, 2, and 5) that *replace* missing daily values; see
 [algorithm.md](algorithm.md) for those.
 
 ## CLI

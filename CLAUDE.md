@@ -112,7 +112,7 @@ reader keys by `(calendar_year, calendar_month)`. Mind the off-by-one.
 ```
 disag/              Python package — disaggregation
   files.py          File I/O — authoritative .day / .mon reader/writer
-  algorithm.py      Core disaggregation logic (5 methods)
+  algorithm.py      Core disaggregation logic (6 methods)
   gui.py            Tkinter GUI
   report.py         .rep file writer
   __main__.py       Entry point (GUI + CLI)

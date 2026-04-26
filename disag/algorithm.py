@@ -1,7 +1,7 @@
 """
 Core disaggregation algorithm.
 
-Converts monthly flows (Mm3/month) to daily flows (m3/s) using one of five
+Converts monthly flows (Mm3/month) to daily flows (m3/s) using one of six
 methods that borrow a daily shape from an observed daily record.
 
 Formula

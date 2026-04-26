@@ -20,7 +20,7 @@ Methods
     2  Patch missing days with daily file 2
     3  Incremental catchment: pattern = (daily 1) − (daily 2)
     4  Even distribution (no daily file needed)
-    5  Patch with file 2 then exceedance-matched donor month (file 2 optional)
+    5  Patch with file 1, then file 2, then exceedance-matched donor month (file 2 optional)
 """
 
 import argparse
@@ -145,7 +145,9 @@ def main():
             f'  The daily input has gaps and Method 0 drops any month with\n'
             f'  even one missing day. Try Method 1 (--method 1) to patch\n'
             f'  missing days from the closest-volume same-month in another\n'
-            f'  year. Each patch will be logged in the report.',
+            f'  year, or Method 5 (--method 5) for an exceedance-percentile\n'
+            f'  match that works across rivers of different scale. Each\n'
+            f'  patch will be logged in the report.',
             file=sys.stderr,
         )
 

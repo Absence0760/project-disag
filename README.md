@@ -103,6 +103,7 @@ Run `python3 -m disag --help` for full usage.
 | 2 | **Patch with file 2** — use file 1; fill missing days from file 2 | 2 |
 | 3 | **Incremental** — pattern = (daily file 1) − (daily file 2) | 2 |
 | 4 | **Even distribution** — equal flow on every day of the month | 0 |
+| 5 | **Patch with exceedance-matched donor** — use file 1, then file 2; for any day still missing, fill from a donor year picked by exceedance-percentile match (lets you borrow daily shape from a different river in the same area) | 1 or 2 |
 
 See [docs/algorithm.md](docs/algorithm.md) for the full formula and details on
 how missing data is handled for each method.

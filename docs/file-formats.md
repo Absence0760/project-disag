@@ -111,7 +111,7 @@ This record covers October 1990 through September 1991.
 Plain text log produced alongside each output file. It records:
 
 - Any month where daily data was missing and a patch year was used
-  (methods 1 and 2).
+  (methods 1, 2, and 5).
 - Any month where the observed monthly total was zero but the generated flow
   was positive (fallback to even distribution).
 
