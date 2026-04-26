@@ -49,8 +49,20 @@ python3 -m exceed --no-gui \
 
 Test fixtures live in [testfiles/](testfiles/) (gitignored — they are large
 and binary-ish). Use `SINDILA.MON` (monthly) and `RUKOKI-l.DAY` (daily) for
-sanity checks. There is no formal test suite yet — verify changes by running
-the CLI against these fixtures and inspecting the report output.
+manual sanity checks.
+
+Automated tests live in [tests/](tests/) and run with the standard
+library's unittest module:
+
+```bash
+python3 -m unittest discover tests           # whole suite
+python3 -m unittest tests.test_algorithm     # just the unit tests
+python3 -m unittest tests.test_e2e           # end-to-end against demo fixtures
+```
+
+The end-to-end tests use the deterministically-generated mock data in
+[examples/method5_demo/data/](examples/method5_demo/data/) — committed
+files, so the suite has no external dependencies.
 
 ## Gotchas
 

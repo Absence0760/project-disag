@@ -56,7 +56,13 @@ daily value. See [../docs/file-formats.md](../docs/file-formats.md).
 
 ## Verifying changes
 
-There is no formal test suite. After edits:
+There's a small automated suite — run it first:
+
+```bash
+python3 -m unittest discover tests
+```
+
+For deeper sanity checks, run the CLI against the real fixtures:
 
 ```bash
 # Method 0 (one disaggregator)

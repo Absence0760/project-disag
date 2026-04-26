@@ -1,0 +1,198 @@
+"""Unit tests for disag/algorithm.py — the per-helper pieces of PATCH_EXCEED.
+
+Stdlib only (project policy); ``python3 -m unittest discover tests`` runs
+these. ``pytest`` also picks them up automatically.
+"""
+
+import os
+import sys
+import unittest
+
+# Make ``disag`` importable when running tests from anywhere
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from disag.algorithm import (
+    DisagMethod,
+    NO_FILES,
+    _exceed_pct,
+    _monthly_totals_from_daily,
+    _per_month_distributions,
+    _tier2_scale_factors,
+    find_exceed_donor,
+)
+from disag.files import DailyRecord, MISSING
+
+
+class ExceedPctTests(unittest.TestCase):
+    """The rank percentile is the foundation of tier-3 matching."""
+
+    def test_smallest_value_gets_100_pct(self):
+        self.assertAlmostEqual(_exceed_pct(1, [1, 2, 3, 4]), 100.0)
+
+    def test_largest_value_gets_one_over_n(self):
+        self.assertAlmostEqual(_exceed_pct(4, [1, 2, 3, 4]), 25.0)
+
+    def test_value_above_max_returns_zero(self):
+        self.assertEqual(_exceed_pct(99, [1, 2, 3]), 0.0)
+
+    def test_empty_distribution_returns_zero(self):
+        self.assertEqual(_exceed_pct(1, []), 0.0)
+
+    def test_ties_count_at_or_above(self):
+        # Three values == 5; everyone is "≥ 5" so all share 100 %.
+        self.assertAlmostEqual(_exceed_pct(5, [5, 5, 5]), 100.0)
+
+
+class MonthlyTotalsFromDailyTests(unittest.TestCase):
+    """The completeness gate is what protects tier 3 from picking gappy donors."""
+
+    def test_complete_month_included(self):
+        rec = DailyRecord(year=2000, month=1, v=[1.0] * 31)
+        totals = _monthly_totals_from_daily({(2000, 1): rec})
+        self.assertEqual(totals, {(2000, 1): 31.0})
+
+    def test_one_missing_day_excludes_whole_month(self):
+        v = [1.0] * 30 + [MISSING]
+        rec = DailyRecord(year=2000, month=1, v=v)
+        totals = _monthly_totals_from_daily({(2000, 1): rec})
+        self.assertEqual(totals, {})
+
+    def test_short_record_excluded(self):
+        # Day count < dim — possible if the file is truncated
+        rec = DailyRecord(year=2000, month=1, v=[1.0] * 28)
+        totals = _monthly_totals_from_daily({(2000, 1): rec})
+        self.assertEqual(totals, {})
+
+    def test_none_record_skipped(self):
+        totals = _monthly_totals_from_daily({(2000, 1): None})
+        self.assertEqual(totals, {})
+
+
+class FindExceedDonorTests(unittest.TestCase):
+    """Rank-match donor selection and tie-break ordering."""
+
+    def _gen_monthly(self, values_by_year):
+        """{year: vol}  →  {(year, 6): vol}.  Just June for simplicity."""
+        return {(y, 6): v for y, v in values_by_year.items()}
+
+    def _full_june(self, year, monthly_total_proxy):
+        # 30 days summing approximately to a chosen proxy total
+        per_day = monthly_total_proxy / 30.0
+        return DailyRecord(year=year, month=6, v=[per_day] * 30)
+
+    def test_exact_percentile_match_wins(self):
+        # Realistic setup: target year (2002) has a gappy daily record so
+        # is *not* in obs_totals.  The 4 donor candidates' totals at
+        # absolute scale ×100 of gen_monthly should still rank-match.
+        gen = self._gen_monthly({2000: 1.0, 2001: 2.0, 2002: 3.0,
+                                 2003: 4.0, 2004: 5.0})
+        obs = {(y, 6): self._full_june(y, v * 100) for y, v in
+               {2000: 1.0, 2001: 2.0, 2003: 4.0, 2004: 5.0}.items()}
+        totals = _monthly_totals_from_daily(obs)
+        td, dd = _per_month_distributions(gen, [totals])
+        result = find_exceed_donor(2002, 6, gen, [totals], td, dd)
+        self.assertIsNotNone(result)
+        file_idx, donor_year, p_target, p_donor = result
+        # 2002's p_target in the 5-value gen_monthly dist = 60 % (3rd-largest)
+        # Donor dist has 4 values.  Per-rank percentiles {25, 50, 75, 100}.
+        # Closest to 60 is 50 % → that's the second-largest donor → year 2003.
+        self.assertEqual(file_idx, 0)
+        self.assertAlmostEqual(p_target, 60.0)
+        self.assertAlmostEqual(p_donor, 50.0)
+        self.assertEqual(donor_year, 2003)
+
+    def test_self_target_excluded(self):
+        # Defensive guard: even if the target somehow appears in obs_totals
+        # (it shouldn't — gappy month → not in totals), we don't pick it.
+        gen = self._gen_monthly({2000: 1.0, 2001: 2.0, 2002: 3.0})
+        obs = {(y, 6): self._full_june(y, v) for y, v in
+               {2000: 1.0, 2001: 2.0, 2002: 3.0}.items()}
+        totals = _monthly_totals_from_daily(obs)
+        td, dd = _per_month_distributions(gen, [totals])
+        result = find_exceed_donor(2001, 6, gen, [totals], td, dd)
+        # 2001 is the target; donor must be 2000 or 2002.
+        self.assertIsNotNone(result)
+        self.assertNotEqual(result[1], 2001)
+
+    def test_returns_none_when_target_dist_too_small(self):
+        # Only one June in gen_monthly → percentile undefined.
+        gen = self._gen_monthly({2000: 1.0})
+        obs = {(2000, 6): self._full_june(2000, 1.0)}
+        totals = _monthly_totals_from_daily(obs)
+        td, dd = _per_month_distributions(gen, [totals])
+        self.assertIsNone(
+            find_exceed_donor(2000, 6, gen, [totals], td, dd)
+        )
+
+    def test_returns_none_when_no_donor_pool(self):
+        gen = self._gen_monthly({2000: 1.0, 2001: 2.0, 2002: 3.0})
+        # Donor file has zero complete records
+        td, dd = _per_month_distributions(gen, [{}])
+        self.assertIsNone(
+            find_exceed_donor(2001, 6, gen, [{}], td, dd)
+        )
+
+    def test_file_idx_tiebreak(self):
+        # Same percentile, same year proximity, two files → file 0 wins.
+        gen = self._gen_monthly({2000: 1.0, 2001: 2.0, 2002: 3.0})
+        # Both files have identical 2000+2002 records → identical
+        # percentile distributions for tier 3; tie-break should prefer file 0.
+        f1 = {(2000, 6): self._full_june(2000, 1.0),
+              (2002, 6): self._full_june(2002, 3.0)}
+        f2 = {(2000, 6): self._full_june(2000, 1.0),
+              (2002, 6): self._full_june(2002, 3.0)}
+        t1 = _monthly_totals_from_daily(f1)
+        t2 = _monthly_totals_from_daily(f2)
+        td, dd = _per_month_distributions(gen, [t1, t2])
+        result = find_exceed_donor(2001, 6, gen, [t1, t2], td, dd)
+        self.assertIsNotNone(result)
+        self.assertEqual(result[0], 0)   # file 1 (idx 0)
+
+
+class Tier2ScaleFactorsTests(unittest.TestCase):
+    """The cross-river rescaling factor for tier-2 patches."""
+
+    def test_identity_when_one_file(self):
+        f = _tier2_scale_factors([{(2000, 1): 10}])
+        self.assertEqual(f, [{m: 1.0 for m in range(1, 13)}])
+
+    def test_per_month_ratio(self):
+        f1_totals = {(2000, 1): 100, (2001, 1): 200, (2000, 6): 10, (2001, 6): 20}
+        f2_totals = {(2000, 1): 10,  (2001, 1): 20,  (2000, 6): 1,  (2001, 6): 2}
+        factors = _tier2_scale_factors([f1_totals, f2_totals])
+        self.assertEqual(factors[0][1], 1.0)
+        # mean(f1[1])=150, mean(f2[1])=15 → ratio 10
+        self.assertAlmostEqual(factors[1][1], 10.0)
+        # mean(f1[6])=15, mean(f2[6])=1.5 → ratio 10
+        self.assertAlmostEqual(factors[1][6], 10.0)
+
+    def test_global_fallback_when_month_missing_in_one_file(self):
+        # File 2 has no January records; should fall back to overall ratio
+        f1 = {(2000, 1): 100, (2001, 1): 200, (2000, 6): 10}
+        f2 = {(2000, 6): 1, (2001, 6): 2}
+        factors = _tier2_scale_factors([f1, f2])
+        # Per-month for Jan unavailable; global mean(f1)/mean(f2) = (100+200+10)/3 / (1+2)/2 = ~103.3/1.5 = 68.9
+        self.assertAlmostEqual(factors[1][1], 310 / 3.0 / (3.0 / 2.0), places=4)
+
+    def test_zero_or_missing_falls_back_to_one(self):
+        # No data anywhere for January in file 2; file 2 mean is also zero
+        f1 = {(2000, 1): 100}
+        f2: dict = {}
+        factors = _tier2_scale_factors([f1, f2])
+        self.assertEqual(factors[1][1], 1.0)
+
+
+class MethodTableTests(unittest.TestCase):
+    """Catch accidental enum/registry drift."""
+
+    def test_no_files_keys_match_enum(self):
+        self.assertEqual(set(NO_FILES.keys()), set(DisagMethod))
+
+    def test_patch_exceed_minimum_files_is_one(self):
+        self.assertEqual(NO_FILES[DisagMethod.PATCH_EXCEED], 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
