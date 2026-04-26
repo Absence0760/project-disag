@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
-Description : target.MON (mock)
-Units       : Mm3/month
-Hydro order : Oct Nov Dec Jan Feb Mar Apr May Jun Jul Aug Sep
+Description : target.MON (mock)  Units: Mm3/month
+Columns     : Oct Nov Dec | Jan Feb Mar Apr May Jun Jul Aug Sep   (hydro order)
+NOTE        : row label = hydro year Y; calendar June (Y+1) sits in column 9 of row Y
 --------------------------------------------------------------------------------
 2000    3.988    2.363    3.875    3.616    5.564    4.707    4.177    1.174    1.383    0.530    1.078    2.513
 2001    1.843    3.145    5.749    5.225    3.242    4.357    3.928    1.013    1.959    1.198    1.260    1.639

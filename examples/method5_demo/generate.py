@@ -83,13 +83,24 @@ def gen_monthly() -> dict:
 
 
 def write_monthly(path: str, rec: dict) -> None:
-    """Write a 5-line header followed by one hydro-year row of 12 values."""
+    """Write a 5-line header followed by one hydro-year row of 12 values.
+
+    The reader (``disag.files.read_monthly_file``) skips the first
+    ``MONTHLY_HEADER_LINES`` (= 5) lines, so we get exactly 5 lines of
+    descriptive text. Use them well: cram a worked example of the
+    hydro-vs-calendar mapping in here so a user reading this file by
+    hand can cross-reference the generated output without consulting
+    docs.
+    """
     with open(path, 'w') as f:
-        f.write('-' * 80 + '\n')
-        f.write(f'Description : {os.path.basename(path)} (mock)\n')
-        f.write('Units       : Mm3/month\n')
-        f.write('Hydro order : Oct Nov Dec Jan Feb Mar Apr May Jun Jul Aug Sep\n')
-        f.write('-' * 80 + '\n')
+        f.write('-' * 80 + '\n')                                              # 1
+        f.write(f'Description : {os.path.basename(path)} (mock)  '            # 2
+                'Units: Mm3/month\n')
+        f.write('Columns     : Oct Nov Dec | Jan Feb Mar Apr May Jun Jul '    # 3
+                'Aug Sep   (hydro order)\n')
+        f.write('NOTE        : row label = hydro year Y; calendar June '     # 4
+                '(Y+1) sits in column 9 of row Y\n')
+        f.write('-' * 80 + '\n')                                              # 5
         for hy in YEARS:
             row = [f'{hy:4d}']
             for hm in HYDRO_MONTHS:

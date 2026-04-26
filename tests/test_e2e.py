@@ -230,6 +230,31 @@ class ReportObservabilityTests(unittest.TestCase):
         )
 
 
+class MonHeaderTests(unittest.TestCase):
+    """The mock generator's .MON header has to remain reader-compatible
+    while still being human-readable."""
+
+    def test_header_explains_hydro_vs_calendar(self):
+        path = os.path.join(DATA, 'target.MON')
+        with open(path) as f:
+            head = [next(f) for _ in range(5)]
+        # The note explaining the row-label convention must be in the
+        # 5-line header so a hand-reader sees it before any data.
+        joined = ''.join(head).lower()
+        self.assertIn('hydro year', joined)
+        self.assertIn('june', joined)
+
+    def test_reader_still_parses_with_new_header(self):
+        # Reader must skip exactly the 5-line header; if the layout drifts
+        # we'd lose the first record (and the parse would silently miss).
+        path = os.path.join(DATA, 'target.MON')
+        m = read_monthly_file(path)
+        # 6 hydro years × 12 months each = 72 (year, month) keys
+        self.assertEqual(len(m), 72)
+        # Cal Jun 2003 is on the 2002 hydro-year row, column 9
+        self.assertAlmostEqual(m[(2003, 6)], 1.554, places=3)
+
+
 class VolumePreservationTest(unittest.TestCase):
     """For any tier (1, 2, or 3), the output's monthly total must equal
     the input's gen_monthly volume.  This is the core invariant of the
