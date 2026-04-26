@@ -166,11 +166,41 @@ def _exceed_pct(value: float, distribution: list) -> float:
     return 100.0 * sum(1 for v in distribution if v >= value) / n
 
 
+def _per_month_distributions(
+    gen_monthly: dict,
+    obs_totals: list,
+) -> tuple:
+    """Precompute per-calendar-month distributions used by
+    ``find_exceed_donor``.
+
+    Returns ``(target_dists, donor_dists)`` where:
+      * ``target_dists[m]`` is the list of valid ``gen_monthly`` values
+        for calendar month ``m``;
+      * ``donor_dists[file_idx][m]`` is the list of complete-month
+        totals for the same calendar month in daily file ``file_idx``.
+    """
+    target_dists: dict = {m: [] for m in range(1, 13)}
+    for (y, m), v in gen_monthly.items():
+        if v >= 0:
+            target_dists[m].append(v)
+
+    donor_dists: list = []
+    for totals in obs_totals:
+        per_month: dict = {m: [] for m in range(1, 13)}
+        for (y, m), v in totals.items():
+            per_month[m].append(v)
+        donor_dists.append(per_month)
+
+    return target_dists, donor_dists
+
+
 def find_exceed_donor(
     target_year: int,
     target_month: int,
     gen_monthly: dict,
     obs_totals: list,       # list of {(y, m): vol} dicts, one per daily file
+    target_dists: Optional[dict] = None,
+    donor_dists: Optional[list] = None,
 ) -> Optional[tuple]:
     """Find an exceedance-matched donor month for PATCH_EXCEED tier 3.
 
@@ -179,6 +209,15 @@ def find_exceed_donor(
     file's per-calendar-month distribution. Ties broken by year proximity
     to ``target_year``, then by smaller file index.
 
+    The target's own ``(target_year, target_month)`` is excluded from
+    the candidate pool defensively — by construction it shouldn't be in
+    ``obs_totals`` (tier 3 only fires when the target month is
+    incomplete), but the explicit guard makes the intent obvious.
+
+    Pass ``target_dists``/``donor_dists`` (from ``_per_month_distributions``)
+    to skip the per-call list building when ``find_exceed_donor`` is
+    invoked many times during a single ``disaggregate`` run.
+
     Returns ``(file_idx, donor_year, p_target, p_donor)`` or ``None`` if
     no eligible donor exists.
     """
@@ -186,8 +225,12 @@ def find_exceed_donor(
     if target_vol is None or target_vol < 0:
         return None
 
-    target_dist = [v for (y, m), v in gen_monthly.items()
-                   if m == target_month and v >= 0]
+    if target_dists is None or donor_dists is None:
+        target_dists, donor_dists = _per_month_distributions(
+            gen_monthly, obs_totals
+        )
+
+    target_dist = target_dists.get(target_month, [])
     if len(target_dist) < 2:
         return None
     p_target = _exceed_pct(target_vol, target_dist)
@@ -200,11 +243,14 @@ def find_exceed_donor(
     for file_idx, totals in enumerate(obs_totals):
         if not totals:
             continue
-        donor_dist = [v for (y, m), v in totals.items() if m == target_month]
+        donor_dist = donor_dists[file_idx].get(target_month, [])
         if len(donor_dist) < 2:
             continue
         for (y, m), vol in totals.items():
             if m != target_month:
+                continue
+            # Defensive: the target itself shouldn't be in the donor pool
+            if (y, m) == (target_year, target_month):
                 continue
             # Skip donors with mismatched month length (Feb leap-year mismatch)
             if calendar.monthrange(y, m)[1] != target_dim:
@@ -234,6 +280,8 @@ def _convert_month(
     start_obs_2: tuple,     # (year, month) when file-2 data begins
     report_lines: list,
     obs_totals: Optional[list] = None,   # precomputed monthly totals per file
+    target_dists: Optional[dict] = None,
+    donor_dists: Optional[list] = None,
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
@@ -312,14 +360,25 @@ def _convert_month(
 
         if needs_donor:
             donor = find_exceed_donor(
-                year, month, gen_monthly, obs_totals or []
+                year, month, gen_monthly, obs_totals or [],
+                target_dists=target_dists, donor_dists=donor_dists,
             )
             if donor is None:
+                report_lines.append(
+                    f'{year:4d}{month:3d}'
+                    f' Observed daily flow < 0,'
+                    f'   No tier-3 donor available — month marked missing'
+                )
                 missing = True
             else:
                 file_idx, donor_year, p_target, p_donor = donor
                 exceed_donor = obs_daily[file_idx].get((donor_year, month))
                 if exceed_donor is None:
+                    report_lines.append(
+                        f'{year:4d}{month:3d}'
+                        f' Observed daily flow < 0,'
+                        f'   Donor record vanished — month marked missing'
+                    )
                     missing = True
                 else:
                     report_lines.append(
@@ -465,9 +524,14 @@ def disaggregate(
 
     # --- Precompute per-file monthly totals for PATCH_EXCEED tier 3 ---
     obs_totals: list = []
+    target_dists: Optional[dict] = None
+    donor_dists: Optional[list] = None
     if method == DisagMethod.PATCH_EXCEED:
         obs_totals = [_monthly_totals_from_daily(obs_daily[f])
                       for f in range(len(obs_daily))]
+        target_dists, donor_dists = _per_month_distributions(
+            gen_monthly, obs_totals
+        )
 
     # --- Iterate months ---
     report_lines: list = []
@@ -480,6 +544,8 @@ def disaggregate(
             gen_monthly, obs_daily,
             start_obs_2, report_lines,
             obs_totals=obs_totals,
+            target_dists=target_dists,
+            donor_dists=donor_dists,
         )
         output_records.append(rec)
         year, month = _inc_month(year, month)
