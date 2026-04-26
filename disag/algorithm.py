@@ -448,8 +448,14 @@ def disaggregate(
     start_ym = max(start_daily, monthly_start)
 
     # --- Determine processing end date ---
+    # PATCH_EXCEED treats file 2 as optional, so file 2's end date does not
+    # clamp the run window — tier 3 will fill any month where file 2 ends
+    # short. All other 2-file methods need both files to cover every month.
     end_candidates = [max(gen_monthly.keys())]
-    for f in range(no_files):
+    files_clamping_end = (
+        1 if method == DisagMethod.PATCH_EXCEED else no_files
+    )
+    for f in range(files_clamping_end):
         if obs_daily[f]:
             end_candidates.append(max(obs_daily[f].keys()))
     end_ym = min(end_candidates)

@@ -20,6 +20,7 @@ Methods
     2  Patch missing days with daily file 2
     3  Incremental catchment: pattern = (daily 1) − (daily 2)
     4  Even distribution (no daily file needed)
+    5  Patch with file 2 then exceedance-matched donor month (file 2 optional)
 """
 
 import argparse
@@ -39,8 +40,8 @@ def main():
         help='Run in command-line mode (default: open GUI)',
     )
     parser.add_argument(
-        '--method', '-m', type=int, choices=range(5), default=0, metavar='N',
-        help='Disaggregation method 0-4 (CLI mode only)',
+        '--method', '-m', type=int, choices=range(6), default=0, metavar='N',
+        help='Disaggregation method 0-5 (CLI mode only)',
     )
     parser.add_argument('--monthly',  help='Monthly input file (.mon/.nat/.cur)')
     parser.add_argument('--daily1',   help='Daily reference file 1 (.day)')
@@ -85,17 +86,23 @@ def main():
     from .report import write_report
 
     method = DisagMethod(args.method)
-    no_files = NO_FILES[method]
+    min_files = NO_FILES[method]
 
     required = {'monthly': args.monthly, 'output': args.output, 'report': args.report}
-    if no_files >= 1:
+    if min_files >= 1:
         required['daily1'] = args.daily1
-    if no_files >= 2:
+    if min_files >= 2:
         required['daily2'] = args.daily2
 
     missing = [f'--{k}' for k, v in required.items() if not v]
     if missing:
         parser.error(f'The following arguments are required: {", ".join(missing)}')
+
+    # PATCH_EXCEED accepts an optional file 2; treat it as a 2-file run if supplied
+    use_daily2 = min_files >= 2 or (
+        method == DisagMethod.PATCH_EXCEED and bool(args.daily2)
+    )
+    no_files = 2 if use_daily2 else min_files
 
     print(f'Method    : {METHOD_NAMES[method]}')
     print(f'Reading   : {args.monthly}')
@@ -105,7 +112,7 @@ def main():
     if no_files >= 1:
         print(f'Reading   : {args.daily1}')
         obs_daily[0] = read_daily_file(args.daily1)
-    if no_files >= 2:
+    if use_daily2:
         print(f'Reading   : {args.daily2}')
         obs_daily[1] = read_daily_file(args.daily2)
 
@@ -114,8 +121,8 @@ def main():
 
     header_info = {
         'monthly_file': os.path.basename(args.monthly),
-        'daily_file_1': os.path.basename(args.daily1) if args.daily1 else '',
-        'daily_file_2': os.path.basename(args.daily2) if args.daily2 else '',
+        'daily_file_1': os.path.basename(args.daily1) if no_files >= 1 else '',
+        'daily_file_2': os.path.basename(args.daily2) if use_daily2 else '',
         'method_str':   METHOD_NAMES[method],
     }
     print(f'Writing   : {args.output}')
