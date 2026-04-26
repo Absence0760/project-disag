@@ -145,15 +145,20 @@ class DisagApp(tk.Tk):
     def _on_method_change(self):
         method = DisagMethod(self._method_var.get())
         needs_day1 = method != DisagMethod.EVEN
-        needs_day2 = method in (DisagMethod.PATCH_FILE, DisagMethod.INCREMENTAL)
+        # PATCH_EXCEED accepts file 2 but doesn't require it
+        accepts_day2 = method in (
+            DisagMethod.PATCH_FILE,
+            DisagMethod.INCREMENTAL,
+            DisagMethod.PATCH_EXCEED,
+        )
 
         # Enable / disable the day1 and day2 rows
-        for key, needed in (('day1', needs_day1), ('day2', needs_day2)):
-            state = 'normal' if needed else 'disabled'
+        for key, enabled in (('day1', needs_day1), ('day2', accepts_day2)):
+            state = 'normal' if enabled else 'disabled'
             self._btns[key].config(state=state)
             # Entries are readonly but we can visually grey them out
             self._entries[key].config(
-                style='TEntry' if needed else 'Disabled.TEntry')
+                style='TEntry' if enabled else 'Disabled.TEntry')
 
         self._validate()
 
@@ -185,7 +190,16 @@ class DisagApp(tk.Tk):
     def _run(self):
         self._btn_run.config(state='disabled')
         method = DisagMethod(self._method_var.get())
-        no_files = NO_FILES[method]
+        min_files = NO_FILES[method]
+
+        # PATCH_EXCEED accepts an optional file 2 — if the user picked one,
+        # treat the run as 2-file (otherwise stick to the method's minimum).
+        use_day2 = min_files >= 2 or (
+            method == DisagMethod.PATCH_EXCEED
+            and bool(self._vars['day2'].get())
+            and os.path.isfile(self._vars['day2'].get())
+        )
+        no_files = 2 if use_day2 else min_files
 
         try:
             self._set_status('Reading monthly file…')
@@ -195,7 +209,7 @@ class DisagApp(tk.Tk):
             if no_files >= 1:
                 self._set_status('Reading daily file 1…')
                 obs_daily[0] = read_daily_file(self._vars['day1'].get())
-            if no_files >= 2:
+            if use_day2:
                 self._set_status('Reading daily file 2…')
                 obs_daily[1] = read_daily_file(self._vars['day2'].get())
 
@@ -208,7 +222,7 @@ class DisagApp(tk.Tk):
                 'daily_file_1': (os.path.basename(self._vars['day1'].get())
                                  if no_files >= 1 else ''),
                 'daily_file_2': (os.path.basename(self._vars['day2'].get())
-                                 if no_files >= 2 else ''),
+                                 if use_day2 else ''),
                 'method_str': METHOD_NAMES[method],
             }
             write_daily_file(self._vars['dayout'].get(), records, header_info)
