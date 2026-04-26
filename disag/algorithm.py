@@ -23,36 +23,42 @@ from .files import DailyRecord, MISSING
 # ---------------------------------------------------------------------------
 
 class DisagMethod(IntEnum):
-    ONE_FILE    = 0   # Disaggregate with daily file 1
-    PATCH_CAL   = 1   # Use file 1; patch missing days from a similar calendar month
-    PATCH_FILE  = 2   # Use file 1; patch missing days from file 2
-    INCREMENTAL = 3   # Pattern = (daily 1) − (daily 2)
-    EVEN        = 4   # Even distribution (no daily file needed)
+    ONE_FILE     = 0   # Disaggregate with daily file 1
+    PATCH_CAL    = 1   # Use file 1; patch missing days from a similar calendar month
+    PATCH_FILE   = 2   # Use file 1; patch missing days from file 2
+    INCREMENTAL  = 3   # Pattern = (daily 1) − (daily 2)
+    EVEN         = 4   # Even distribution (no daily file needed)
+    PATCH_EXCEED = 5   # File 1 → file 2 → exceedance-matched donor month
 
 
 METHOD_LABELS = {
-    DisagMethod.ONE_FILE:    'Disaggregate with daily file 1',
-    DisagMethod.PATCH_CAL:   'Disaggregate with daily file 1, patch with flows from similar month',
-    DisagMethod.PATCH_FILE:  'Disaggregate with daily file 1, patch with daily file 2',
-    DisagMethod.INCREMENTAL: 'Incremental catchment: disaggregate with (daily 1 − daily 2)',
-    DisagMethod.EVEN:        'Use even distribution',
+    DisagMethod.ONE_FILE:     'Disaggregate with daily file 1',
+    DisagMethod.PATCH_CAL:    'Disaggregate with daily file 1, patch with flows from similar month',
+    DisagMethod.PATCH_FILE:   'Disaggregate with daily file 1, patch with daily file 2',
+    DisagMethod.INCREMENTAL:  'Incremental catchment: disaggregate with (daily 1 − daily 2)',
+    DisagMethod.EVEN:         'Use even distribution',
+    DisagMethod.PATCH_EXCEED: 'Disaggregate with file 1, patch with file 2, then exceedance-matched donor',
 }
 
 METHOD_NAMES = {
-    DisagMethod.ONE_FILE:    'One disaggregator',
-    DisagMethod.PATCH_CAL:   'Distrib with file 1, Patched with similar month',
-    DisagMethod.PATCH_FILE:  'Distrib with file 1, Patched with file 2',
-    DisagMethod.INCREMENTAL: 'Distrib with incremental runoff (file 1 − file 2)',
-    DisagMethod.EVEN:        'Even distribution',
+    DisagMethod.ONE_FILE:     'One disaggregator',
+    DisagMethod.PATCH_CAL:    'Distrib with file 1, Patched with similar month',
+    DisagMethod.PATCH_FILE:   'Distrib with file 1, Patched with file 2',
+    DisagMethod.INCREMENTAL:  'Distrib with incremental runoff (file 1 − file 2)',
+    DisagMethod.EVEN:         'Even distribution',
+    DisagMethod.PATCH_EXCEED: 'Distrib with file 1, file 2, then exceedance-matched donor',
 }
 
-# Number of daily input files required by each method
+# Minimum number of daily input files required by each method.
+# PATCH_EXCEED accepts 1 or 2: file 2 is optional and, if supplied, is used
+# both for tier-2 day-level patching and as a tier-3 donor pool source.
 NO_FILES = {
-    DisagMethod.ONE_FILE:    1,
-    DisagMethod.PATCH_CAL:   1,
-    DisagMethod.PATCH_FILE:  2,
-    DisagMethod.INCREMENTAL: 2,
-    DisagMethod.EVEN:        0,
+    DisagMethod.ONE_FILE:     1,
+    DisagMethod.PATCH_CAL:    1,
+    DisagMethod.PATCH_FILE:   2,
+    DisagMethod.INCREMENTAL:  2,
+    DisagMethod.EVEN:         0,
+    DisagMethod.PATCH_EXCEED: 1,
 }
 
 
@@ -128,6 +134,93 @@ def find_patch_year(
     return best_year
 
 
+def _monthly_totals_from_daily(obs: dict) -> dict:
+    """Sum each daily-file month's values into a single monthly volume.
+
+    Only months with a complete daily record (no value < 0) are included.
+    Returned units are the raw m3/s sum — units don't matter for percentile
+    matching since each file is ranked within its own distribution.
+    """
+    totals: dict = {}
+    for (y, m), rec in obs.items():
+        if rec is None:
+            continue
+        dim = calendar.monthrange(y, m)[1]
+        if len(rec.v) < dim:
+            continue
+        if any(rec.v[d] < 0 for d in range(dim)):
+            continue
+        totals[(y, m)] = sum(rec.v[:dim])
+    return totals
+
+
+def _exceed_pct(value: float, distribution: list) -> float:
+    """Exceedance percentile: 100 × (count of values >= `value`) / n.
+
+    100 % means `value` is the smallest in the distribution; 0 % means it
+    is strictly larger than every entry.
+    """
+    n = len(distribution)
+    if n == 0:
+        return 0.0
+    return 100.0 * sum(1 for v in distribution if v >= value) / n
+
+
+def find_exceed_donor(
+    target_year: int,
+    target_month: int,
+    gen_monthly: dict,
+    obs_totals: list,       # list of {(y, m): vol} dicts, one per daily file
+) -> Optional[tuple]:
+    """Find an exceedance-matched donor month for PATCH_EXCEED tier 3.
+
+    Picks the (file_idx, donor_year) whose monthly volume sits at the
+    closest exceedance percentile to the target's, within its own daily
+    file's per-calendar-month distribution. Ties broken by year proximity
+    to ``target_year``, then by smaller file index.
+
+    Returns ``(file_idx, donor_year, p_target, p_donor)`` or ``None`` if
+    no eligible donor exists.
+    """
+    target_vol = gen_monthly.get((target_year, target_month))
+    if target_vol is None or target_vol < 0:
+        return None
+
+    target_dist = [v for (y, m), v in gen_monthly.items()
+                   if m == target_month and v >= 0]
+    if len(target_dist) < 2:
+        return None
+    p_target = _exceed_pct(target_vol, target_dist)
+
+    target_dim = calendar.monthrange(target_year, target_month)[1]
+
+    best_key: Optional[tuple] = None
+    best_p_donor: float = 0.0
+
+    for file_idx, totals in enumerate(obs_totals):
+        if not totals:
+            continue
+        donor_dist = [v for (y, m), v in totals.items() if m == target_month]
+        if len(donor_dist) < 2:
+            continue
+        for (y, m), vol in totals.items():
+            if m != target_month:
+                continue
+            # Skip donors with mismatched month length (Feb leap-year mismatch)
+            if calendar.monthrange(y, m)[1] != target_dim:
+                continue
+            p_donor = _exceed_pct(vol, donor_dist)
+            key = (abs(p_donor - p_target), abs(y - target_year), file_idx, y)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_p_donor = p_donor
+
+    if best_key is None:
+        return None
+    _, _, file_idx, year = best_key
+    return (file_idx, year, p_target, best_p_donor)
+
+
 # ---------------------------------------------------------------------------
 # Per-month conversion
 # ---------------------------------------------------------------------------
@@ -138,8 +231,9 @@ def _convert_month(
     method: DisagMethod,
     gen_monthly: dict,
     obs_daily: list,        # obs_daily[0] = file-1 dict, obs_daily[1] = file-2 dict
-    start_obs_2: tuple,     # (year, month) when file-2 data begins (PATCH_FILE only)
+    start_obs_2: tuple,     # (year, month) when file-2 data begins
     report_lines: list,
+    obs_totals: Optional[list] = None,   # precomputed monthly totals per file
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
@@ -151,9 +245,15 @@ def _convert_month(
     # --- Fetch observed daily records ---
     rec1 = obs_daily[0].get((year, month)) if obs_daily else None
 
-    # For PATCH_FILE, file-2 is only used once its start date is reached
+    # File-2 is consulted by methods that combine two daily files. It is only
+    # active once file-2's own data starts (so the report doesn't claim a
+    # patch from a record that doesn't exist yet).
     use_file2 = (
-        method in (DisagMethod.PATCH_FILE, DisagMethod.INCREMENTAL)
+        method in (
+            DisagMethod.PATCH_FILE,
+            DisagMethod.INCREMENTAL,
+            DisagMethod.PATCH_EXCEED,
+        )
         and len(obs_daily) > 1
         and (year, month) >= start_obs_2
     )
@@ -162,6 +262,7 @@ def _convert_month(
     # --- Missing-data check ---
     missing = False
     patch_year: Optional[int] = None
+    exceed_donor: Optional[DailyRecord] = None
 
     if method == DisagMethod.EVEN:
         pass  # never missing
@@ -199,6 +300,37 @@ def _convert_month(
             else:
                 missing = True
 
+    elif method == DisagMethod.PATCH_EXCEED:
+        # Tier 1+2: any day missing in BOTH files triggers tier 3
+        needs_donor = False
+        for d in range(dim):
+            f1 = rec1.v[d] if rec1 and d < len(rec1.v) else -999.0
+            f2 = rec2.v[d] if rec2 and d < len(rec2.v) else -999.0
+            if f1 < 0 and f2 < 0:
+                needs_donor = True
+                break
+
+        if needs_donor:
+            donor = find_exceed_donor(
+                year, month, gen_monthly, obs_totals or []
+            )
+            if donor is None:
+                missing = True
+            else:
+                file_idx, donor_year, p_target, p_donor = donor
+                exceed_donor = obs_daily[file_idx].get((donor_year, month))
+                if exceed_donor is None:
+                    missing = True
+                else:
+                    report_lines.append(
+                        f'{year:4d}{month:3d}'
+                        f' Observed daily flow < 0,'
+                        f'   Patched with file {file_idx + 1}'
+                        f' {donor_year:4d}{month:3d}'
+                        f' (target exceed%={p_target:5.1f},'
+                        f' donor exceed%={p_donor:5.1f})'
+                    )
+
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
 
@@ -228,6 +360,16 @@ def _convert_month(
                     val = f3
                 else:
                     val = f1
+
+            elif method == DisagMethod.PATCH_EXCEED:
+                if f1 >= 0:
+                    val = f1
+                elif f2 >= 0:
+                    val = f2
+                elif exceed_donor is not None and d < len(exceed_donor.v):
+                    val = exceed_donor.v[d]
+                else:
+                    val = -999.0
 
             else:
                 val = f1
@@ -315,6 +457,12 @@ def disaggregate(
     # Start date for file-2 (PATCH_FILE: use file 1 only before this)
     start_obs_2 = obs_starts[1] if no_files >= 2 else (9999, 12)
 
+    # --- Precompute per-file monthly totals for PATCH_EXCEED tier 3 ---
+    obs_totals: list = []
+    if method == DisagMethod.PATCH_EXCEED:
+        obs_totals = [_monthly_totals_from_daily(obs_daily[f])
+                      for f in range(len(obs_daily))]
+
     # --- Iterate months ---
     report_lines: list = []
     output_records: list = []
@@ -325,6 +473,7 @@ def disaggregate(
             year, month, method,
             gen_monthly, obs_daily,
             start_obs_2, report_lines,
+            obs_totals=obs_totals,
         )
         output_records.append(rec)
         year, month = _inc_month(year, month)

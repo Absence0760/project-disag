@@ -84,6 +84,7 @@ gives you four ways to handle it:
 | 2 | Patch with file 2 | Use file 1 where present, fall back to file 2 otherwise |
 | 3 | Incremental | Use `(file 1 − file 2)` as the shape (sub-catchment runoff) |
 | 4 | Even distribution | Constant flow on every day — used when no observed record exists at all |
+| 5 | Patch with exceedance-matched donor | Use file 1, then file 2; for any day still missing, fill from a donor year whose monthly volume sits at the same exceedance percentile within the donor's distribution as the target's volume does within `gen_monthly`'s. Lets you borrow daily shape from a different river in the same area, since percentile rank carries across rivers when absolute volume does not. |
 
 The `.rep` report logs every patch and fallback so the user can see where
 the output is "real" vs. synthetic.

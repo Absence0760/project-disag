@@ -101,6 +101,68 @@ total, so the output daily flow is constant within a month.
 
 ---
 
+### 5 — Patch with exceedance-matched donor (`PATCH_EXCEED`)
+
+A three-tier chain that combines methods 0/2 with a cross-river donor
+month for the case where neither daily file has any data for the target
+month. Designed for the common situation where the **target river**
+(the one supplied as `gen_monthly`) and the **donor river** (the one
+supplied as daily files) are different rivers in the same area: their
+absolute volumes differ but their wet/dry years track each other, so a
+match by **exceedance percentile** carries across rivers in a way that a
+match by absolute volume does not.
+
+Accepts 1 or 2 daily files. With one file, tier 2 is skipped.
+
+**Tier 1 — file 1.**
+```
+Qobs_daily[d] = file_1[d]   if file_1[d] >= 0
+```
+
+**Tier 2 — file 2.** For each day still missing after tier 1:
+```
+Qobs_daily[d] = file_2[d]   if file_2[d] >= 0
+```
+
+**Tier 3 — exceedance-matched donor.** If any day is still missing in
+the target month after tiers 1 and 2:
+
+1. Let `V_target = gen_monthly[(year, month)]`. Compute its exceedance
+   percentile `p_target` within the distribution of `gen_monthly`
+   restricted to the same calendar month — that is, rank `V_target`
+   among all years' volumes for this calendar month and convert the
+   rank to a percentile.
+2. Aggregate each daily file into per-`(year, month)` totals, restricted
+   to the same calendar month. Pool the years from file 1 and file 2
+   whose daily record for that month is **complete** (no missing days).
+   Compute each candidate's exceedance percentile within its own daily
+   file's per-calendar-month distribution.
+3. Pick the candidate `(donor_file, donor_year)` whose percentile is
+   closest to `p_target`. Tie-break by smallest `|donor_year − year|`.
+4. For each day still missing in the target month, copy the donor's
+   day-d value into `Qobs_daily[d]`. Days already filled by tier 1 or
+   tier 2 are kept as observed.
+5. If no eligible donor exists (no candidate year has a complete record
+   for that calendar month in either daily file), mark the whole month
+   as missing.
+
+The substitution is logged once per month in the report file, recording
+the donor file, donor year, `p_target`, and the donor's matched
+percentile.
+
+The percentile is computed by **rank**, not by binning — sort the
+calendar-month values ascending, find `V_target`'s position `i` among
+`n` values, and use `p = 100 × (n − i) / n`. This is independent of the
+binned exceedance computation in the `exceed` tool and avoids
+interval-edge artefacts.
+
+Contrast with method 1 (`PATCH_CAL`), which matches on absolute
+volume within `gen_monthly` only and assumes the donor's daily file
+shares the same scale. Method 5 is the right choice when the donor
+file is from a different river than the monthly target.
+
+---
+
 ## Processing order
 
 1. Read all input files into memory.

@@ -22,10 +22,11 @@ for the file layout.
 | # | Name | Daily files |
 |---|------|-------------|
 | 0 | `ONE_FILE` | 1 |
-| 1 | `PATCH_CAL` — patch from a similar calendar month | 1 |
+| 1 | `PATCH_CAL` — patch from a similar calendar month (matched by absolute volume in `gen_monthly`) | 1 |
 | 2 | `PATCH_FILE` — patch from file 2 | 2 |
 | 3 | `INCREMENTAL` — pattern = file 1 − file 2 | 2 |
 | 4 | `EVEN` — equal flow per day | 0 |
+| 5 | `PATCH_EXCEED` — file 1 → file 2 → exceedance-matched donor (cross-river percentile match) | 1 or 2 |
 
 Number of required daily files is in `NO_FILES[method]` — use this rather
 than hardcoding.
