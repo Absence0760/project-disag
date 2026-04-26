@@ -6,15 +6,15 @@ Generate a small mock dataset that exercises every tier of Method 5
 Run from the repo root:
     python3 examples/method5_demo/generate.py
 
-Outputs four files into examples/method5_demo/data/:
+Outputs five files into examples/method5_demo/data/:
     target.MON               — synthetic monthly volumes for "River A"
     gauge_a_complete.DAY     — daily file 1, no gaps   → exercises tier 1
     gauge_a_with_gaps.DAY    — daily file 1 with two whole-month gaps
-                                  → exercises tier 1 + tier 3
-                                  → with gauge_b: tier 1 + tier 2 + tier 3
-    gauge_b_partial.DAY      — daily file 2, covers only some of the gaps
-                                  → fills tier 2 for one of the gauge_a gaps,
-                                    leaves the other for tier 3
+                                  (alone: tier 1 + tier 3)
+    gauge_b_full.DAY         — daily file 2 that covers BOTH gauge_a gaps
+                                  (with gauge_a_with_gaps: tier 1 + tier 2)
+    gauge_b_partial.DAY      — daily file 2 that covers only ONE of the gaps
+                                  (with gauge_a_with_gaps: tier 1 + 2 + 3)
 
 The numbers are deterministic (fixed seeds) so the same files regenerate
 byte-for-byte every time.
@@ -172,16 +172,31 @@ def main() -> None:
     )
 
     # Gauge B — different river / gauge.  Smaller absolute scale (×0.3),
-    # different RNG seed.  Only covers Oct-2002 .. Sep-2003 (one hydro year),
-    # so Jun-2005's gap can NOT be filled from here.
-    keep_b = {_hydro_to_calendar(2002, hm) for hm in HYDRO_MONTHS}
+    # different RNG seed.
+
+    # Variant 1: only covers hydro year 2002 (Oct-2002 .. Sep-2003), so
+    # it fills Jun-2003's gap but not Jun-2005's.
+    keep_b_partial = {_hydro_to_calendar(2002, hm) for hm in HYDRO_MONTHS}
     write_daily(
         os.path.join(DATA_DIR, 'gauge_b_partial.DAY'),
-        gen_daily(seed=99, scale=0.3, keep_only=keep_b),
+        gen_daily(seed=99, scale=0.3, keep_only=keep_b_partial),
         label='gauge_b_partial.DAY',
     )
 
-    print(f'Wrote 4 mock files to {DATA_DIR}')
+    # Variant 2: covers BOTH hydro years that contain the gauge-A gaps —
+    # 2002 (cal Jun 2003) and 2004 (cal Jun 2005).  With this file, both
+    # gauge-A gaps fill cleanly via tier 2; tier 3 never fires.
+    keep_b_full = (
+        {_hydro_to_calendar(2002, hm) for hm in HYDRO_MONTHS}
+        | {_hydro_to_calendar(2004, hm) for hm in HYDRO_MONTHS}
+    )
+    write_daily(
+        os.path.join(DATA_DIR, 'gauge_b_full.DAY'),
+        gen_daily(seed=99, scale=0.3, keep_only=keep_b_full),
+        label='gauge_b_full.DAY',
+    )
+
+    print(f'Wrote 5 mock files to {DATA_DIR}')
 
 
 if __name__ == '__main__':
