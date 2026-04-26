@@ -62,5 +62,24 @@ class Method0DemoTests(unittest.TestCase):
         self.assertEqual(missing_keys, [(2002, 6)])
 
 
+class Method1DemoTests(unittest.TestCase):
+    """Method 1 — PATCH_CAL: closest-volume same-month patching."""
+
+    def test_closest_volume_donor_is_picked(self):
+        recs, log = _run(
+            DisagMethod.PATCH_CAL,
+            _data('method1_demo', 'target.MON'),
+            [_data('method1_demo', 'gauge_with_gap.DAY')],
+        )
+        disagg, missing = count_coverage(recs)
+        self.assertEqual(missing, 0)
+        self.assertEqual(disagg, 48)
+        # Exactly one patch line, naming year 2003 as the donor
+        patches = [l for l in log if 'Patched with' in l]
+        self.assertEqual(len(patches), 1)
+        self.assertIn('2002  6', patches[0])
+        self.assertIn('Patched with 2003  6', patches[0])
+
+
 if __name__ == '__main__':
     unittest.main()
