@@ -166,6 +166,59 @@ def _exceed_pct(value: float, distribution: list) -> float:
     return 100.0 * sum(1 for v in distribution if v >= value) / n
 
 
+def _tier2_scale_factors(obs_totals: list) -> list:
+    """Return the multiplier to apply to each daily file's day values when
+    they are used for tier-2 patching under PATCH_EXCEED, so a file-2
+    day plugged into a file-1 month doesn't carry file-2's absolute
+    scale into qD.
+
+    Returns ``factors`` such that ``factors[file_idx][m]`` is the
+    file-1-relative scaling for calendar month ``m``.  ``factors[0][m]``
+    is always 1.0.
+
+    For ``file_idx >= 1`` the factor is
+    ``mean(file_1[m]) / mean(file_idx[m])`` using each file's complete
+    monthly totals for that calendar month.  Falls back to the
+    annual-mean ratio if a calendar month has no overlapping data, then
+    to 1.0 (i.e. no rescale) if even that's unavailable.
+    """
+    if not obs_totals:
+        return []
+
+    months = range(1, 13)
+    per_month_means: list = []
+    overall_means: list = []
+    for totals in obs_totals:
+        means: dict = {}
+        all_vals: list = []
+        for m in months:
+            vals = [v for (y, mm), v in totals.items() if mm == m]
+            if vals:
+                means[m] = sum(vals) / len(vals)
+            all_vals.extend(vals)
+        per_month_means.append(means)
+        overall_means.append(
+            sum(all_vals) / len(all_vals) if all_vals else None
+        )
+
+    factors: list = [{m: 1.0 for m in months}]
+    for file_idx in range(1, len(obs_totals)):
+        f: dict = {}
+        for m in months:
+            t1 = per_month_means[0].get(m)
+            ti = per_month_means[file_idx].get(m)
+            if t1 is not None and ti is not None and ti > 0:
+                f[m] = t1 / ti
+            elif (overall_means[0] is not None
+                  and overall_means[file_idx] is not None
+                  and overall_means[file_idx] > 0):
+                f[m] = overall_means[0] / overall_means[file_idx]
+            else:
+                f[m] = 1.0
+        factors.append(f)
+    return factors
+
+
 def _per_month_distributions(
     gen_monthly: dict,
     obs_totals: list,
@@ -282,6 +335,7 @@ def _convert_month(
     obs_totals: Optional[list] = None,   # precomputed monthly totals per file
     target_dists: Optional[dict] = None,
     donor_dists: Optional[list] = None,
+    tier2_scale: Optional[list] = None,
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
@@ -424,7 +478,14 @@ def _convert_month(
                 if f1 >= 0:
                     val = f1
                 elif f2 >= 0:
-                    val = f2
+                    # Rescale file-2 day to file-1's per-month scale so a
+                    # mixed file-1/file-2 month doesn't get a distorted shape
+                    # when the two gauges sit on different rivers.
+                    scale = (
+                        tier2_scale[1].get(month, 1.0)
+                        if tier2_scale and len(tier2_scale) > 1 else 1.0
+                    )
+                    val = f2 * scale
                 elif exceed_donor is not None and d < len(exceed_donor.v):
                     val = exceed_donor.v[d]
                 else:
@@ -526,15 +587,31 @@ def disaggregate(
     obs_totals: list = []
     target_dists: Optional[dict] = None
     donor_dists: Optional[list] = None
+    tier2_scale: Optional[list] = None
+    report_lines: list = []
     if method == DisagMethod.PATCH_EXCEED:
         obs_totals = [_monthly_totals_from_daily(obs_daily[f])
                       for f in range(len(obs_daily))]
         target_dists, donor_dists = _per_month_distributions(
             gen_monthly, obs_totals
         )
+        tier2_scale = _tier2_scale_factors(obs_totals)
+        # Log the per-calendar-month factor used for file-2 → file-1
+        # rescaling, so a user reading the report can see whether the
+        # two gauges were on the same scale or were rescaled.
+        if len(tier2_scale) > 1 and any(
+            abs(f - 1.0) > 1e-9 for f in tier2_scale[1].values()
+        ):
+            report_lines.append(
+                'Tier-2 file-2 → file-1 scale factors '
+                '(applied to file-2 day values when patching):'
+            )
+            for m in range(1, 13):
+                report_lines.append(
+                    f'  month {m:2d}: {tier2_scale[1].get(m, 1.0):8.4f}'
+                )
 
     # --- Iterate months ---
-    report_lines: list = []
     output_records: list = []
 
     year, month = start_ym
@@ -546,6 +623,7 @@ def disaggregate(
             obs_totals=obs_totals,
             target_dists=target_dists,
             donor_dists=donor_dists,
+            tier2_scale=tier2_scale,
         )
         output_records.append(rec)
         year, month = _inc_month(year, month)
