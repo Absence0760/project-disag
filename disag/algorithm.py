@@ -336,6 +336,7 @@ def _convert_month(
     target_dists: Optional[dict] = None,
     donor_dists: Optional[list] = None,
     tier2_scale: Optional[list] = None,
+    tier_counters: Optional[dict] = None,
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
@@ -477,6 +478,8 @@ def _convert_month(
             elif method == DisagMethod.PATCH_EXCEED:
                 if f1 >= 0:
                     val = f1
+                    if tier_counters is not None:
+                        tier_counters['tier1_days'] += 1
                 elif f2 >= 0:
                     # Rescale file-2 day to file-1's per-month scale so a
                     # mixed file-1/file-2 month doesn't get a distorted shape
@@ -486,8 +489,14 @@ def _convert_month(
                         if tier2_scale and len(tier2_scale) > 1 else 1.0
                     )
                     val = f2 * scale
+                    if tier_counters is not None:
+                        tier_counters['tier2_days'] += 1
+                        tier_counters['tier2_months'].add((year, month))
                 elif exceed_donor is not None and d < len(exceed_donor.v):
                     val = exceed_donor.v[d]
+                    if tier_counters is not None:
+                        tier_counters['tier3_days'] += 1
+                        tier_counters['tier3_months'].add((year, month))
                 else:
                     val = -999.0
 
@@ -588,6 +597,7 @@ def disaggregate(
     target_dists: Optional[dict] = None
     donor_dists: Optional[list] = None
     tier2_scale: Optional[list] = None
+    tier_counters: Optional[dict] = None
     report_lines: list = []
     if method == DisagMethod.PATCH_EXCEED:
         obs_totals = [_monthly_totals_from_daily(obs_daily[f])
@@ -596,20 +606,79 @@ def disaggregate(
             gen_monthly, obs_totals
         )
         tier2_scale = _tier2_scale_factors(obs_totals)
-        # Log the per-calendar-month factor used for file-2 → file-1
-        # rescaling, so a user reading the report can see whether the
-        # two gauges were on the same scale or were rescaled.
-        if len(tier2_scale) > 1 and any(
-            abs(f - 1.0) > 1e-9 for f in tier2_scale[1].values()
-        ):
+        tier_counters = {
+            'tier1_days': 0,
+            'tier2_days': 0,
+            'tier2_months': set(),
+            'tier3_days': 0,
+            'tier3_months': set(),
+        }
+
+    # --- Pre-run warnings (information-only; output is unaffected) ---
+    # #6 Run-window clipping
+    clipped_before = sum(
+        1 for k, v in gen_monthly.items() if k < start_ym and v >= 0
+    )
+    clipped_after = sum(
+        1 for k, v in gen_monthly.items() if k > end_ym and v >= 0
+    )
+    if clipped_before:
+        report_lines.append(
+            f'Warning: {clipped_before} monthly value(s) before '
+            f'{start_ym[0]:4d}-{start_ym[1]:02d} are outside the run window '
+            f'(daily file 1 starts later than gen_monthly).'
+        )
+    if clipped_after:
+        report_lines.append(
+            f'Warning: {clipped_after} monthly value(s) after '
+            f'{end_ym[0]:4d}-{end_ym[1]:02d} are outside the run window '
+            f'(an input file ends earlier than gen_monthly).'
+        )
+
+    # #8 Zero-target months — output for those months will be all zeros
+    zero_months = sum(1 for v in gen_monthly.values() if v == 0.0)
+    if zero_months:
+        report_lines.append(
+            f'Warning: {zero_months} target monthly value(s) are zero — '
+            'their output days will all be zero.'
+        )
+
+    # PATCH_EXCEED-specific distribution warnings
+    if method == DisagMethod.PATCH_EXCEED and target_dists is not None:
+        # #7 Sparse calendar months — tier 3 cannot fire for these
+        sparse = [m for m in range(1, 13) if len(target_dists[m]) < 2]
+        if sparse:
             report_lines.append(
-                'Tier-2 file-2 → file-1 scale factors '
-                '(applied to file-2 day values when patching):'
+                f'Warning: gen_monthly has fewer than 2 valid values for '
+                f'calendar month(s) {sparse} — tier 3 cannot fire there '
+                'and any gappy month in those calendar months will be '
+                'marked missing.'
             )
-            for m in range(1, 13):
-                report_lines.append(
-                    f'  month {m:2d}: {tier2_scale[1].get(m, 1.0):8.4f}'
-                )
+        # #9 Flat distributions — donor selection collapses to year proximity
+        flat = [
+            m for m in range(1, 13)
+            if len(target_dists[m]) >= 2 and len(set(target_dists[m])) == 1
+        ]
+        if flat:
+            report_lines.append(
+                f'Warning: gen_monthly has identical values across all '
+                f'years for calendar month(s) {flat} — tier-3 donor '
+                'selection there will be decided purely by year proximity.'
+            )
+
+    # Tier-2 scale factor block — placed after warnings so the file
+    # header clearly precedes the per-month log lines.
+    if (method == DisagMethod.PATCH_EXCEED and tier2_scale is not None
+            and len(tier2_scale) > 1
+            and any(abs(f - 1.0) > 1e-9 for f in tier2_scale[1].values())):
+        report_lines.append(
+            'Tier-2 file-2 → file-1 scale factors '
+            '(applied to file-2 day values when patching):'
+        )
+        for m in range(1, 13):
+            report_lines.append(
+                f'  month {m:2d}: {tier2_scale[1].get(m, 1.0):8.4f}'
+            )
 
     # --- Iterate months ---
     output_records: list = []
@@ -624,8 +693,24 @@ def disaggregate(
             target_dists=target_dists,
             donor_dists=donor_dists,
             tier2_scale=tier2_scale,
+            tier_counters=tier_counters,
         )
         output_records.append(rec)
         year, month = _inc_month(year, month)
+
+    # #11 Tier 1/2/3 day-count summary at the end of the report
+    if tier_counters is not None:
+        report_lines.append('Tier coverage summary (days):')
+        report_lines.append(
+            f'  Tier 1 (file 1)        : {tier_counters["tier1_days"]:6d} day(s)'
+        )
+        report_lines.append(
+            f'  Tier 2 (file 2)        : {tier_counters["tier2_days"]:6d} day(s)'
+            f'  across {len(tier_counters["tier2_months"]):3d} month(s)'
+        )
+        report_lines.append(
+            f'  Tier 3 (donor month)   : {tier_counters["tier3_days"]:6d} day(s)'
+            f'  across {len(tier_counters["tier3_months"]):3d} month(s)'
+        )
 
     return output_records, report_lines
