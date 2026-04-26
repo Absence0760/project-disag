@@ -138,12 +138,18 @@ def gen_daily(seed: int, scale: float, gap_months=None,
     return records
 
 
+# Pinned timestamp so the demo files regenerate byte-for-byte identical
+# every time generate.py runs (no churn on `git status`).
+RUN_DATE = '2026-01-01 00:00:00'
+
+
 def write_daily(path: str, records: list, label: str) -> None:
     write_daily_file(path, records, {
         'monthly_file': '',
         'daily_file_1': label,
         'daily_file_2': '',
         'method_str':   'mock data',
+        'run_date':     RUN_DATE,
     })
 
 

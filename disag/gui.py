@@ -160,6 +160,9 @@ class DisagApp(tk.Tk):
             self._entries[key].config(
                 style='TEntry' if enabled else 'Disabled.TEntry')
 
+        # Clear the status bar so a stale "Done — N/M" from a previous run
+        # doesn't look like it applies to the now-selected method.
+        self._set_status('Method changed — click Disaggregate! to run.')
         self._validate()
 
     # ------------------------------------------------------------------

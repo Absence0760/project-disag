@@ -139,8 +139,16 @@ def read_monthly_file(path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def write_daily_file(path: str, records: list, header_info: dict) -> None:
-    """Write a list of DailyRecord objects to a .day file (12-line header)."""
+    """Write a list of DailyRecord objects to a .day file (12-line header).
+
+    ``header_info['run_date']`` is honoured if present (used by mock-data
+    generators that want byte-stable output); otherwise ``datetime.now()``
+    is used.
+    """
     dash = '-' * 80
+    run_date = header_info.get('run_date') or (
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    )
     with open(path, 'w') as fh:
         # 12-line header (must match DAILY_HEADER_LINES so readers skip it)
         fh.write(dash + '\n')                                                   # 1
@@ -155,7 +163,7 @@ def write_daily_file(path: str, records: list, header_info: dict) -> None:
         fh.write(f'Disag method  : {header_info.get("method_str", "")}\n')     # 7
         fh.write('-\n')                                                          # 8
         fh.write('-\n')                                                          # 9
-        fh.write(f'Run Date      : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')  # 10
+        fh.write(f'Run Date      : {run_date}\n')                                # 10
         fh.write(dash + '\n')                                                   # 11
         fh.write('\n')                                                           # 12
 
