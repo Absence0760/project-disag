@@ -103,6 +103,11 @@ total, so the output daily flow is constant within a month.
 
 ### 5 — Patch with exceedance-matched donor (`PATCH_EXCEED`)
 
+> **See also** [method5.md](method5.md) for the rationale, worked
+> numerical example, and edge-case discussion, and
+> [examples/method5_demo/](../examples/method5_demo/) for a runnable
+> demo on small mock data.
+
 A three-tier chain that combines methods 0/2 with a cross-river donor
 month for the case where neither daily file has any data for the target
 month. Designed for the common situation where the **target river**

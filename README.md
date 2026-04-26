@@ -106,7 +106,9 @@ Run `python3 -m disag --help` for full usage.
 | 5 | **Patch with exceedance-matched donor** — use file 1, then file 2; for any day still missing, fill from a donor year picked by exceedance-percentile match (lets you borrow daily shape from a different river in the same area) | 1 or 2 |
 
 See [docs/algorithm.md](docs/algorithm.md) for the full formula and details on
-how missing data is handled for each method.
+how missing data is handled for each method. Method 5 has its own deeper
+write-up in [docs/method5.md](docs/method5.md) and a runnable demo at
+[examples/method5_demo/](examples/method5_demo/).
 
 See [CLAUDE.md](CLAUDE.md) for working notes — repo layout, gotchas, and
 how to verify changes — when extending this project (with or without
