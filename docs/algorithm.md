@@ -136,25 +136,42 @@ the target month after tiers 1 and 2:
    to the same calendar month. Pool the years from file 1 and file 2
    whose daily record for that month is **complete** (no missing days).
    Compute each candidate's exceedance percentile within its own daily
-   file's per-calendar-month distribution.
-3. Pick the candidate `(donor_file, donor_year)` whose percentile is
-   closest to `p_target`. Tie-break by smallest `|donor_year − year|`.
+   file's per-calendar-month distribution. Candidates whose donor month
+   has a different number of days than the target (the Feb leap-year
+   case) are filtered out so day-d copying always lands inside the
+   donor's record.
+3. Pick the candidate whose percentile is closest to `p_target`.
+   Tie-break in order: smallest `|donor_year − year|`, then smaller
+   file index (so file 1 wins over file 2 on otherwise-equal matches).
 4. For each day still missing in the target month, copy the donor's
    day-d value into `Qobs_daily[d]`. Days already filled by tier 1 or
    tier 2 are kept as observed.
 5. If no eligible donor exists (no candidate year has a complete record
-   for that calendar month in either daily file), mark the whole month
-   as missing.
+   for that calendar month in either daily file, or `gen_monthly` has
+   fewer than two values for this calendar month), mark the whole
+   month as missing.
 
 The substitution is logged once per month in the report file, recording
 the donor file, donor year, `p_target`, and the donor's matched
 percentile.
 
-The percentile is computed by **rank**, not by binning — sort the
-calendar-month values ascending, find `V_target`'s position `i` among
-`n` values, and use `p = 100 × (n − i) / n`. This is independent of the
-binned exceedance computation in the `exceed` tool and avoids
-interval-edge artefacts.
+The percentile is computed by **rank**, not by binning:
+
+```
+p = 100 × (count of values ≥ value) / n
+```
+
+So the smallest value in a distribution gets `p = 100 %`, the largest
+`p = 100 / n %`. Both `p_target` and `p_donor` use this same formula on
+their respective distributions, so the comparison `|p_donor − p_target|`
+is well-defined. This is independent of the binned exceedance computation
+in the `exceed` tool and avoids interval-edge artefacts.
+
+When file 2 is supplied alongside file 1, **file 2's end date does not
+clamp the run window** — file 2 is optional, and tier 3 is expected to
+cover the period after file 2 ends. Other 2-file methods (`PATCH_FILE`,
+`INCREMENTAL`) do clamp by both files' end dates because they cannot
+proceed without file 2.
 
 Contrast with method 1 (`PATCH_CAL`), which matches on absolute
 volume within `gen_monthly` only and assumes the donor's daily file
