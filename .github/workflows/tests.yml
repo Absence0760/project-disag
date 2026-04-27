@@ -1,0 +1,56 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Cancel in-progress runs of the same workflow on the same ref.  Saves CI
+# time when multiple commits land in quick succession.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Project policy: Python ≥ 3.8 (CLAUDE.md). Test the bottom
+        # supported version, the active LTS-ish releases, and the
+        # latest stable.
+        python-version: ["3.8", "3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run unit + e2e tests
+        run: python -m unittest discover tests -v
+
+      - name: Verify demo generators are deterministic
+        # Re-run every generator and assert no committed file changed.
+        # Catches accidental drift between generate.py and the data/
+        # snapshot.
+        run: |
+          for demo in examples/method*_demo; do
+            if [ -f "$demo/generate.py" ]; then
+              echo "::group::regenerating $demo"
+              python3 "$demo/generate.py"
+              echo "::endgroup::"
+            fi
+          done
+          if ! git diff --exit-code; then
+            echo
+            echo "::error::Demo data files differ from committed snapshot."
+            echo "If this is intentional, run the generators locally and commit the result."
+            exit 1
+          fi
