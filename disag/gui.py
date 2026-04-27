@@ -1,5 +1,9 @@
 """Tkinter GUI for the Disag tool."""
 
+# Lazy annotation evaluation (PEP 563) so PEP 585 generic-builtin
+# annotations like dict[str, tk.StringVar] work on Python 3.8.
+from __future__ import annotations
+
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk

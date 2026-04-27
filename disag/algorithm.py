@@ -11,6 +11,10 @@ Formula
 Unit conversion at the end: Mm3/day → m3/s  (×1e6 / 86400)
 """
 
+# Lazy annotation evaluation (PEP 563) so PEP 585 generic-builtin
+# annotations like tuple[int, int] work on Python 3.8.
+from __future__ import annotations
+
 import calendar
 from enum import IntEnum
 from typing import Optional
