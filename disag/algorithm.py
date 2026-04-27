@@ -370,6 +370,7 @@ def _convert_month(
     missing = False
     patch_year: Optional[int] = None
     exceed_donor: Optional[DailyRecord] = None
+    exceed_donor_file_idx: int = 0
 
     if method == DisagMethod.EVEN:
         pass  # never missing
@@ -432,6 +433,7 @@ def _convert_month(
             else:
                 file_idx, donor_year, p_target, p_donor = donor
                 exceed_donor = obs_daily[file_idx].get((donor_year, month))
+                exceed_donor_file_idx = file_idx
                 if exceed_donor is None:
                     report_lines.append(
                         f'{year:4d}{month:3d}'
@@ -497,7 +499,20 @@ def _convert_month(
                         tier_counters['tier2_days'] += 1
                         tier_counters['tier2_months'].add((year, month))
                 elif exceed_donor is not None and d < len(exceed_donor.v):
-                    val = exceed_donor.v[d]
+                    # Same cross-river rescale as tier 2: when the donor
+                    # comes from file 2, its day values must be brought
+                    # up to file-1's scale before they enter qD, otherwise
+                    # a mixed tier-1 / tier-3 month gets a distorted shape.
+                    # For whole-month tier-3 fills the scale is constant
+                    # across days so it cancels in the disag formula's
+                    # ratio — applying it unconditionally is safe.
+                    donor_scale = (
+                        tier2_scale[exceed_donor_file_idx].get(month, 1.0)
+                        if (tier2_scale
+                            and exceed_donor_file_idx < len(tier2_scale))
+                        else 1.0
+                    )
+                    val = exceed_donor.v[d] * donor_scale
                     if tier_counters is not None:
                         tier_counters['tier3_days'] += 1
                         tier_counters['tier3_months'].add((year, month))

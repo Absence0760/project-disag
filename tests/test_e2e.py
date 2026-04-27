@@ -418,5 +418,141 @@ class Method1VsMethod5DivergenceTests(unittest.TestCase):
         self.assertNotIn('2002', donor5)
 
 
+class Tier3CrossFileRescaleTests(unittest.TestCase):
+    """Regression tests for the tier-3 cross-file rescale.
+
+    When tier 3 fires and the donor month comes from file 2 (a different
+    river at a different absolute scale), the donor's day values must be
+    rescaled to file-1's per-calendar-month mean before they enter qD.
+    Without the rescale, a *mixed* month — some days tier-1 from file 1,
+    other days tier-3 from a file-2 donor — would get a distorted daily
+    shape, with the tier-3 days appearing as an artificial drop or spike
+    purely because of the cross-river scale mismatch.
+
+    Whole-month tier-3 fills are unaffected by the rescale (a constant
+    factor cancels in the disag formula's qD/qM ratio), so these tests
+    specifically construct a *mixed* tier-1 + tier-3 month.
+    """
+
+    def _build_mixed_tier1_tier3_month(self):
+        """Force tier 3 to pick a file-2 donor for some days of a month
+        whose other days are tier-1 from file 1.
+
+        Setup:
+        - gen_monthly Junes: 1, 2, 3, 4, 5 across 5 hydro years.
+          Target Jun 2003 has volume 3.0, percentile 60% (rank 3 of 5).
+        - file 1: only Jun 2001 is complete (mean ~10 m³/s). Jun 2003
+          has days 1-15 valid (~10 m³/s), days 16-30 missing. All other
+          Junes have one missing day, so they're not eligible donors.
+          → file 1's June donor pool has < 2 candidates → file 1 is
+          disqualified as a donor source for June.
+        - file 2: Junes 2001, 2002, 2004, 2005 complete with means
+          ~1, 2, 4, 5 m³/s (uniform within each month). Jun 2003 has
+          all 30 days missing.
+          → file 2's June donor pool has 4 candidates.
+        - Result: tier 3 picks file 2's Jun 2004 (uniform 4.0 m³/s).
+          Without rescale: tier-3 days = 4.0 → mixed qD distorted.
+          With rescale: tier-3 days = 4.0 × (10/3) ≈ 13.33 → coherent.
+        """
+        import calendar as _cal
+        from disag.files import DailyRecord, MISSING
+
+        gen = {}
+        for hy in range(2000, 2005):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                gen[(cy, hm)] = 1.0
+        gen[(2001, 6)] = 1.0
+        gen[(2002, 6)] = 2.0
+        gen[(2003, 6)] = 3.0    # target
+        gen[(2004, 6)] = 4.0
+        gen[(2005, 6)] = 5.0
+
+        # File 1: only 2001 has a complete June; Jun 2003 days 1-15
+        # valid, 16-30 missing; other Junes have 1 missing day.
+        obs1 = {}
+        file1_scale = 10.0
+        for hy in range(2000, 2005):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                if hm == 6:
+                    if cy == 2001:
+                        v = [file1_scale] * dim
+                    elif cy == 2003:
+                        v = [file1_scale] * 15 + [MISSING] * (dim - 15)
+                    else:
+                        v = [file1_scale] * (dim - 1) + [MISSING]
+                else:
+                    v = [file1_scale] * dim
+                obs1[(cy, hm)] = DailyRecord(year=cy, month=hm, v=v)
+
+        # File 2: 4 complete Junes at progressively wetter levels;
+        # Jun 2003 entirely missing.
+        obs2 = {}
+        file2_means = {2001: 1.0, 2002: 2.0, 2004: 4.0, 2005: 5.0}
+        for hy in range(2000, 2005):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                if hm == 6:
+                    if cy == 2003:
+                        v = [MISSING] * dim
+                    else:
+                        v = [file2_means[cy]] * dim
+                else:
+                    v = [1.0] * dim
+                obs2[(cy, hm)] = DailyRecord(year=cy, month=hm, v=v)
+
+        return gen, obs1, obs2
+
+    def test_donor_comes_from_file_2(self):
+        gen, obs1, obs2 = self._build_mixed_tier1_tier3_month()
+        _, log = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2,
+        )
+        patch = next(l for l in log if 'Patched with file' in l)
+        self.assertIn('2003  6', patch)
+        self.assertIn('Patched with file 2', patch)
+
+    def test_tier3_donor_rescaled_to_file1_scale(self):
+        # File-1 mean ≈ 10, file-2 mean ≈ 3 → rescale factor 10/3 ≈ 3.33.
+        # Donor (file 2's Jun 2004 at 4.0/day uniform) → ~13.33/day on
+        # file-1 scale.  So the day-16/day-1 ratio is ≈ 1.33 with the
+        # rescale; without it, ratio would be 4/10 = 0.4 (the bug).
+        gen, obs1, obs2 = self._build_mixed_tier1_tier3_month()
+        recs, _ = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2,
+        )
+        target = next(r for r in recs if (r.year, r.month) == (2003, 6))
+        out_mm3 = sum(target.v) * 86400 / 1e6
+        self.assertAlmostEqual(out_mm3, 3.0, places=3)
+        ratio = target.v[15] / target.v[0]
+        self.assertGreater(
+            ratio, 1.0,
+            f'tier-3 days dropped below tier-1 — cross-file scale leaked '
+            f'into qD (ratio={ratio:.3f}, expected ≈ 1.33)',
+        )
+        self.assertAlmostEqual(ratio, 13.33 / 10.0, places=2)
+
+    def test_whole_month_tier3_unaffected_by_rescale(self):
+        # A constant scale cancels in the disag formula's qD/qM ratio,
+        # so a whole-month tier-3 fill from a uniform donor produces a
+        # uniform output regardless of which file the donor came from.
+        import calendar as _cal
+        from disag.files import DailyRecord, MISSING
+        gen, obs1, obs2 = self._build_mixed_tier1_tier3_month()
+        dim = _cal.monthrange(2003, 6)[1]
+        obs1[(2003, 6)] = DailyRecord(year=2003, month=6, v=[MISSING] * dim)
+
+        recs, _ = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2,
+        )
+        target = next(r for r in recs if (r.year, r.month) == (2003, 6))
+        self.assertTrue(all(abs(v - target.v[0]) < 1e-9 for v in target.v))
+        out_mm3 = sum(target.v) * 86400 / 1e6
+        self.assertAlmostEqual(out_mm3, 3.0, places=3)
+
+
 if __name__ == '__main__':
     unittest.main()

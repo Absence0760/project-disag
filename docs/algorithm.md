@@ -182,15 +182,21 @@ short relative to `gen_monthly`, tier-3 backfill carries more of the
 output, and the percentile match's accuracy depends on having enough
 candidate years per calendar month.
 
-**Tier-2 cross-river rescaling.** When file 1 and file 2 are on
-different rivers (different absolute scales), tier-2 day-level
-patching multiplies file-2's day values by
-`mean(file_1[m]) / mean(file_idx[m])` (per calendar month, with global-
-mean fallback) before they enter `qD`. This keeps a mixed file-1 /
-file-2 month's daily shape coherent: without rescaling, file-2 days at
-a different magnitude would distort the normalisation step. Whole-month
-gaps where every tier-2 day comes from file 2 are unaffected — the
-constant factor cancels in the disag formula's ratio.
+**Cross-river rescaling (tiers 2 and 3).** When file 1 and file 2 are
+on different rivers (different absolute scales), file-2 day values
+must be brought up to file-1's scale before they enter `qD`. The
+algorithm multiplies them by `mean(file_1[m]) / mean(file_idx[m])`
+(per calendar month, with global-mean fallback) at both:
+
+- **Tier 2** — every file-2 day used to patch a missing file-1 day;
+- **Tier 3** — every donor day copied from a file-2 donor month.
+
+Without this rescale, a mixed-source month (some days file-1, some
+days file-2 via tier 2 or tier 3) gets a distorted daily shape: the
+file-2 days appear as an artificial drop or spike purely because of
+the cross-river scale mismatch. Whole-month tier-2 or tier-3 fills
+where every day comes from file 2 are unaffected — the constant
+factor cancels in the disag formula's `qD/qM` ratio.
 
 **Report contents (PATCH_EXCEED specifically).** The `.rep` file logs:
 
