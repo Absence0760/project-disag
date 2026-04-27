@@ -64,6 +64,33 @@ The end-to-end tests use the deterministically-generated mock data in
 [examples/method5_demo/data/](examples/method5_demo/data/) — committed
 files, so the suite has no external dependencies.
 
+### What's NOT tested
+
+`disag/gui.py` and `exceed/gui.py` — the Tkinter GUIs — are not
+covered by automated tests and are not run in CI. Reasons:
+
+- Tk needs a display server; running it in headless CI requires
+  `xvfb` plus a Tk-aware test harness. The setup cost outweighs the
+  value for two small, well-isolated GUI modules.
+- All non-trivial logic the GUIs depend on (algorithms, file I/O,
+  reports) lives in `disag.algorithm` / `disag.files` / `disag.report`
+  / `exceed.algorithm` / `exceed.files` and *is* tested. The GUIs are
+  mostly Tk plumbing — radio buttons, file pickers, validation
+  toggles, and `_run` glue that calls into the tested code.
+
+If you change GUI behaviour, exercise it manually:
+
+```bash
+# disag GUI
+python3 -m disag
+
+# exceed GUI (3 tabs: Basic / Seasonal / Matching)
+python3 -m exceed
+```
+
+On macOS use Homebrew Python 3.13 (stock macOS Python's `_tkinter`
+is broken — see the "macOS tkinter" gotcha below).
+
 ## Gotchas
 
 ### macOS tkinter

@@ -62,6 +62,11 @@ There's a small automated suite — run it first:
 python3 -m unittest discover tests
 ```
 
+`disag/gui.py` is intentionally not in the suite — Tk needs a display
+server that headless CI doesn't provide, and the GUI is mostly
+plumbing over the tested algorithm/files/report modules. Exercise
+the GUI manually after any change there: `python3 -m disag`.
+
 For deeper sanity checks, run the CLI against the real fixtures:
 
 ```bash

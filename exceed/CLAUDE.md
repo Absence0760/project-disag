@@ -45,6 +45,15 @@ custom parser here.**
 
 ## Verifying changes
 
+Run the automated suite (covers the calculator math, seasonal pooling,
+matching, file I/O, and the CLI):
+
+```bash
+python3 -m unittest tests.test_exceed
+```
+
+For deeper sanity-checking against the real fixture:
+
 ```bash
 python3 -m exceed --no-gui \
     --monthly testfiles/SINDILA.MON \
@@ -56,5 +65,7 @@ Sanity values for `RUKOKI-l.DAY`: roughly 360–403 daily values per calendar
 month (≈ years-with-data × days-in-month, minus missing). If May suddenly
 balloons to 1985, the daily parser is broken — see "Why we delegate" above.
 
-For seasonal/matching, exercise the GUI under Homebrew Python 3.13 (stock
+`exceed/gui.py` (the 3-tab Tk window) is **not** automatically tested
+— the same headless-Tk reason as `disag/gui.py`. Exercise the
+seasonal and matching tabs manually under Homebrew Python 3.13 (stock
 macOS Python has a broken `_tkinter`).
