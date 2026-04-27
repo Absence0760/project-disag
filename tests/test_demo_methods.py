@@ -155,5 +155,53 @@ class Method3DemoTests(unittest.TestCase):
             )
 
 
+class Method4DemoTests(unittest.TestCase):
+    """Method 4 — EVEN: equal flow on every day of the month."""
+
+    def test_runs_without_any_daily_file(self):
+        recs, log = _run(
+            DisagMethod.EVEN,
+            _data('method4_demo', 'target.MON'),
+            [],     # no daily files
+            no_files=0,
+        )
+        disagg, missing = count_coverage(recs)
+        self.assertEqual(missing, 0)
+        self.assertEqual(disagg, 36)
+
+    def test_within_a_month_every_day_has_the_same_value(self):
+        recs, _ = _run(
+            DisagMethod.EVEN,
+            _data('method4_demo', 'target.MON'),
+            [],
+            no_files=0,
+        )
+        for rec in recs:
+            unique = set(round(v, 6) for v in rec.v)
+            self.assertEqual(
+                len(unique), 1,
+                f'{rec.year}-{rec.month:02d} has {len(unique)} unique values; '
+                'EVEN method should produce constant within-month flow',
+            )
+
+    def test_volume_preservation(self):
+        gen = read_monthly_file(_data('method4_demo', 'target.MON'))
+        recs, _ = _run(
+            DisagMethod.EVEN,
+            _data('method4_demo', 'target.MON'),
+            [],
+            no_files=0,
+        )
+        for rec in recs:
+            target = gen.get((rec.year, rec.month))
+            if target is None or target < 0:
+                continue
+            output_mm3 = sum(rec.v) * 86400 / 1e6
+            self.assertAlmostEqual(
+                output_mm3, target, places=3,
+                msg=f'volume mismatch at {rec.year}-{rec.month:02d}',
+            )
+
+
 if __name__ == '__main__':
     unittest.main()
