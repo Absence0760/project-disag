@@ -121,5 +121,39 @@ class Method2DemoTests(unittest.TestCase):
         self.assertEqual(b_missing, [(2003, 6)])
 
 
+class Method3DemoTests(unittest.TestCase):
+    """Method 3 — INCREMENTAL: pattern = file 1 − file 2."""
+
+    def test_incremental_runs_to_completion(self):
+        recs, log = _run(
+            DisagMethod.INCREMENTAL,
+            _data('method3_demo', 'target.MON'),
+            [_data('method3_demo', 'gauge_downstream.DAY'),
+             _data('method3_demo', 'gauge_upstream.DAY')],
+        )
+        disagg, missing = count_coverage(recs)
+        self.assertEqual(missing, 0)
+        self.assertEqual(disagg, 36)
+
+    def test_incremental_volume_preservation(self):
+        # Output's monthly total must equal target.MON's incremental volume
+        gen = read_monthly_file(_data('method3_demo', 'target.MON'))
+        recs, _ = _run(
+            DisagMethod.INCREMENTAL,
+            _data('method3_demo', 'target.MON'),
+            [_data('method3_demo', 'gauge_downstream.DAY'),
+             _data('method3_demo', 'gauge_upstream.DAY')],
+        )
+        for rec in recs:
+            target = gen.get((rec.year, rec.month))
+            if target is None or target < 0:
+                continue
+            output_mm3 = sum(rec.v) * 86400 / 1e6
+            self.assertAlmostEqual(
+                output_mm3, target, places=3,
+                msg=f'volume mismatch at {rec.year}-{rec.month:02d}',
+            )
+
+
 if __name__ == '__main__':
     unittest.main()
