@@ -172,15 +172,29 @@ their respective distributions, so the comparison `|p_donor − p_target|`
 is well-defined. This is independent of the binned exceedance computation
 in the `exceed` tool and avoids interval-edge artefacts.
 
-**Run window.** Method 5 sets the processing window to the full span of
-`gen_monthly` — the daily files do **not** clamp it on either end. Months
-that fall before file 1's start (or after any daily file's end) are
-backfilled by tier 3, using the same percentile-matched donor logic as
-internal gaps. Other methods clip to the daily file's coverage because
-they have no donor mechanism. The trade-off: when the daily record is
-short relative to `gen_monthly`, tier-3 backfill carries more of the
-output, and the percentile match's accuracy depends on having enough
-candidate years per calendar month.
+**Run window.** Every method (0–5) iterates over the full hydro-year
+span of `gen_monthly` — the daily files do **not** clamp the window
+on either end. Output length therefore always equals `gen_monthly`'s
+hydro span, so the `.day` file is self-describing: months outside the
+daily file's coverage are emitted explicitly rather than silently
+dropped. What gets emitted depends on the method:
+
+- **Method 5** backfills via tier-3 percentile-matched donor months
+  where possible, using the same logic as for internal gaps.
+- **Method 1 (`PATCH_CAL`)** opportunistically patches via its
+  existing same-calendar-month / closest-volume search, which now
+  applies to backfilled months too if a complete same-month exists
+  somewhere in file 1.
+- **Method 2 (`PATCH_FILE`)** uses file 2 wherever it covers; days
+  with neither file produce a `-99.99` sentinel.
+- **Methods 0 and 3** emit `-99.99` sentinels for clipped months
+  (no patching logic).
+
+Method 5's tier-3 backfill is still the only mechanism that produces
+synthetic-but-plausible daily *shape*; the others just propagate
+real data or sentinels. When `gen_monthly` is much longer than the
+daily record, Method 5's percentile-match accuracy degrades with
+short donor pools — see the limitations in [method5.md](method5.md).
 
 **Cross-river rescaling (tiers 2 and 3).** When file 1 and file 2 are
 on different rivers (different absolute scales), file-2 day values

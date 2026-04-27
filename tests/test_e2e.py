@@ -204,11 +204,13 @@ class ReportObservabilityTests(unittest.TestCase):
         self.assertIn('1', flat_lines[0])
         self.assertIn('12', flat_lines[0])
 
-    def test_clipped_window_warning_non_exceed(self):
-        # For non-PATCH_EXCEED methods, gen_monthly months outside the
-        # daily file's coverage are clipped and a warning is emitted.
+    def test_non_exceed_methods_emit_sentinel_records_for_clipped_months(self):
+        # All methods iterate over gen_monthly's full hydro span. Months
+        # outside the daily file's coverage are emitted in the output as
+        # all-MISSING records (rather than silently dropped), so the
+        # output file is self-describing.
         from disag.algorithm import disaggregate
-        from disag.files import DailyRecord
+        from disag.files import DailyRecord, MISSING
         import calendar as _cal
         gen = {}
         for y in range(1990, 2011):
@@ -221,13 +223,20 @@ class ReportObservabilityTests(unittest.TestCase):
                 cy = y if hm >= 10 else y + 1
                 dim = _cal.monthrange(cy, hm)[1]
                 obs[(cy, hm)] = DailyRecord(year=cy, month=hm, v=[1.0] * dim)
-        _, log = disaggregate(
+        records, _ = disaggregate(
             DisagMethod.ONE_FILE, gen, [obs], 1,
         )
-        self.assertTrue(
-            any('outside the run window' in l and 'before' in l for l in log),
-            'no clipped-before warning',
+        # Output spans all 21 hydro years × 12 months = 252 records
+        self.assertEqual(len(records), 21 * 12)
+        # First record (1990-10) is outside file 1's coverage → all MISSING
+        first = records[0]
+        self.assertEqual((first.year, first.month), (1990, 10))
+        self.assertTrue(all(v == MISSING for v in first.v))
+        # A record inside file 1's coverage has real values
+        inside = next(
+            r for r in records if (r.year, r.month) == (2005, 1)
         )
+        self.assertTrue(all(v >= 0 for v in inside.v))
 
     def test_patch_exceed_backfills_instead_of_clipping(self):
         # PATCH_EXCEED extends the run window to gen_monthly's full span

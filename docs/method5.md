@@ -110,7 +110,7 @@ would bite when n is small.
 | Cross-river | Implicitly assumes the daily file's scale matches `gen_monthly`'s | Built for cross-river — compares percentiles, not magnitudes |
 | Donor pool | File 1 only | File 1 ∪ File 2, optionally |
 | Day-level fallback before donor | None | Tier 2 (file 2 day-by-day) |
-| Run window when file 2 supplied | n/a | File 2's end date does **not** clamp the run window |
+| Run window | Full `gen_monthly` span — clipped months get `PATCH_CAL` patches if a same-cal-month exists, else `-99.99` | Full `gen_monthly` span — clipped months get tier-3 donor patches |
 
 A tight summary: *Method 1 says "find a month with a similar volume."
 Method 5 says "find a month that was similarly wet within its own
@@ -140,17 +140,15 @@ second question is meaningful.
 - **Feb leap-year mismatch.** Feb 29 in a leap target year cannot
   borrow from a Feb 28 donor (day 29 wouldn't exist in the donor).
   Such candidates are filtered out before the rank match.
-- **File 2 ends before file 1.** Other 2-file methods (`PATCH_FILE`,
-  `INCREMENTAL`) clamp the output window to whichever file ends first.
-  Method 5 doesn't — file 2 is optional, and Tier 3 is expected to
-  cover any tail period that file 2 doesn't reach.
-- **Daily file is much shorter than `gen_monthly`.** Method 5's run
-  window is the full span of `gen_monthly`, not the daily file's
-  coverage. Months before file 1's start (or after any daily file's
-  end) are backfilled by Tier 3 using the same percentile-matched
-  donor logic as internal gaps. Every backfilled month is logged in
-  the `.rep` file with its donor year and percentile, so the
-  proportion of synthetic vs observed days is fully traceable.
+- **Daily file is much shorter than `gen_monthly`** (in either
+  direction). The run window is the full span of `gen_monthly` for
+  every method now, not just Method 5. Months before file 1's start
+  (or after any daily file's end) are emitted in the output: Method 5
+  backfills them via Tier 3, Methods 0 and 3 emit `-99.99` sentinels,
+  Methods 1 and 2 patch them where their existing logic can succeed.
+  Every Tier-3 backfill is logged in the `.rep` file with its donor
+  year and percentile, so the proportion of synthetic vs observed
+  days is fully traceable.
 
 ## What the report tells you
 

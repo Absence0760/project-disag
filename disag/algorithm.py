@@ -572,46 +572,28 @@ def disaggregate(
     if not gen_monthly:
         raise ValueError('Monthly input file is empty or could not be read.')
 
-    # --- Determine processing start date ---
+    # --- Determine processing window ---
+    # Run window = full span of gen_monthly for every method.  Months
+    # outside the daily file's coverage are emitted in the output anyway:
+    #   - Method 5 (PATCH_EXCEED) backfills them via tier-3 donor matching;
+    #   - Methods 1, 2 may opportunistically patch from a same-calendar
+    #     month (Method 1) or from file 2 (Method 2) where their existing
+    #     logic can succeed;
+    #   - Methods 0, 3 emit -99.99 sentinels for those months.
+    # Output length is therefore always equal to gen_monthly's hydro span,
+    # so the .day file is self-describing — no silently-clipped months.
 
-    # Hydro-year start for each daily file
+    # Hydro-year start for each daily file (used only by per-month logic
+    # below, e.g. start_obs_2 for tier-2 / PATCH_FILE day-level patching).
     obs_starts = [_hydro_start_ym(obs_daily[f]) for f in range(no_files)]
 
-    if no_files == 0:
-        start_daily = (1900, 10)
-    elif method == DisagMethod.INCREMENTAL and no_files >= 2:
-        start_daily = max(obs_starts[0], obs_starts[1])
-    else:
-        start_daily = obs_starts[0]
-
     # Monthly file start: first hydro year (always October).
-    # read_monthly_file keys each row starting at (hydro_year, 10), so the
-    # minimum key's month is always 10. If a caller supplies a dict whose
-    # first key is January–September, step back to the October that started
-    # that hydro year.
     first_mon = min(gen_monthly.keys())
     hydro_year = first_mon[0] if first_mon[1] >= 10 else first_mon[0] - 1
     monthly_start = (hydro_year, 10)
 
-    # PATCH_EXCEED uses gen_monthly's span as the run window — months that
-    # fall before file 1's start (or after any daily file's end) are
-    # backfilled via tier 3. All other methods clip to the daily file's
-    # coverage because they have no donor mechanism.
-    if method == DisagMethod.PATCH_EXCEED:
-        start_ym = monthly_start
-    else:
-        start_ym = max(start_daily, monthly_start)
-
-    # --- Determine processing end date ---
-    # PATCH_EXCEED's tier 3 fills any tail period the daily files don't
-    # reach, so neither file clamps the end. All other 2-file methods need
-    # both files to cover every month.
-    end_candidates = [max(gen_monthly.keys())]
-    files_clamping_end = 0 if method == DisagMethod.PATCH_EXCEED else no_files
-    for f in range(files_clamping_end):
-        if obs_daily[f]:
-            end_candidates.append(max(obs_daily[f].keys()))
-    end_ym = min(end_candidates)
+    start_ym = monthly_start
+    end_ym = max(gen_monthly.keys())
 
     # Start date for file-2 (PATCH_FILE: use file 1 only before this)
     start_obs_2 = obs_starts[1] if no_files >= 2 else (9999, 12)
@@ -639,27 +621,7 @@ def disaggregate(
         }
 
     # --- Pre-run warnings (information-only; output is unaffected) ---
-    # #6 Run-window clipping
-    clipped_before = sum(
-        1 for k, v in gen_monthly.items() if k < start_ym and v >= 0
-    )
-    clipped_after = sum(
-        1 for k, v in gen_monthly.items() if k > end_ym and v >= 0
-    )
-    if clipped_before:
-        report_lines.append(
-            f'Warning: {clipped_before} monthly value(s) before '
-            f'{start_ym[0]:4d}-{start_ym[1]:02d} are outside the run window '
-            f'(daily file 1 starts later than gen_monthly).'
-        )
-    if clipped_after:
-        report_lines.append(
-            f'Warning: {clipped_after} monthly value(s) after '
-            f'{end_ym[0]:4d}-{end_ym[1]:02d} are outside the run window '
-            f'(an input file ends earlier than gen_monthly).'
-        )
-
-    # #8 Zero-target months — output for those months will be all zeros
+    # Zero-target months — output for those months will be all zeros
     zero_months = sum(1 for v in gen_monthly.values() if v == 0.0)
     if zero_months:
         report_lines.append(
