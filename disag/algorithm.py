@@ -578,16 +578,21 @@ def disaggregate(
     hydro_year = first_mon[0] if first_mon[1] >= 10 else first_mon[0] - 1
     monthly_start = (hydro_year, 10)
 
-    start_ym = max(start_daily, monthly_start)
+    # PATCH_EXCEED uses gen_monthly's span as the run window — months that
+    # fall before file 1's start (or after any daily file's end) are
+    # backfilled via tier 3. All other methods clip to the daily file's
+    # coverage because they have no donor mechanism.
+    if method == DisagMethod.PATCH_EXCEED:
+        start_ym = monthly_start
+    else:
+        start_ym = max(start_daily, monthly_start)
 
     # --- Determine processing end date ---
-    # PATCH_EXCEED treats file 2 as optional, so file 2's end date does not
-    # clamp the run window — tier 3 will fill any month where file 2 ends
-    # short. All other 2-file methods need both files to cover every month.
+    # PATCH_EXCEED's tier 3 fills any tail period the daily files don't
+    # reach, so neither file clamps the end. All other 2-file methods need
+    # both files to cover every month.
     end_candidates = [max(gen_monthly.keys())]
-    files_clamping_end = (
-        1 if method == DisagMethod.PATCH_EXCEED else no_files
-    )
+    files_clamping_end = 0 if method == DisagMethod.PATCH_EXCEED else no_files
     for f in range(files_clamping_end):
         if obs_daily[f]:
             end_candidates.append(max(obs_daily[f].keys()))

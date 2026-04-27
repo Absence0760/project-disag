@@ -144,16 +144,19 @@ second question is meaningful.
   `INCREMENTAL`) clamp the output window to whichever file ends first.
   Method 5 doesn't — file 2 is optional, and Tier 3 is expected to
   cover any tail period that file 2 doesn't reach.
+- **Daily file is much shorter than `gen_monthly`.** Method 5's run
+  window is the full span of `gen_monthly`, not the daily file's
+  coverage. Months before file 1's start (or after any daily file's
+  end) are backfilled by Tier 3 using the same percentile-matched
+  donor logic as internal gaps. Every backfilled month is logged in
+  the `.rep` file with its donor year and percentile, so the
+  proportion of synthetic vs observed days is fully traceable.
 
 ## What the report tells you
 
 The `.rep` file produced by Method 5 contains, in order:
 
 1. **Pre-run warnings** (only emitted when relevant):
-   - `Warning: N monthly value(s) before/after [...] are outside the
-     run window` — `gen_monthly` has data the algorithm couldn't
-     process because file 1's start (or any input file's end) clipped
-     the run window.
    - `Warning: N target monthly value(s) are zero` — those months
      produce all-zero output (the math is correct, just worth flagging).
    - `Warning: gen_monthly has fewer than 2 valid values for calendar

@@ -172,11 +172,15 @@ their respective distributions, so the comparison `|p_donor − p_target|`
 is well-defined. This is independent of the binned exceedance computation
 in the `exceed` tool and avoids interval-edge artefacts.
 
-When file 2 is supplied alongside file 1, **file 2's end date does not
-clamp the run window** — file 2 is optional, and tier 3 is expected to
-cover the period after file 2 ends. Other 2-file methods (`PATCH_FILE`,
-`INCREMENTAL`) do clamp by both files' end dates because they cannot
-proceed without file 2.
+**Run window.** Method 5 sets the processing window to the full span of
+`gen_monthly` — the daily files do **not** clamp it on either end. Months
+that fall before file 1's start (or after any daily file's end) are
+backfilled by tier 3, using the same percentile-matched donor logic as
+internal gaps. Other methods clip to the daily file's coverage because
+they have no donor mechanism. The trade-off: when the daily record is
+short relative to `gen_monthly`, tier-3 backfill carries more of the
+output, and the percentile match's accuracy depends on having enough
+candidate years per calendar month.
 
 **Tier-2 cross-river rescaling.** When file 1 and file 2 are on
 different rivers (different absolute scales), tier-2 day-level
@@ -194,9 +198,8 @@ constant factor cancels in the disag formula's ratio.
   percentile);
 - per-month "no tier-3 donor available" failures, when the algorithm
   cannot find any eligible donor month;
-- pre-run warnings: clipped run-window months, calendar months too
-  sparse for tier 3, all-zero target months, and identically-valued
-  calendar-month distributions;
+- pre-run warnings: calendar months too sparse for tier 3, all-zero
+  target months, and identically-valued calendar-month distributions;
 - the per-calendar-month tier-2 scale factors (when file 2 is supplied
   and the rescale factor is non-trivial);
 - a tier coverage summary at the end (Tier 1 / 2 / 3 day counts and

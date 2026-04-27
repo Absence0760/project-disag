@@ -204,9 +204,9 @@ class ReportObservabilityTests(unittest.TestCase):
         self.assertIn('1', flat_lines[0])
         self.assertIn('12', flat_lines[0])
 
-    def test_clipped_window_warning(self):
-        # gen_monthly has years 1990-2010, daily file starts in 2000 →
-        # months before 2000-10 get clipped from the run window.
+    def test_clipped_window_warning_non_exceed(self):
+        # For non-PATCH_EXCEED methods, gen_monthly months outside the
+        # daily file's coverage are clipped and a warning is emitted.
         from disag.algorithm import disaggregate
         from disag.files import DailyRecord
         import calendar as _cal
@@ -222,12 +222,49 @@ class ReportObservabilityTests(unittest.TestCase):
                 dim = _cal.monthrange(cy, hm)[1]
                 obs[(cy, hm)] = DailyRecord(year=cy, month=hm, v=[1.0] * dim)
         _, log = disaggregate(
-            DisagMethod.PATCH_EXCEED, gen, [obs, {}], 1,
+            DisagMethod.ONE_FILE, gen, [obs], 1,
         )
         self.assertTrue(
             any('outside the run window' in l and 'before' in l for l in log),
             'no clipped-before warning',
         )
+
+    def test_patch_exceed_backfills_instead_of_clipping(self):
+        # PATCH_EXCEED extends the run window to gen_monthly's full span
+        # rather than clipping to the daily file's coverage. Months
+        # outside the daily file are backfilled via tier 3.
+        from disag.algorithm import disaggregate
+        from disag.files import DailyRecord
+        import calendar as _cal
+        gen = {}
+        for y in range(1990, 2011):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = y if hm >= 10 else y + 1
+                gen[(cy, hm)] = 1.0 + (hm % 5) * 0.1   # vary so percentile differs
+        obs = {}
+        for y in range(2000, 2010):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = y if hm >= 10 else y + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                obs[(cy, hm)] = DailyRecord(year=cy, month=hm, v=[1.0] * dim)
+        records, log = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [obs, {}], 1,
+        )
+        # No clipped-window warning for PATCH_EXCEED — backfill replaces clipping.
+        self.assertFalse(
+            any('outside the run window' in l for l in log),
+            f'unexpected clipped warning under PATCH_EXCEED: '
+            f'{[l for l in log if "outside" in l]}',
+        )
+        # Output spans all of gen_monthly: 21 hydro years × 12 months = 252
+        self.assertEqual(len(records), 21 * 12)
+        # Pre-2000 months were backfilled via tier 3 — every value is finite
+        first_rec = records[0]
+        self.assertEqual((first_rec.year, first_rec.month), (1990, 10))
+        self.assertTrue(all(v >= 0 for v in first_rec.v))
+        # Tier coverage summary should report a non-zero tier-3 count
+        tier3 = next(l for l in log if 'Tier 3' in l)
+        self.assertNotIn('     0 day(s)', tier3)
 
 
 class MonHeaderTests(unittest.TestCase):
