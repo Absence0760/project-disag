@@ -25,7 +25,26 @@ Methods
 
 import argparse
 import os
+import re
 import sys
+
+
+def _parse_tier_coverage(report_lines):
+    """Pull tier-1/2/3 day counts out of the .rep coverage summary.
+
+    Returns ``(t1, t2, t3)`` or ``None`` if the summary block isn't
+    present (i.e. method != PATCH_EXCEED).
+    """
+    counts = {1: None, 2: None, 3: None}
+    for line in report_lines:
+        for tier in (1, 2, 3):
+            if line.lstrip().startswith(f'Tier {tier}'):
+                m = re.search(r':\s+(\d+)\s+day', line)
+                if m:
+                    counts[tier] = int(m.group(1))
+    if any(v is None for v in counts.values()):
+        return None
+    return counts[1], counts[2], counts[3]
 
 
 def main():
@@ -150,6 +169,33 @@ def main():
             f'  patch will be logged in the report.',
             file=sys.stderr,
         )
+
+    # Method 5 can produce a fully-disaggregated output where most days
+    # are tier-3 synthetic (donor-copied) rather than real observations.
+    # The "0 missing" line above doesn't reflect that, so warn explicitly
+    # when the synthetic share is high. Threshold is 50% — below that,
+    # the output is mostly real data and no nudge is needed.
+    if method == DisagMethod.PATCH_EXCEED:
+        coverage = _parse_tier_coverage(report_lines)
+        if coverage is not None:
+            t1, t2, t3 = coverage
+            total = t1 + t2 + t3
+            if total > 0:
+                pct_synth = 100.0 * t3 / total
+                if pct_synth > 50:
+                    print(
+                        f'\nWARNING: {pct_synth:.0f}% of output days are '
+                        f'tier-3 synthetic.\n'
+                        f'  {t1} day(s) from file 1, {t2} day(s) from file 2, '
+                        f'{t3} day(s) from\n'
+                        f'  percentile-matched donor months. Each donor '
+                        f'choice is logged\n'
+                        f'  in the report ({args.report}). The daily shape '
+                        f'of synthetic\n'
+                        f'  months is borrowed; only the monthly volume is '
+                        f'from the input.',
+                        file=sys.stderr,
+                    )
 
 
 if __name__ == '__main__':
