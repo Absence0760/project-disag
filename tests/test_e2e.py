@@ -282,5 +282,104 @@ class VolumePreservationTest(unittest.TestCase):
             )
 
 
+class Method1VsMethod5DivergenceTests(unittest.TestCase):
+    """Constructed dataset where Method 1 (closest absolute volume) and
+    Method 5 (closest exceedance percentile) pick *different* donors.
+
+    This is the headline reason method 5 exists for cross-river data:
+    when the daily file's absolute scale doesn't track gen_monthly's,
+    the rank-based match disagrees with the absolute-volume match.
+    """
+
+    def _build(self):
+        """Build gen_monthly + a single daily file with rigged Junes.
+
+        gen_monthly Junes:
+          (2001, 6) = 1.0
+          (2002, 6) = 1.6   ← method 1 picks this (closest |1.6 − 1.5|=0.1)
+          (2003, 6) = 1.5   ← target (gappy in daily file)
+          (2004, 6) = 5.0
+          (2005, 6) = 10.0
+
+        Target's percentile in the 5-value June dist:
+          sorted asc: 1.0 1.5 1.6 5.0 10.0; count_ge(1.5)=4 → 80 %.
+
+        Daily file Jun TOTALS (target's own June is gappy, so excluded
+        from the donor pool of 4):
+          (2001, 6) =   100  → 4-value rank %: 50 %
+          (2002, 6) =     5  →                100 %
+          (2004, 6) =   200  →                 25 %
+          (2005, 6) =    50  →                 75 %    ← method 5 picks this
+
+        |80 − 75|=5 vs the next-closest |80 − 50|=30 → method 5 = 2005.
+        Method 1 picks 2002 (smallest |Δvol| in gen_monthly).  Different.
+        """
+        import calendar as _cal
+
+        from disag.files import DailyRecord, MISSING
+
+        gen = {}
+        # All other months get a benign 1.0 in gen_monthly.  Only Junes
+        # are pinned to specific divergence-engineering values.
+        for hy in range(2000, 2005):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                gen[(cy, hm)] = 1.0
+        gen[(2001, 6)] = 1.0
+        gen[(2002, 6)] = 1.6
+        gen[(2003, 6)] = 1.5
+        gen[(2004, 6)] = 5.0
+        gen[(2005, 6)] = 10.0
+
+        # Daily file: every month complete except (2003, 6) which is the
+        # target.  Target year's June is all-missing, forcing both methods
+        # to look elsewhere for a donor.
+        june_totals = {2001: 100.0, 2002: 5.0, 2004: 200.0, 2005: 50.0}
+        obs = {}
+        for hy in range(2000, 2005):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                if hm == 6 and cy == 2003:
+                    values = [MISSING] * dim
+                elif hm == 6 and cy in june_totals:
+                    # Spread the rigged total evenly across the 30 days
+                    values = [june_totals[cy] / 30.0] * dim
+                else:
+                    values = [1.0] * dim
+                obs[(cy, hm)] = DailyRecord(year=cy, month=hm, v=values)
+        return gen, obs
+
+    def test_method1_picks_closest_volume(self):
+        from disag.algorithm import disaggregate
+        gen, obs = self._build()
+        _, log = disaggregate(DisagMethod.PATCH_CAL, gen, [obs, {}], 1)
+        patch = next(l for l in log if 'Patched with' in l)
+        self.assertIn('2003  6', patch)               # target month
+        self.assertIn('Patched with 2002  6', patch)  # method 1's pick
+
+    def test_method5_picks_closest_percentile(self):
+        from disag.algorithm import disaggregate
+        gen, obs = self._build()
+        _, log = disaggregate(DisagMethod.PATCH_EXCEED, gen, [obs, {}], 1)
+        patch = next(l for l in log if 'Patched with file' in l)
+        self.assertIn('2003  6', patch)
+        self.assertIn('Patched with file 1 2005  6', patch)
+
+    def test_methods_diverge_on_this_dataset(self):
+        """Sanity: confirm the two methods explicitly chose different
+        donor years on the same input."""
+        from disag.algorithm import disaggregate
+        gen, obs = self._build()
+        _, log1 = disaggregate(DisagMethod.PATCH_CAL,    gen, [obs, {}], 1)
+        _, log5 = disaggregate(DisagMethod.PATCH_EXCEED, gen, [obs, {}], 1)
+        donor1 = next(l for l in log1 if 'Patched with' in l)
+        donor5 = next(l for l in log5 if 'Patched with file' in l)
+        # Pick the donor-year token from each line and assert they differ
+        self.assertIn('2002', donor1)
+        self.assertIn('2005', donor5)
+        self.assertNotIn('2002', donor5)
+
+
 if __name__ == '__main__':
     unittest.main()

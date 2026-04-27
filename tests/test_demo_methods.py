@@ -80,6 +80,40 @@ class Method1DemoTests(unittest.TestCase):
         self.assertIn('2002  6', patches[0])
         self.assertIn('Patched with 2003  6', patches[0])
 
+    def test_no_donor_marks_month_missing(self):
+        """When every same-calendar-month record is also gappy, PATCH_CAL
+        has no donor and must mark the target month missing."""
+        import calendar as _cal
+
+        from disag.algorithm import disaggregate
+        from disag.files import DailyRecord, MISSING
+
+        # 3 hydro years, target = (cal Jun 2002, year 1.5).  Pin every
+        # June in the daily file to gappy → no donor available.
+        gen = {}
+        for hy in range(2000, 2003):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                gen[(cy, hm)] = 1.0
+        obs = {}
+        for hy in range(2000, 2003):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                if hm == 6:                     # gap every June
+                    values = [MISSING] * dim
+                else:
+                    values = [1.0] * dim
+                obs[(cy, hm)] = DailyRecord(year=cy, month=hm, v=values)
+
+        recs, _ = disaggregate(DisagMethod.PATCH_CAL, gen, [obs, {}], 1)
+        june_recs = [r for r in recs if r.month == 6]
+        # Every June should be all-MISSING because no donor exists
+        for r in june_recs:
+            self.assertTrue(all(v < 0 for v in r.v),
+                            f'{r.year}-06 has at least one non-missing value '
+                            f'but PATCH_CAL had no donor available')
+
 
 class Method2DemoTests(unittest.TestCase):
     """Method 2 — PATCH_FILE: day-level fallback to file 2."""
@@ -120,6 +154,38 @@ class Method2DemoTests(unittest.TestCase):
         self.assertEqual(a_missing, [(2002, 6)])
         self.assertEqual(b_missing, [(2003, 6)])
 
+    def test_same_day_missing_in_both_files_marks_month_missing(self):
+        """PATCH_FILE marks the whole month missing when the SAME day is
+        absent from both daily files."""
+        import calendar as _cal
+
+        from disag.algorithm import disaggregate
+        from disag.files import DailyRecord, MISSING
+
+        gen = {}
+        for hy in range(2000, 2002):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                gen[(cy, hm)] = 1.0
+        f1, f2 = {}, {}
+        for hy in range(2000, 2002):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                v1 = [1.0] * dim
+                v2 = [1.0] * dim
+                if (cy, hm) == (2001, 6):     # gap day 5 in BOTH files
+                    v1[4] = MISSING
+                    v2[4] = MISSING
+                f1[(cy, hm)] = DailyRecord(year=cy, month=hm, v=v1)
+                f2[(cy, hm)] = DailyRecord(year=cy, month=hm, v=v2)
+
+        recs, _ = disaggregate(DisagMethod.PATCH_FILE, gen, [f1, f2], 2)
+        target = next(r for r in recs if (r.year, r.month) == (2001, 6))
+        self.assertTrue(all(v < 0 for v in target.v),
+                        '2001-06 should be all-MISSING when both files '
+                        'have a gap on the same day')
+
 
 class Method3DemoTests(unittest.TestCase):
     """Method 3 — INCREMENTAL: pattern = file 1 − file 2."""
@@ -153,6 +219,37 @@ class Method3DemoTests(unittest.TestCase):
                 output_mm3, target, places=3,
                 msg=f'volume mismatch at {rec.year}-{rec.month:02d}',
             )
+
+    def test_single_missing_day_marks_whole_month_missing(self):
+        """INCREMENTAL needs both files complete; one missing day in
+        either file kills the whole month."""
+        import calendar as _cal
+
+        from disag.algorithm import disaggregate
+        from disag.files import DailyRecord, MISSING
+
+        gen = {}
+        for hy in range(2000, 2002):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                gen[(cy, hm)] = 1.0
+        f1, f2 = {}, {}
+        for hy in range(2000, 2002):
+            for hm in (10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9):
+                cy = hy if hm >= 10 else hy + 1
+                dim = _cal.monthrange(cy, hm)[1]
+                v1 = [3.0] * dim
+                v2 = [1.0] * dim
+                if (cy, hm) == (2001, 6):   # gap one day in file 1 only
+                    v1[10] = MISSING
+                f1[(cy, hm)] = DailyRecord(year=cy, month=hm, v=v1)
+                f2[(cy, hm)] = DailyRecord(year=cy, month=hm, v=v2)
+
+        recs, _ = disaggregate(DisagMethod.INCREMENTAL, gen, [f1, f2], 2)
+        target = next(r for r in recs if (r.year, r.month) == (2001, 6))
+        self.assertTrue(all(v < 0 for v in target.v),
+                        'INCREMENTAL must mark the whole month missing '
+                        'when even one day is missing in either file')
 
 
 class Method4DemoTests(unittest.TestCase):
