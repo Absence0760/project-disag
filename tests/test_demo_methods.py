@@ -81,5 +81,45 @@ class Method1DemoTests(unittest.TestCase):
         self.assertIn('Patched with 2003  6', patches[0])
 
 
+class Method2DemoTests(unittest.TestCase):
+    """Method 2 — PATCH_FILE: day-level fallback to file 2."""
+
+    def test_orthogonal_gaps_fill_each_other(self):
+        recs, log = _run(
+            DisagMethod.PATCH_FILE,
+            _data('method2_demo', 'target.MON'),
+            [_data('method2_demo', 'gauge_a.DAY'),
+             _data('method2_demo', 'gauge_b.DAY')],
+        )
+        disagg, missing = count_coverage(recs)
+        # Each file alone would have 1 missing month; the two together
+        # cover each other's gap → 0 missing.
+        self.assertEqual(missing, 0)
+        self.assertEqual(disagg, 36)
+        # No per-month patch lines (tier-2 day-level patching is silent
+        # in PATCH_FILE, by design).
+        self.assertEqual(
+            [l for l in log if 'Patched' in l],
+            [],
+        )
+
+    def test_either_file_alone_drops_a_month(self):
+        # Sanity: confirm each gauge individually has the documented gap
+        recs_a, _ = _run(
+            DisagMethod.ONE_FILE,
+            _data('method2_demo', 'target.MON'),
+            [_data('method2_demo', 'gauge_a.DAY')],
+        )
+        recs_b, _ = _run(
+            DisagMethod.ONE_FILE,
+            _data('method2_demo', 'target.MON'),
+            [_data('method2_demo', 'gauge_b.DAY')],
+        )
+        a_missing = [(r.year, r.month) for r in recs_a if all(v < 0 for v in r.v)]
+        b_missing = [(r.year, r.month) for r in recs_b if all(v < 0 for v in r.v)]
+        self.assertEqual(a_missing, [(2002, 6)])
+        self.assertEqual(b_missing, [(2003, 6)])
+
+
 if __name__ == '__main__':
     unittest.main()
