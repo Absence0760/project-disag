@@ -61,13 +61,39 @@ Done — 48 months written (48 disaggregated, 0 missing).
 
 ## Contrast with Method 5
 
-Method 5 (`PATCH_EXCEED`) on the same data would pick a donor by
-**percentile rank**, not absolute volume. Here gen_monthly's June
-distribution is `[1.0, 2.5, 2.6, 4.0]`; 2.5 ranks at 75 % exceedance.
-The donor pool (file 1's complete Junes excluding the gappy 2002) has
-volumes `[1.0, 2.6, 4.0]` ranked at `[100, 67, 33] %`. Closest to 75 %
-is 67 % → still 2003. So both methods agree on this dataset.
+Method 5 (`PATCH_EXCEED`) on the same data picks a *different* donor.
+Try it:
 
-The methods diverge when the daily file's gauge has a different scale
-than `gen_monthly` — see [../method5_demo/](../method5_demo/) for that
-case.
+```bash
+python3 -m disag --no-gui --method 5 \
+    --monthly examples/method1_demo/data/target.MON \
+    --daily1  examples/method1_demo/data/gauge_with_gap.DAY \
+    --output  /tmp/m5.day \
+    --report  /tmp/m5.rep
+```
+
+The Method-5 report logs a tier-3 patch like:
+
+```
+2002  6 Observed daily flow < 0,   Patched with file 1 2004  6 (target exceed%= 75.0, donor exceed%= 66.7)
+```
+
+Method 5 picks **2004**, not 2003. Why?
+
+- **Method 1** matches on absolute volume *in `gen_monthly`*. With
+  Junes `{1.0, 2.5, 2.6, 4.0}`, `|2.5 − 2.6| = 0.1` wins → 2003.
+- **Method 5** matches on percentile rank *in the daily file's
+  distribution*. The 3 complete-June daily-file totals (RNG-driven,
+  not pinned) rank 2004 at the 66.7 % exceedance level — closest to
+  the target's 75 % rank in `gen_monthly`. So 2004 wins.
+
+This is the headline reason method 5 exists for cross-river data:
+the daily file's absolute scale doesn't track `gen_monthly`'s, so
+matching by absolute volume across the two distributions is
+meaningless. Match by rank instead. See
+[../method5_demo/](../method5_demo/) for a worked example with two
+gauges of clearly different absolute scale.
+
+A regression test in `tests/test_e2e.py:Method1VsMethod5DivergenceTests`
+also constructs a small artificial dataset where the two methods
+disagree by design and asserts the picks.

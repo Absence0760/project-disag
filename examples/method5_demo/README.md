@@ -193,5 +193,7 @@ years in the daily file the resolution would tighten.
 If you want to break the algorithm to convince yourself it does fail
 loudly when it should, edit `generate.py` to also gap-out **all the
 other Junes** (so no donor exists), and rerun Scenario 4. The two
-gappy Junes will land in the output as `-99.99` sentinels and the
-report will show 0 adjustments (no donor was found, so nothing to log).
+gappy Junes will land in the output as `-99.99` sentinels, and the
+report will log a `No tier-3 donor available — month marked missing`
+line for each one (added by the algorithm-hardening pass — silent
+failure used to be possible and was a real footgun).

@@ -55,14 +55,19 @@ Automated tests live in [tests/](tests/) and run with the standard
 library's unittest module:
 
 ```bash
-python3 -m unittest discover tests           # whole suite
-python3 -m unittest tests.test_algorithm     # just the unit tests
-python3 -m unittest tests.test_e2e           # end-to-end against demo fixtures
+python3 -m unittest discover tests             # whole suite
+python3 -m unittest tests.test_algorithm       # PATCH_EXCEED helper unit tests
+python3 -m unittest tests.test_e2e             # PATCH_EXCEED scenarios + observability
+python3 -m unittest tests.test_demo_methods    # methods 0–4 end-to-end
+python3 -m unittest tests.test_file_io         # files.py + report.py round-trip
+python3 -m unittest tests.test_exceed          # exceed/ package
+python3 -m unittest tests.test_cli             # subprocess-driven CLI
 ```
 
 The end-to-end tests use the deterministically-generated mock data in
-[examples/method5_demo/data/](examples/method5_demo/data/) — committed
-files, so the suite has no external dependencies.
+[examples/](examples/) (each `methodN_demo/data/`) — committed files,
+so the suite has no external dependencies. CI also re-runs every
+`generate.py` and asserts no committed file drifts.
 
 ### What's NOT tested
 

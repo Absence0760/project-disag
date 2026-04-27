@@ -178,6 +178,30 @@ cover the period after file 2 ends. Other 2-file methods (`PATCH_FILE`,
 `INCREMENTAL`) do clamp by both files' end dates because they cannot
 proceed without file 2.
 
+**Tier-2 cross-river rescaling.** When file 1 and file 2 are on
+different rivers (different absolute scales), tier-2 day-level
+patching multiplies file-2's day values by
+`mean(file_1[m]) / mean(file_idx[m])` (per calendar month, with global-
+mean fallback) before they enter `qD`. This keeps a mixed file-1 /
+file-2 month's daily shape coherent: without rescaling, file-2 days at
+a different magnitude would distort the normalisation step. Whole-month
+gaps where every tier-2 day comes from file 2 are unaffected — the
+constant factor cancels in the disag formula's ratio.
+
+**Report contents (PATCH_EXCEED specifically).** The `.rep` file logs:
+
+- per-month tier-3 patches (donor file, donor year, `p_target`, donor
+  percentile);
+- per-month "no tier-3 donor available" failures, when the algorithm
+  cannot find any eligible donor month;
+- pre-run warnings: clipped run-window months, calendar months too
+  sparse for tier 3, all-zero target months, and identically-valued
+  calendar-month distributions;
+- the per-calendar-month tier-2 scale factors (when file 2 is supplied
+  and the rescale factor is non-trivial);
+- a tier coverage summary at the end (Tier 1 / 2 / 3 day counts and
+  month counts).
+
 Contrast with method 1 (`PATCH_CAL`), which matches on absolute
 volume within `gen_monthly` only and assumes the donor's daily file
 shares the same scale. Method 5 is the right choice when the donor

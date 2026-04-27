@@ -145,6 +145,64 @@ second question is meaningful.
   Method 5 doesn't — file 2 is optional, and Tier 3 is expected to
   cover any tail period that file 2 doesn't reach.
 
+## What the report tells you
+
+The `.rep` file produced by Method 5 contains, in order:
+
+1. **Pre-run warnings** (only emitted when relevant):
+   - `Warning: N monthly value(s) before/after [...] are outside the
+     run window` — `gen_monthly` has data the algorithm couldn't
+     process because file 1's start (or any input file's end) clipped
+     the run window.
+   - `Warning: N target monthly value(s) are zero` — those months
+     produce all-zero output (the math is correct, just worth flagging).
+   - `Warning: gen_monthly has fewer than 2 valid values for calendar
+     month(s) [...]` — Tier 3 cannot fire for those calendar months
+     because percentile rank is undefined; any gappy month there will
+     be marked missing.
+   - `Warning: gen_monthly has identical values across all years for
+     calendar month(s) [...]` — Tier-3 donor selection collapses to
+     year proximity for those months.
+2. **Tier-2 cross-river scale factors** (only when file 2 is supplied
+   and at least one factor differs from 1.0):
+
+   ```
+   Tier-2 file-2 → file-1 scale factors
+   (applied to file-2 day values when patching):
+     month  1:   3.1954
+     month  2:   3.3304
+     ...
+   ```
+
+   File-2 day values are multiplied by the per-calendar-month factor
+   when used in tier-2 day patching. This corrects a distortion that
+   would otherwise hit mixed-source months when the two daily files
+   sit on different rivers of different absolute scale.
+3. **Per-month tier-3 patch lines:**
+
+   ```
+   2003  6 Observed daily flow < 0,   Patched with file 1 2004  6 (target exceed%= 33.3, donor exceed%= 25.0)
+   ```
+
+4. **Per-month tier-3 failures** (when no donor exists):
+
+   ```
+   2003  6 Observed daily flow < 0,   No tier-3 donor available — month marked missing
+   ```
+
+5. **Tier coverage summary** at the end:
+
+   ```
+   Tier coverage summary (days):
+     Tier 1 (file 1)        :   2131 day(s)
+     Tier 2 (file 2)        :     30 day(s)  across   1 month(s)
+     Tier 3 (donor month)   :     30 day(s)  across   1 month(s)
+   ```
+
+Tier-2 day-level patches are *not* logged per-month — the same
+behaviour as Method 2 (`PATCH_FILE`). The summary line at the end is
+the only place to see how much tier-2 fired.
+
 ## Limitations and assumptions
 
 - **Same-region assumption.** The percentile match only carries
