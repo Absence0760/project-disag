@@ -114,7 +114,7 @@ def write_monthly(path: str, rec: dict) -> None:
 # --------------------------------------------------------------------------
 
 def gen_daily(seed: int, scale: float, gap_months=None,
-              keep_only=None) -> list:
+              keep_only=None, day_gaps=None) -> list:
     """Build a list of DailyRecord for the full 6-hydro-year window.
 
     Parameters
@@ -127,10 +127,16 @@ def gen_daily(seed: int, scale: float, gap_months=None,
     keep_only  : iterable of (cal_year, cal_month) — if set, every record
                  *not* in this set is dropped from the file (use this to
                  simulate file 2 covering only part of the period).
+    day_gaps   : dict {(cal_year, cal_month): iterable of zero-indexed days}
+                 — those specific days are overwritten with -99.99 *after*
+                 the values have been generated, so the rest of the month's
+                 daily values are unchanged from the gap-free version with
+                 the same seed.
     """
     random.seed(seed)
     gap_months = set(gap_months or [])
     keep_only = set(keep_only) if keep_only is not None else None
+    day_gaps = {k: set(v) for k, v in (day_gaps or {}).items()}
 
     records = []
     for hy in YEARS:
@@ -145,6 +151,9 @@ def gen_daily(seed: int, scale: float, gap_months=None,
                 base = SEASONAL_M3S[hm] * scale
                 values = [round(base * random.uniform(0.7, 1.3), 3)
                           for _ in range(dim)]
+                for d in day_gaps.get((cy, cm), ()):
+                    if 0 <= d < dim:
+                        values[d] = -99.99
             records.append(DailyRecord(year=cy, month=cm, v=values))
     return records
 
@@ -213,7 +222,36 @@ def main() -> None:
         label='gauge_b_full.DAY',
     )
 
-    print(f'Wrote 5 mock files to {DATA_DIR}')
+    # Scenario 5 inputs: scattered per-day gaps within Jun 2003 in file 1,
+    # partly covered by file 2 — engineered so all three tiers fire on
+    # different days of the same month.
+    #
+    # Jun 2003 in gauge_a_scattered:   days 11..20 (1-indexed) missing
+    # Jun 2003 in gauge_b_scattered:   days 15..20 (1-indexed) also missing
+    #
+    # → Target Jun 2003 disaggregation:
+    #     days  1..10  → Tier 1 (file 1 valid)
+    #     days 11..14  → Tier 2 (file 1 missing, file 2 valid)
+    #     days 15..20  → Tier 3 (both missing) — exceedance-matched donor
+    #     days 21..30  → Tier 1 (file 1 valid)
+    a_scattered_days = {(2003, 6): range(10, 20)}      # 0-indexed
+    write_daily(
+        os.path.join(DATA_DIR, 'gauge_a_scattered.DAY'),
+        gen_daily(seed=43, scale=1.0, day_gaps=a_scattered_days),
+        label='gauge_a_scattered.DAY',
+    )
+
+    keep_b_scattered = {_hydro_to_calendar(2002, hm) for hm in HYDRO_MONTHS}
+    b_scattered_days = {(2003, 6): range(14, 20)}      # 0-indexed
+    write_daily(
+        os.path.join(DATA_DIR, 'gauge_b_scattered.DAY'),
+        gen_daily(seed=99, scale=0.3,
+                  keep_only=keep_b_scattered,
+                  day_gaps=b_scattered_days),
+        label='gauge_b_scattered.DAY',
+    )
+
+    print(f'Wrote 7 mock files to {DATA_DIR}')
 
 
 if __name__ == '__main__':

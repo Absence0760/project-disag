@@ -98,6 +98,39 @@ class Method5ScenarioTests(unittest.TestCase):
         self.assertIn('2005  6', patches[1])
         self.assertIn('Patched with file 1 2002  6', patches[1])
 
+    def test_scenario_5_all_three_tiers_in_one_month(self):
+        # File 1 has Jun 2003 days 11..20 missing (0-indexed 10..19);
+        # file 2 has Jun 2003 days 15..20 also missing (0-indexed 14..19).
+        # → days 1..10 + 21..30 from Tier 1, days 11..14 from Tier 2,
+        #   days 15..20 from a Tier-3 donor month (file 1 / Jun 2005).
+        recs, log = _run(
+            DisagMethod.PATCH_EXCEED,
+            [os.path.join(DATA, 'gauge_a_scattered.DAY'),
+             os.path.join(DATA, 'gauge_b_scattered.DAY')],
+        )
+        disagg, missing = count_coverage(recs)
+        self.assertEqual(missing, 0)
+        self.assertEqual(disagg, 72)
+
+        patches = _tier3_patches(log)
+        self.assertEqual(len(patches), 1)
+        self.assertIn('2003  6', patches[0])
+        self.assertIn('Patched with file 1 2005  6', patches[0])
+
+        # Tier coverage summary: 4 Tier-2 days, 6 Tier-3 days, all in 1 month.
+        tier2 = next(l for l in log if 'Tier 2' in l)
+        self.assertIn('4 day(s)', tier2)
+        self.assertIn('1 month(s)', tier2)
+        tier3 = next(l for l in log if 'Tier 3' in l)
+        self.assertIn('6 day(s)', tier3)
+        self.assertIn('1 month(s)', tier3)
+
+        # Volume preservation for the mixed-tier month.
+        gen = read_monthly_file(os.path.join(DATA, 'target.MON'))
+        target = next(r for r in recs if (r.year, r.month) == (2003, 6))
+        out_mm3 = sum(target.v) * 86400 / 1e6
+        self.assertAlmostEqual(out_mm3, gen[(2003, 6)], places=3)
+
 
 class ReportObservabilityTests(unittest.TestCase):
     """Each warning / summary line is information-only — implementing them
