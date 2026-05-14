@@ -344,9 +344,21 @@ def _convert_month(
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
+    # PATCH_EXCEED only: register the month up-front so the per-month tier
+    # breakdown in the report has a row for every iterated month — including
+    # those that exit early because gen_monthly is missing the value.
+    pm_entry: Optional[dict] = None
+    if (method == DisagMethod.PATCH_EXCEED
+            and tier_counters is not None):
+        pm_entry = {'t1': 0, 't2': 0, 't3': 0,
+                    'donor': None, 'missing_reason': None}
+        tier_counters['per_month'][(year, month)] = pm_entry
+
     # --- Monthly generated value (Mm3/month) ---
     gen_val = gen_monthly.get((year, month))
     if gen_val is None or gen_val < 0:
+        if pm_entry is not None:
+            pm_entry['missing_reason'] = 'monthly value missing'
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
 
     # --- Fetch observed daily records ---
@@ -429,6 +441,8 @@ def _convert_month(
                     f' Observed daily flow < 0,'
                     f'   No tier-3 donor available — month marked missing'
                 )
+                if pm_entry is not None:
+                    pm_entry['missing_reason'] = 'no tier-3 donor available'
                 missing = True
             else:
                 file_idx, donor_year, p_target, p_donor = donor
@@ -440,6 +454,8 @@ def _convert_month(
                         f' Observed daily flow < 0,'
                         f'   Donor record vanished — month marked missing'
                     )
+                    if pm_entry is not None:
+                        pm_entry['missing_reason'] = 'donor record vanished'
                     missing = True
                 else:
                     report_lines.append(
@@ -450,6 +466,10 @@ def _convert_month(
                         f' (target exceed%={p_target:5.1f},'
                         f' donor exceed%={p_donor:5.1f})'
                     )
+                    if pm_entry is not None:
+                        pm_entry['donor'] = (
+                            file_idx, donor_year, p_target, p_donor
+                        )
 
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
@@ -486,6 +506,8 @@ def _convert_month(
                     val = f1
                     if tier_counters is not None:
                         tier_counters['tier1_days'] += 1
+                        if pm_entry is not None:
+                            pm_entry['t1'] += 1
                 elif f2 >= 0:
                     # Rescale file-2 day to file-1's per-month scale so a
                     # mixed file-1/file-2 month doesn't get a distorted shape
@@ -498,6 +520,8 @@ def _convert_month(
                     if tier_counters is not None:
                         tier_counters['tier2_days'] += 1
                         tier_counters['tier2_months'].add((year, month))
+                        if pm_entry is not None:
+                            pm_entry['t2'] += 1
                 elif exceed_donor is not None and d < len(exceed_donor.v):
                     # Same cross-river rescale as tier 2: when the donor
                     # comes from file 2, its day values must be brought
@@ -516,6 +540,8 @@ def _convert_month(
                     if tier_counters is not None:
                         tier_counters['tier3_days'] += 1
                         tier_counters['tier3_months'].add((year, month))
+                        if pm_entry is not None:
+                            pm_entry['t3'] += 1
                 else:
                     val = -999.0
 
@@ -618,6 +644,11 @@ def disaggregate(
             'tier2_months': set(),
             'tier3_days': 0,
             'tier3_months': set(),
+            # Per-month detail keyed by (year, month). Each entry holds the
+            # day-count breakdown {'t1', 't2', 't3'} plus optional 'donor' and
+            # 'missing_reason' annotations. Used to emit the per-month tier
+            # breakdown section at the end of the report.
+            'per_month': {},
         }
 
     # --- Pre-run warnings (information-only; output is unaffected) ---
@@ -686,6 +717,28 @@ def disaggregate(
 
     # #11 Tier 1/2/3 day-count summary at the end of the report
     if tier_counters is not None:
+        # Per-month tier breakdown — one row per iterated month so the report
+        # is a complete record (T1/T2/T3 day counts, donor info on tier-3
+        # months, and a reason on missing months).
+        report_lines.append('Per-month tier breakdown (days from each tier):')
+        report_lines.append(
+            'YYYY MM   T1  T2  T3   note'
+        )
+        for (y, m), pm in sorted(tier_counters['per_month'].items()):
+            line = (
+                f'{y:4d} {m:2d}'
+                f'  {pm["t1"]:3d} {pm["t2"]:3d} {pm["t3"]:3d}'
+            )
+            if pm.get('donor'):
+                file_idx, donor_year, p_target, p_donor = pm['donor']
+                line += (
+                    f'   donor: file {file_idx + 1} year {donor_year}'
+                    f' (target p={p_target:5.1f}%, donor p={p_donor:5.1f}%)'
+                )
+            elif pm.get('missing_reason'):
+                line += f'   {pm["missing_reason"]}'
+            report_lines.append(line)
+
         report_lines.append('Tier coverage summary (days):')
         report_lines.append(
             f'  Tier 1 (file 1)        : {tier_counters["tier1_days"]:6d} day(s)'

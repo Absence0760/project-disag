@@ -159,6 +159,58 @@ class ReportObservabilityTests(unittest.TestCase):
         tier2 = next(l for l in log if 'Tier 2' in l)
         self.assertIn('0 day(s)', tier2)
 
+    def test_per_month_breakdown_lists_every_iterated_month(self):
+        # Scenario 5: 1 month splits across all three tiers (Jun 2003 →
+        # T1=20, T2=4, T3=6); every other month is pure T1.  The breakdown
+        # section must therefore have a row for every iterated month, with
+        # the mixed Jun 2003 row showing all three counts non-zero.
+        recs, log = _run(
+            DisagMethod.PATCH_EXCEED,
+            [os.path.join(DATA, 'gauge_a_scattered.DAY'),
+             os.path.join(DATA, 'gauge_b_scattered.DAY')],
+        )
+
+        # Section header + column header are present
+        try:
+            header_idx = next(
+                i for i, l in enumerate(log)
+                if l.startswith('Per-month tier breakdown')
+            )
+        except StopIteration:
+            self.fail('per-month breakdown section missing from report')
+        self.assertTrue(log[header_idx + 1].startswith('YYYY MM'))
+
+        # Pull the per-month rows: lines after the column header that begin
+        # with a 4-digit year, stopping when we hit the tier-coverage summary.
+        rows = []
+        for l in log[header_idx + 2:]:
+            if l.startswith('Tier coverage summary'):
+                break
+            if l[:4].strip().isdigit():
+                rows.append(l)
+
+        # Every iterated month must appear in the breakdown.
+        self.assertEqual(len(rows), len(recs))
+
+        # The mixed-tier month (Jun 2003) must show all three counts non-zero
+        jun_2003 = next(r for r in rows if r.startswith('2003  6'))
+        # Format: 'YYYY MM   T1 T2 T3'
+        parts = jun_2003.split()
+        self.assertEqual(parts[0], '2003')
+        self.assertEqual(parts[1], '6')
+        t1, t2, t3 = int(parts[2]), int(parts[3]), int(parts[4])
+        self.assertEqual(t1, 20)
+        self.assertEqual(t2, 4)
+        self.assertEqual(t3, 6)
+        self.assertIn('donor: file 1 year 2005', jun_2003)
+
+        # A non-tier-3 month should have zero T2/T3 and full T1
+        oct_2000 = next(r for r in rows if r.startswith('2000 10'))
+        parts = oct_2000.split()
+        self.assertEqual(int(parts[2]), 31)  # Oct = 31 days
+        self.assertEqual(int(parts[3]), 0)
+        self.assertEqual(int(parts[4]), 0)
+
     def test_tier2_counter_when_file2_supplied(self):
         _, log = _run(
             DisagMethod.PATCH_EXCEED,
