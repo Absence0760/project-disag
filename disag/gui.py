@@ -16,6 +16,7 @@ from .algorithm import (
     count_coverage,
     disaggregate,
 )
+from .convert import ans_to_mon
 from .files import read_daily_file, read_monthly_file, write_daily_file
 from .report import write_report
 
@@ -65,6 +66,13 @@ class DisagApp(tk.Tk):
             )
             btn.grid(row=row, column=2, padx=(0, 8), pady=3)
             self._btns[key] = btn
+
+        # Utility row: convert a Pitman Model .ANS into a NinhamShand .MON
+        # and auto-fill the monthly file picker with the result.
+        ttk.Button(
+            files_frame, text='Convert .ANS to .MON…',
+            command=self._convert_ans,
+        ).grid(row=len(file_rows), column=1, sticky='e', padx=4, pady=(2, 6))
 
         # ── Method selection ───────────────────────────────────────────
         method_frame = ttk.LabelFrame(self, text='Disaggregation Method')
@@ -141,6 +149,54 @@ class DisagApp(tk.Tk):
                 self._vars['dayout'].set(base + '.day')
             if not self._vars['rep'].get():
                 self._vars['rep'].set(base + '.rep')
+
+    # ------------------------------------------------------------------
+    # Pitman .ANS → NinhamShand .MON conversion
+    # ------------------------------------------------------------------
+
+    def _convert_ans(self):
+        initial = (
+            os.path.dirname(self._vars['mon'].get())
+            or os.path.dirname(self._vars.get('day1', tk.StringVar()).get())
+            or os.getcwd()
+        )
+
+        src = filedialog.askopenfilename(
+            title='Select Pitman Model .ANS file',
+            initialdir=initial,
+            filetypes=[('Pitman .ANS files', '*.ANS *.ans'), ('All files', '*.*')],
+        )
+        if not src:
+            return
+
+        default_dst = os.path.splitext(src)[0] + '.MON'
+        dst = filedialog.asksaveasfilename(
+            title='Save NinhamShand .MON file as',
+            initialdir=os.path.dirname(default_dst),
+            initialfile=os.path.basename(default_dst),
+            defaultextension='.MON',
+            filetypes=[('NS monthly flow files', '*.mon *.MON'), ('All files', '*.*')],
+        )
+        if not dst:
+            return
+
+        try:
+            result = ans_to_mon(src, dst)
+        except Exception as exc:
+            messagebox.showerror('Conversion failed', str(exc))
+            return
+
+        self._vars['mon'].set(dst)  # auto-fill so the user can run immediately
+        msg = (
+            f'Wrote {result.rows_written} hydro-year rows '
+            f'({result.first_year}–{result.last_year}) to:\n{dst}'
+        )
+        if result.skipped:
+            msg += (
+                f'\n\nSkipped {len(result.skipped)} non-data line(s) '
+                '(blank lines / AVERAGE summary).'
+            )
+        messagebox.showinfo('Conversion complete', msg)
 
     # ------------------------------------------------------------------
     # Method-change callback

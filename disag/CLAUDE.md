@@ -13,6 +13,7 @@ for the file layout.
 |------|---------|
 | [files.py](files.py) | `read_daily_file`, `read_monthly_file`, `write_daily_file`, `DailyRecord`, `MISSING`. **Authoritative `.day` parser for the whole repo** — `exceed/` reuses it. |
 | [algorithm.py](algorithm.py) | `disaggregate(method, gen_monthly, obs_daily, no_files)`. Holds `DisagMethod` enum, `METHOD_NAMES`, `NO_FILES`, and `find_patch_year` (used by `PATCH_CAL`). |
+| [convert.py](convert.py) | `ans_to_mon` — converts a Pitman Model `.ANS` monthly file into a NinhamShand `.MON`. Fixed-width 8-char column parser; collides without delimiters in wet years. Wired into the disag GUI as a "Convert .ANS to .MON…" button. |
 | [report.py](report.py) | `write_report` — emits the `.rep` log of patches and fallbacks. |
 | [gui.py](gui.py) | `DisagApp` — Tk window with method picker and file pickers. |
 | [__main__.py](__main__.py) | Argparse + GUI smoke-test + dispatch. |
