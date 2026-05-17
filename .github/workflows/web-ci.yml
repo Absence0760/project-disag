@@ -64,7 +64,7 @@ jobs:
           # Quiet the warning about HOME being set to /github/home in the
           # container — Playwright writes browser caches to ~/.cache.
           HOME: /root
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -95,7 +95,7 @@ jobs:
       - run: pnpm e2e:integration
         env:
           HOME: /root
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-integration-report
@@ -127,7 +127,7 @@ jobs:
           PYTHONPATH=".:.stubs" python3 -c "import web.backend.handler"
       - name: Build Lambda zip
         run: bash web/backend/build.sh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: lambda-zip
           path: web/backend/lambda.zip
