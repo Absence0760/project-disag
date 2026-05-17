@@ -61,7 +61,7 @@ GitHub repo in `owner/name` form. Used to scope the OIDC trust policy
 so only this repo's release-published workflows can assume the deploy
 role. Override via terraform.tfvars when forking.
 EOT
-  default     = "jaredhoward/project-disag"
+  default     = "Absence0760/project-disag"
 }
 
 variable "github_deploy_environment" {
