@@ -1,0 +1,48 @@
+{
+  "name": "disag-md",
+  "private": true,
+  "description": "Disag-MD — Python hydrology tools + SvelteKit web UI on AWS.",
+  "packageManager": "pnpm@11.1.2+sha512.415a1cc25974731e75455c1468371be74c5aa5fb7621b50d4056d222451609f11412f23fd602e6169f1e060466641f798597e1be961a10688836a67b16569499",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "//-- setup --": "One-time Python venv for the local Lambda shim. Idempotent.",
+    "setup": "pnpm install && pnpm setup:py",
+    "setup:py": "python3 -m venv web/backend/.venv && web/backend/.venv/bin/pip install --quiet --upgrade pip && web/backend/.venv/bin/pip install --quiet -r web/backend/requirements-dev.txt",
+
+    "//-- dev --": "Two-process dev loop: SvelteKit on :5173, local Lambda shim on :8000.",
+    "dev": "concurrently -n web,api -c blue,green -k --kill-others-on-fail \"pnpm dev:web\" \"pnpm dev:api\"",
+    "dev:web": "pnpm --filter disag-md-web dev",
+    "dev:api": "test -x web/backend/.venv/bin/python || pnpm setup:py; web/backend/.venv/bin/python web/backend/local_server.py",
+    "start": "pnpm dev",
+    "//-- build --": "Build the SvelteKit static site and the Lambda zip.",
+    "build": "pnpm build:web && pnpm build:api",
+    "build:web": "pnpm --filter disag-md-web build",
+    "build:api": "bash web/backend/build.sh",
+    "preview:web": "pnpm --filter disag-md-web preview",
+    "//-- check --": "Static checks across the repo.",
+    "check": "pnpm check:web && pnpm check:py && pnpm check:tf",
+    "check:web": "pnpm --filter disag-md-web check && pnpm --filter disag-md-web lint",
+    "check:py": "python3 -m unittest discover tests",
+    "check:tf": "cd web/infra && terraform fmt -check -recursive && terraform init -backend=false && terraform validate",
+    "format": "pnpm --filter disag-md-web format && cd web/infra && terraform fmt -recursive",
+
+    "//-- e2e --": "Playwright tests live in web/frontend/e2e/. Run `pnpm e2e:install` once to download browsers.",
+    "e2e": "pnpm --filter disag-md-web e2e",
+    "e2e:ui": "pnpm --filter disag-md-web e2e:ui",
+    "e2e:install": "pnpm --filter disag-md-web e2e:install",
+    "//-- infra --": "Terraform lifecycle. Run from anywhere in the repo.",
+    "tf:init": "cd web/infra && terraform init",
+    "tf:plan": "cd web/infra && terraform plan",
+    "tf:apply": "cd web/infra && terraform apply",
+    "tf:destroy": "cd web/infra && terraform destroy",
+    "//-- deploy --": "Full deploy: builds, applies infra, then syncs the static site to S3 + invalidates CloudFront.",
+    "deploy": "pnpm build && pnpm tf:apply && pnpm deploy:web",
+    "deploy:web": "cd web/infra && aws s3 sync ../frontend/build/ \"s3://$(terraform output -raw frontend_bucket)/\" --delete && aws cloudfront create-invalidation --distribution-id \"$(terraform output -raw cloudfront_distribution_id 2>/dev/null || aws cloudfront list-distributions --query 'DistributionList.Items[?Origins.Items[?contains(DomainName, `'\"$(terraform output -raw frontend_bucket)\"'`)]].Id | [0]' --output text)\" --paths '/*'"
+  },
+  "devDependencies": {
+    "concurrently": "9.2.1"
+  }
+}
