@@ -1,0 +1,13 @@
+project          = "disag-md"
+environment      = "dev"
+region           = "us-east-1"
+
+# Compute-bound disag runs benefit from more CPU; bump to 8192 or 10240
+# for large monthly files with Method 5 (PATCH_EXCEED).
+lambda_memory_mb       = 4096
+lambda_timeout_seconds = 300
+
+# Narrow this to your CloudFront URL after the first apply so the
+# upload bucket and API stop accepting cross-origin traffic from
+# anywhere.
+allowed_origin = "*"
