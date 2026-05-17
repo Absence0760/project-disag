@@ -1,0 +1,44 @@
+name: gitleaks
+
+# Secret-scan every push to main, every PR, and the full history once
+# a week. Catches accidentally-committed AWS keys, API tokens, etc.
+#
+# Complements other security controls:
+#   - CodeQL (security.yml) — source-level vulns, not secrets.
+#   - The repo is stdlib Python + a SvelteKit frontend + Terraform —
+#     no Dockerfile to scan with Trivy.
+#
+# What gitleaks adds: regex match across the entire working tree AND
+# git history, with built-in rules tuned for common token shapes
+# (AWS, GCP, Slack, GitHub, OpenAI, Stripe, etc.).
+#
+# False positives go in `.gitleaks.toml` at the repo root (not yet
+# created — add it on first false hit rather than pre-empt).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
