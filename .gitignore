@@ -17,6 +17,7 @@ dist/
 node_modules/
 web/backend/build/
 web/backend/lambda.zip
+web/backend/.local-s3/
 web/frontend/node_modules/
 web/frontend/build/
 web/frontend/.svelte-kit/
