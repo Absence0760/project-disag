@@ -1,0 +1,165 @@
+name: Deploy (release-gated)
+
+# Production deploys for the web app. Two jobs, both fired on
+# release:published filtered to:
+#   - tags starting with `web-v` (so Python-tool releases tagged
+#     `v*` don't accidentally redeploy the site — see release.yml)
+#   - non-prereleases
+#
+# Authentication: GitHub Actions OIDC → assume the IAM role created
+# in web/infra/oidc.tf. No long-lived access keys.
+#
+# Resource discovery: every named resource (function, bucket,
+# distribution, role) comes from a GitHub repo variable that the
+# `pnpm tf:export-vars` script populates after `pnpm tf:apply`.
+#
+# Backend deploys first so the static site never points at a stale
+# API contract.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to deploy (must start with web-v).'
+        required: true
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  guard:
+    name: Tag filter
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    steps:
+      - id: check
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          tag="$RELEASE_TAG"
+          if [[ -z "$tag" ]]; then
+            echo "No tag — refusing to deploy." >&2
+            echo "should_deploy=false" >>"$GITHUB_OUTPUT"; exit 0
+          fi
+          if [[ "$tag" != web-v* ]]; then
+            echo "Tag '$tag' isn't a web release (expected 'web-v*')." >&2
+            echo "should_deploy=false" >>"$GITHUB_OUTPUT"; exit 0
+          fi
+          if [[ "$PRERELEASE" == "true" ]]; then
+            echo "Prerelease '$tag' — skipping production deploy." >&2
+            echo "should_deploy=false" >>"$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "Deploying '$tag'."
+          echo "should_deploy=true" >>"$GITHUB_OUTPUT"
+
+  deploy-backend:
+    name: Deploy backend (Lambda)
+    needs: guard
+    if: needs.guard.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The `production` environment in repo Settings gates this job
+    # with required reviewers, branch restrictions, and the OIDC
+    # subject claim the role is scoped to. Without that
+    # configuration the deploy will succeed without review.
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Build Lambda zip
+        run: bash web/backend/build.sh
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: deploy-backend-${{ env.RELEASE_TAG }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Update Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
+            --zip-file fileb://web/backend/lambda.zip \
+            --publish \
+            --query '{Version: Version, LastModified: LastModified, CodeSize: CodeSize}' \
+            --output table
+          # update-function-code returns immediately; wait for the new
+          # code to be active before tagging the release as deployed.
+          aws lambda wait function-updated \
+            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}"
+
+      - name: Smoke-check the new version
+        run: |
+          aws lambda get-function-configuration \
+            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
+            --query '{Runtime: Runtime, Handler: Handler, Version: Version, State: State, LastUpdateStatus: LastUpdateStatus}' \
+            --output table
+
+  deploy-frontend:
+    name: Deploy frontend (S3 + CloudFront)
+    needs: [guard, deploy-backend]
+    if: needs.guard.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:web
+        env:
+          # Production frontend talks to the API through CloudFront's
+          # /api/* behaviour, so the API base is same-origin (empty).
+          # Override here only if a custom domain is in play.
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: deploy-frontend-${{ env.RELEASE_TAG }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync static site to S3
+        # `--delete` removes objects in the bucket that aren't in the
+        # build — keeps the bucket clean of old hashed assets. Cache
+        # headers are coarse here; tune per file type if needed.
+        run: |
+          aws s3 sync web/frontend/build/ "s3://${{ vars.FRONTEND_BUCKET }}/" \
+            --delete \
+            --cache-control "public, max-age=300, must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          inv=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths '/*' \
+            --query 'Invalidation.Id' --output text)
+          echo "Invalidation: $inv"
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --id "$inv"
