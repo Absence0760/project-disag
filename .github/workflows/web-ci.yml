@@ -66,6 +66,10 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
+      # The Playwright config's webServer runs `vite preview`, which
+      # serves web/frontend/build/. The build doesn't exist on a
+      # fresh checkout, so make it explicit.
+      - run: pnpm build:web
       - run: pnpm e2e
         env:
           # Quiet the warning about HOME being set to /github/home in the
@@ -99,6 +103,8 @@ jobs:
           python-version: '3.14'
       - run: pnpm install --frozen-lockfile
       - run: pnpm setup:py
+      # webServer runs `vite preview` → needs the build to exist.
+      - run: pnpm build:web
       - run: pnpm e2e:integration
         env:
           HOME: /root
