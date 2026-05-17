@@ -57,8 +57,12 @@ from exceed.files import (  # noqa: E402
     write_exceedance_report,
 )
 
-INPUTS_BUCKET = os.environ['INPUTS_BUCKET']
-OUTPUTS_BUCKET = os.environ['OUTPUTS_BUCKET']
+# Bucket names are not required at import time so the local dev shim
+# can boot without AWS config — the page loads and the user gets a
+# clear per-request error instead of a cryptic ImportError. Production
+# Lambda always has these set (see web/infra/lambda.tf).
+INPUTS_BUCKET = os.environ.get('INPUTS_BUCKET')
+OUTPUTS_BUCKET = os.environ.get('OUTPUTS_BUCKET')
 PRESIGN_TTL = int(os.environ.get('PRESIGN_TTL', '3600'))
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 
@@ -111,6 +115,15 @@ class _ClientError(Exception):
         self.status = status
 
 
+def _require_buckets() -> None:
+    if not INPUTS_BUCKET or not OUTPUTS_BUCKET:
+        raise _ClientError(
+            503,
+            'Backend not fully configured: set INPUTS_BUCKET and OUTPUTS_BUCKET '
+            'to S3 buckets you can read/write. See web/README.md.',
+        )
+
+
 def _body(event: dict[str, Any]) -> dict[str, Any]:
     raw = event.get('body') or '{}'
     if event.get('isBase64Encoded'):
@@ -139,6 +152,7 @@ def _respond(status: int, body: Any) -> dict[str, Any]:
 
 
 def _handle_upload(body: dict[str, Any]) -> dict[str, Any]:
+    _require_buckets()
     filename = body.get('filename')
     if not filename or not isinstance(filename, str):
         raise _ClientError(400, 'filename is required')
@@ -156,6 +170,7 @@ def _handle_upload(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_disag(body: dict[str, Any]) -> dict[str, Any]:
+    _require_buckets()
     method_id = body.get('method', 0)
     try:
         dm = DisagMethod(int(method_id))
@@ -216,6 +231,7 @@ def _handle_disag(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_exceed(body: dict[str, Any]) -> dict[str, Any]:
+    _require_buckets()
     monthly_key = body.get('monthly_key')
     daily_key = body.get('daily_key')
     intervals = int(body.get('intervals', 20))
@@ -270,6 +286,7 @@ def _result_to_dict(r: Any) -> dict[str, Any]:
 
 
 def _handle_list_runs() -> list[dict[str, Any]]:
+    _require_buckets()
     paginator = s3().get_paginator('list_objects_v2')
     runs: dict[str, dict[str, Any]] = {}
     for page in paginator.paginate(Bucket=OUTPUTS_BUCKET, Prefix='runs/'):
@@ -294,6 +311,7 @@ def _handle_list_runs() -> list[dict[str, Any]]:
 
 
 def _handle_get_run(run_id: str) -> dict[str, Any]:
+    _require_buckets()
     # Find under runs/<tool>/<run_id>/. List both tools to handle
     # either case without storing a manifest.
     for tool in ('disag', 'exceed'):
