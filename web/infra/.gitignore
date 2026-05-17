@@ -4,6 +4,12 @@
 *.tfstate.backup
 *.tfvars
 !*.tfvars.example
+# Plaintext secrets must never land in git; the encrypted file
+# (secrets.enc.yaml) is committed by design.
+secrets.yaml
+secrets.json
+!*.enc.yaml
+!*.enc.yaml.example
 crash.log
 crash.*.log
 override.tf

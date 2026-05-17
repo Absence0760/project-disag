@@ -1,0 +1,19 @@
+# sops creation rules. Pick the first rule whose path_regex matches.
+#
+# All web/infra/*.enc.yaml files are encrypted with the project KMS
+# key. The AWS profile used to encrypt/decrypt must already be
+# SSO-logged-in (aws sso login --profile <profile>); see web/README.md
+# for the full flow.
+#
+# To wire a new account / key:
+#   1. Create or import a KMS key. Recommended alias: `alias/disag-md-sops`.
+#   2. Note the full ARN (KMS keys are regional, so include the region).
+#   3. Update the `kms` value below.
+#   4. Re-encrypt existing files: `sops updatekeys web/infra/<file>.enc.yaml`.
+
+creation_rules:
+  - path_regex: web/infra/.*\.enc\.yaml$
+    # Replace with your KMS key ARN, e.g.
+    # arn:aws:kms:us-east-1:111122223333:alias/disag-md-sops
+    kms: arn:aws:kms:us-east-1:REPLACE_ME:alias/disag-md-sops
+    encrypted_regex: "^(data|stringData|password|secret|token|key|.*_key|.*_secret)$"
