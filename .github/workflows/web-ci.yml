@@ -1,0 +1,119 @@
+name: Web CI
+
+# Lint + typecheck + build the SvelteKit frontend, and fmt + validate
+# the Terraform. Only runs when the web/ tree changes (the existing
+# `tests.yml` covers the Python packages).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend (SvelteKit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        # No `version:` here — the `packageManager` field in the root
+        # package.json is the source of truth; Corepack honours it.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:web
+      - run: pnpm build:web
+
+  e2e:
+    name: Frontend E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The Playwright base image ships browsers + system deps preinstalled
+    # so `playwright install` becomes a no-op and we don't pay for OS
+    # package downloads on every run. Pin to the same version as the
+    # @playwright/test devDep — drift causes hard-to-diagnose failures.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm e2e
+        env:
+          # Quiet the warning about HOME being set to /github/home in the
+          # container — Playwright writes browser caches to ~/.cache.
+          HOME: /root
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/frontend/playwright-report/
+          retention-days: 7
+
+  backend:
+    name: Backend (Lambda zip build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      # Smoke check: the handler module imports correctly when the
+      # disag/exceed packages are on sys.path. boto3 isn't installed in
+      # CI, so stub it so the import line doesn't fail.
+      - name: Stub boto3 + import handler
+        env:
+          INPUTS_BUCKET: ci-stub
+          OUTPUTS_BUCKET: ci-stub
+        run: |
+          mkdir -p .stubs
+          cat > .stubs/boto3.py <<'PY'
+          def client(*_a, **_k):
+              raise RuntimeError('boto3 stub — runtime only')
+          PY
+          PYTHONPATH=".:.stubs" python3 -c "import web.backend.handler"
+      - name: Build Lambda zip
+        run: bash web/backend/build.sh
+      - uses: actions/upload-artifact@v5
+        with:
+          name: lambda-zip
+          path: web/backend/lambda.zip
+          retention-days: 7
+
+  terraform:
+    name: Terraform (fmt + validate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web/infra
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.15.3'
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
