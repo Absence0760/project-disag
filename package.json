@@ -35,14 +35,22 @@
     "e2e:install": "pnpm --filter disag-md-web e2e:install",
     "e2e:integration": "pnpm --filter disag-md-web e2e:integration",
     "e2e:all": "pnpm --filter disag-md-web e2e:all",
-    "//-- infra --": "Terraform lifecycle. Run from anywhere in the repo.",
+    "//-- infra --": "Terraform lifecycle. Local apply uses AWS SSO — run `pnpm tf:login` first.",
+    "tf:login": "echo 'Run: aws sso login --profile $AWS_PROFILE' && [ -n \"$AWS_PROFILE\" ] && aws sso login --profile \"$AWS_PROFILE\" || echo 'Set AWS_PROFILE to your SSO profile and re-run.'",
     "tf:init": "cd web/infra && terraform init",
     "tf:plan": "cd web/infra && terraform plan",
     "tf:apply": "cd web/infra && terraform apply",
     "tf:destroy": "cd web/infra && terraform destroy",
-    "//-- deploy --": "Full deploy: builds, applies infra, then syncs the static site to S3 + invalidates CloudFront.",
+    "tf:outputs": "cd web/infra && terraform output -json",
+    "tf:export-vars": "scripts/export-tf-vars.sh",
+
+    "//-- sops --": "Edit sensitive infra config encrypted under .sops.yaml. Decryption needs the SSO-active KMS principal — `pnpm tf:login` first.",
+    "sops:edit": "sops web/infra/secrets.enc.yaml",
+    "sops:rotate": "sops updatekeys web/infra/secrets.enc.yaml",
+
+    "//-- deploy --": "Local one-shot deploy. CI handles release-gated deploys via .github/workflows/deploy.yml.",
     "deploy": "pnpm build && pnpm tf:apply && pnpm deploy:web",
-    "deploy:web": "cd web/infra && aws s3 sync ../frontend/build/ \"s3://$(terraform output -raw frontend_bucket)/\" --delete && aws cloudfront create-invalidation --distribution-id \"$(terraform output -raw cloudfront_distribution_id 2>/dev/null || aws cloudfront list-distributions --query 'DistributionList.Items[?Origins.Items[?contains(DomainName, `'\"$(terraform output -raw frontend_bucket)\"'`)]].Id | [0]' --output text)\" --paths '/*'"
+    "deploy:web": "cd web/infra && aws s3 sync ../frontend/build/ \"s3://$(terraform output -raw frontend_bucket)/\" --delete && aws cloudfront create-invalidation --distribution-id \"$(terraform output -raw cloudfront_distribution_id)\" --paths '/*'"
   },
   "devDependencies": {
     "concurrently": "9.2.1"

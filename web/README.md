@@ -36,8 +36,13 @@ web/
 | `pnpm e2e:ui` | Playwright interactive runner. |
 | `pnpm e2e:install` | One-time browser install (chromium + firefox). |
 | `pnpm format` | Prettier on `web/frontend`, `terraform fmt` on `web/infra`. |
+| `pnpm tf:login` | `aws sso login --profile $AWS_PROFILE` — refresh SSO creds before infra work. |
 | `pnpm tf:init` / `tf:plan` / `tf:apply` / `tf:destroy` | Terraform lifecycle. |
-| `pnpm deploy` | Build everything → `terraform apply` → sync site → CloudFront invalidate. |
+| `pnpm tf:outputs` | Dump terraform outputs as JSON (function name, buckets, role ARN, etc.). |
+| `pnpm tf:export-vars` | Push Terraform outputs into GitHub repo variables so `deploy.yml` can read them. |
+| `pnpm sops:edit` | `sops web/infra/secrets.enc.yaml` — edit in `$EDITOR`, re-encrypt on save. |
+| `pnpm sops:rotate` | Re-encrypt with the keys in `.sops.yaml` after a key rotation. |
+| `pnpm deploy` | Local one-shot deploy: build → `terraform apply` → sync site → invalidate. |
 | `pnpm deploy:web` | Just resync the static site + invalidate (no backend redeploy). |
 
 The Python packages (`disag/`, `exceed/`) are not duplicated — the
@@ -84,42 +89,128 @@ You need real S3 buckets (or LocalStack) for pre-signed URLs to work
 end-to-end; the rest of the routes work against any S3-compatible
 endpoint your AWS profile resolves to.
 
-## Deploying
+## Provisioning infrastructure (local, with AWS SSO)
+
+Terraform talks to AWS through the standard credential chain — no
+profile is baked into the provider — so any SSO-authenticated
+profile works.
 
 ### One-time bootstrap
 
 ```bash
-cp web/infra/terraform.tfvars.example web/infra/terraform.tfvars   # edit values
-# Optional: set up a remote backend before the first apply.
-# See the commented-out `backend "s3"` block in versions.tf and a
-# bootstrap module (not included) for the state bucket itself.
+# 1. Configure an SSO profile if you don't already have one.
+aws configure sso --profile disag-md           # answer the prompts
+
+# 2. Edit .sops.yaml so the `kms:` ARN matches the KMS key in your
+#    account (alias/disag-md-sops is suggested). You'll need at
+#    minimum kms:Encrypt + kms:Decrypt on that key from the SSO
+#    role you'll be using. Create the key with:
+aws kms create-alias \
+  --alias-name alias/disag-md-sops \
+  --target-key-id "$(aws kms create-key --description 'sops for disag-md' \
+                       --query 'KeyMetadata.KeyId' --output text)"
+
+# 3. Drop your project-level overrides into tfvars.
+cp web/infra/terraform.tfvars.example web/infra/terraform.tfvars
+
+# 4. (Optional) wire a remote state backend now — see the commented
+#    `backend "s3"` block in web/infra/versions.tf. For solo work
+#    local state is fine to start.
+
+# 5. Log in + apply.
+export AWS_PROFILE=disag-md
+pnpm tf:login                   # aws sso login
 pnpm tf:init
 pnpm tf:apply
 ```
 
-The first apply will:
+The first apply creates: three S3 buckets (inputs / outputs / frontend),
+the Lambda function, API Gateway, CloudFront, plus the OIDC
+provider + deploy role that GitHub Actions will assume on releases.
 
-1. Create the three S3 buckets (inputs, outputs, frontend).
-2. Build the Lambda zip via `backend/build.sh` (the `null_resource`
-   in `lambda.tf` triggers this automatically on every source change).
-3. Wire up API Gateway and CloudFront.
+### Editing sensitive infra config
 
-### Push a new frontend build
+Nothing in `variables.tf` today needs encrypting — every value is
+public. When that changes (custom-domain ACM ARN, private origin,
+third-party API key, etc.), put it in `web/infra/secrets.enc.yaml`:
 
 ```bash
-pnpm deploy:web                # build → sync to S3 → invalidate CloudFront
+# First time:
+cp web/infra/secrets.enc.yaml.example web/infra/secrets.enc.yaml
+sops -e -i web/infra/secrets.enc.yaml
+
+# Edit any time:
+pnpm sops:edit                  # sops handles decrypt → $EDITOR → re-encrypt
 ```
 
-### Push a new backend build
+Then uncomment the `data "sops_file"` block sketched in
+`versions.tf` and reference values as
+`data.sops_file.secrets.data["key_name"]`. The file is decrypted on
+each `terraform plan`/`apply` using the active AWS profile's KMS
+access — `pnpm tf:login` first if creds are stale.
+
+### Hand off to CI
+
+After the first apply, push the resource names + role ARN into
+GitHub repo variables so the release workflow can use them:
 
 ```bash
-pnpm tf:apply                  # rehashes the zip and replaces the function code
+pnpm tf:export-vars             # sets AWS_DEPLOY_ROLE_ARN, AWS_REGION,
+                                # LAMBDA_FUNCTION_NAME, FRONTEND_BUCKET,
+                                # CLOUDFRONT_DISTRIBUTION_ID via gh CLI
 ```
 
-### Full deploy
+Verify with `gh variable list`. Re-run after any apply that renames
+resources (e.g. the `random_id` suffix changes).
+
+You should also create a GitHub `production` environment in repo
+Settings → Environments and add required reviewers — that's what
+gates the OIDC trust policy. Without it, the role can be assumed by
+any job in the repo that requests the `production` environment.
+
+## Releasing
+
+The web app is deployed by tagging a release. The Python tool's
+release flow uses `v*` tags (see `release.yml`); the web app uses
+the `web-v*` prefix so they don't collide.
 
 ```bash
-pnpm deploy                    # build everything, terraform apply, sync frontend
+# Tag and publish a release.
+gh release create web-v0.2.0 \
+  --title "web v0.2.0" \
+  --generate-notes
+```
+
+`.github/workflows/deploy.yml` fires on `release: published`,
+checks the tag matches `web-v*` and is not a pre-release, then runs
+two jobs both targeting the `production` environment:
+
+1. **deploy-backend** — rebuilds the Lambda zip from the tagged ref
+   and runs `aws lambda update-function-code` followed by
+   `wait function-updated`.
+2. **deploy-frontend** — `pnpm build:web`, `aws s3 sync`,
+   `aws cloudfront create-invalidation`, then waits for the
+   invalidation to complete.
+
+Backend deploys first so the static site never points at a stale
+API contract. Both jobs use OIDC (`id-token: write`) to assume
+the deploy role created in `oidc.tf`. No long-lived access keys
+exist in the repo.
+
+To deploy out-of-band (no release) or replay a specific tag:
+
+```bash
+gh workflow run deploy.yml -f tag=web-v0.2.0
+```
+
+### Manual / break-glass deploy
+
+If GitHub Actions is down, the same actions can run locally:
+
+```bash
+export AWS_PROFILE=disag-md
+pnpm tf:login
+pnpm deploy                     # build → tf:apply → deploy:web
 ```
 
 ## What's wired
@@ -154,7 +245,8 @@ Workflows added at the repo root in `.github/workflows/`:
 | `gitleaks.yml` | push / PR / Mondays | Secret scan, full history weekly. |
 | `scorecard.yml` | push / Mondays | OpenSSF Scorecard → Security tab + scorecard.dev. |
 | `dependabot-auto-merge.yml` | dependabot PRs | Auto-merge minor + patch updates. |
-| `web-ci.yml` | push / PR touching `web/**` | Frontend lint/check/build, backend zip smoke build, terraform fmt+validate. |
+| `web-ci.yml` | push / PR touching `web/**` | Frontend lint/check/build, backend zip smoke build, terraform fmt+validate, mocked + integration Playwright. |
+| `deploy.yml` | release `web-v*` published, or `workflow_dispatch` | Backend → Lambda update; frontend → S3 sync + CloudFront invalidate. OIDC, no static creds. |
 
 `.github/dependabot.yml` covers npm (`web/frontend`), terraform
 (`web/infra`), and github-actions. The Python packages are
