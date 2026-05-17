@@ -1,0 +1,5 @@
+# Local dev only. boto3 is provided by the Lambda runtime in production
+# (see web/infra/lambda.tf — no requirements.txt is shipped in the zip).
+# This file exists so `pnpm setup:py` can populate web/backend/.venv for
+# the local Lambda shim.
+boto3>=1.40,<2.0
