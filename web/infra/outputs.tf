@@ -24,3 +24,16 @@ output "frontend_bucket" {
 output "lambda_function_name" {
   value = aws_lambda_function.api.function_name
 }
+
+output "cloudfront_distribution_id" {
+  value = aws_cloudfront_distribution.site.id
+}
+
+output "github_deploy_role_arn" {
+  description = <<EOT
+ARN of the role GitHub Actions assumes on release-published events.
+Push this into a GitHub repo variable (e.g. via `pnpm tf:export-vars`)
+so .github/workflows/deploy.yml can pick it up.
+EOT
+  value       = aws_iam_role.github_deploy.arn
+}

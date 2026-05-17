@@ -53,3 +53,24 @@ variable "frontend_build_dir" {
   description = "Path to SvelteKit's static build output (relative to this dir)."
   default     = "../frontend/build"
 }
+
+variable "github_repository" {
+  type        = string
+  description = <<EOT
+GitHub repo in `owner/name` form. Used to scope the OIDC trust policy
+so only this repo's release-published workflows can assume the deploy
+role. Override via terraform.tfvars when forking.
+EOT
+  default     = "jaredhoward/project-disag"
+}
+
+variable "github_deploy_environment" {
+  type        = string
+  description = <<EOT
+GitHub Actions environment name allowed to assume the deploy role.
+Restricting on `environment:<name>` (rather than the ref) means the
+GitHub-side environment protection rules — required reviewers,
+branch restrictions — gate the AWS credentials.
+EOT
+  default     = "production"
+}

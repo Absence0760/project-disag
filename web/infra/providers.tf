@@ -1,6 +1,11 @@
 provider "aws" {
   region = var.region
 
+  # No explicit profile — falls through to the standard AWS credential
+  # chain. Locally, run `aws sso login --profile <prof>` then export
+  # AWS_PROFILE before `terraform apply`. In CI, OIDC drops short-lived
+  # creds via aws-actions/configure-aws-credentials.
+
   default_tags {
     tags = {
       project     = var.project
