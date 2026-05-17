@@ -1,0 +1,75 @@
+version: 2
+
+# Ecosystems present in this repo:
+#   pip            — disag/ + exceed/ + tests/ are stdlib-only by
+#                    policy (see project-root CLAUDE.md), so no
+#                    requirements.txt. web/backend uses boto3 from
+#                    the Lambda runtime — no requirements file either.
+#                    No pip ecosystem entry needed today; add one if a
+#                    requirements.txt ever lands.
+#   npm            — web/frontend SvelteKit app.
+#   terraform      — web/infra AWS provider + modules.
+#   github-actions — the workflows under .github/workflows/.
+
+updates:
+  - package-ecosystem: npm
+    directory: /web/frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - npm
+    groups:
+      # Bundle the SvelteKit ecosystem so a Vite minor doesn't churn
+      # the review queue on its own.
+      sveltekit-ecosystem:
+        patterns:
+          - '@sveltejs/*'
+          - 'svelte'
+          - 'svelte-*'
+          - 'vite'
+      formatters:
+        patterns:
+          - 'prettier'
+          - 'prettier-*'
+      minor-and-patch:
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: terraform
+    directory: /web/infra
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - terraform
+    groups:
+      aws-provider:
+        patterns:
+          - 'hashicorp/aws'
+          - 'hashicorp/random'
+      minor-and-patch:
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
