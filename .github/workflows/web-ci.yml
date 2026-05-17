@@ -71,6 +71,37 @@ jobs:
           path: web/frontend/playwright-report/
           retention-days: 7
 
+  e2e-integration:
+    name: Frontend E2E integration (real backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Same Playwright base image as the mocked job, plus python3 and
+    # venv so local_server.py can boot the on-disk S3 stub and run real
+    # disag/exceed code against the committed examples/ fixtures.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm setup:py
+      - run: pnpm e2e:integration
+        env:
+          HOME: /root
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: playwright-integration-report
+          path: web/frontend/playwright-report/
+          retention-days: 7
+
   backend:
     name: Backend (Lambda zip build)
     runs-on: ubuntu-latest

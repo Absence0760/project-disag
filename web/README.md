@@ -30,7 +30,9 @@ web/
 | `pnpm build` | SvelteKit static build **and** Lambda zip. |
 | `pnpm preview:web` | Serve the production frontend build locally. |
 | `pnpm check` | Python tests + SvelteKit `check`/`lint` + Terraform `fmt`/`validate`. |
-| `pnpm e2e` | Playwright E2E tests (`web/frontend/e2e/`) against the production build. |
+| `pnpm e2e` | Playwright E2E (mocked backend) — fast, no Python needed. |
+| `pnpm e2e:integration` | Playwright E2E that boots `local_server.py` with `LOCAL_S3=1` and runs real disag/exceed code against `examples/methodN_demo/data/`. |
+| `pnpm e2e:all` | Mocked + integration in sequence. |
 | `pnpm e2e:ui` | Playwright interactive runner. |
 | `pnpm e2e:install` | One-time browser install (chromium + firefox). |
 | `pnpm format` | Prettier on `web/frontend`, `terraform fmt` on `web/infra`. |

@@ -1,0 +1,45 @@
+import { expect, test } from '@playwright/test';
+import { fetchText, runExceed, uploadFixture } from './_fixtures';
+
+test.describe('@integration exceed', () => {
+	test('monthly-only run produces a 12-month exceedance report', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'exceed_demo', 'target.MON');
+
+		const result = await runExceed(request, { monthly_key: monthlyKey, intervals: 20 });
+
+		const report = await fetchText(request, result.report_url);
+		// exceed.files.write_exceedance_report emits a section per
+		// calendar month; assert a handful are present rather than
+		// pinning exact byte counts.
+		// write_exceedance_report uppercases section headings:
+		// "MONTHLY - JANUARY", "MONTHLY - JUNE", etc.
+		for (const month of ['JANUARY', 'JUNE', 'DECEMBER']) {
+			expect(report, `report mentions ${month}`).toContain(`MONTHLY - ${month}`);
+		}
+	});
+
+	test('daily + monthly run produces monthly AND daily sections', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'exceed_demo', 'target.MON');
+		const dailyKey = await uploadFixture(request, 'exceed_demo', 'gauge.DAY');
+
+		const result = await runExceed(request, {
+			monthly_key: monthlyKey,
+			daily_key: dailyKey,
+			intervals: 20
+		});
+
+		const report = await fetchText(request, result.report_url);
+		// The CLI prefixes daily-derived blocks with "daily_<month>" — see
+		// exceed/__main__.py. The report writer turns those into
+		// "DAILY - <MONTH>" sections beneath the MONTHLY ones.
+		expect(report).toContain('DAILY - JANUARY');
+		expect(report).toContain('MONTHLY - JANUARY');
+	});
+
+	test('rejects an empty payload with 400', async ({ request }) => {
+		const res = await request.post('http://127.0.0.1:8765/exceed', { data: { intervals: 20 } });
+		expect(res.status()).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatch(/monthly_key or daily_key/);
+	});
+});

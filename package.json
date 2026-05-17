@@ -29,10 +29,12 @@
     "check:tf": "cd web/infra && terraform fmt -check -recursive && terraform init -backend=false && terraform validate",
     "format": "pnpm --filter disag-md-web format && cd web/infra && terraform fmt -recursive",
 
-    "//-- e2e --": "Playwright tests live in web/frontend/e2e/. Run `pnpm e2e:install` once to download browsers.",
+    "//-- e2e --": "Playwright tests live in web/frontend/e2e/. Mocked specs run with `pnpm e2e` (no backend needed). Integration specs in e2e/integration/ run against a real local backend with `pnpm e2e:integration` — requires `pnpm setup` so the Python venv exists.",
     "e2e": "pnpm --filter disag-md-web e2e",
     "e2e:ui": "pnpm --filter disag-md-web e2e:ui",
     "e2e:install": "pnpm --filter disag-md-web e2e:install",
+    "e2e:integration": "pnpm --filter disag-md-web e2e:integration",
+    "e2e:all": "pnpm --filter disag-md-web e2e:all",
     "//-- infra --": "Terraform lifecycle. Run from anywhere in the repo.",
     "tf:init": "cd web/infra && terraform init",
     "tf:plan": "cd web/infra && terraform plan",

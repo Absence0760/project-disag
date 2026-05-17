@@ -14,7 +14,9 @@
 		"format": "prettier --write .",
 		"e2e": "playwright test",
 		"e2e:ui": "playwright test --ui",
-		"e2e:install": "playwright install --with-deps"
+		"e2e:install": "playwright install --with-deps",
+		"e2e:integration": "PLAYWRIGHT_PROJECT=integration playwright test",
+		"e2e:all": "playwright test && PLAYWRIGHT_PROJECT=integration playwright test"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.60.0",
