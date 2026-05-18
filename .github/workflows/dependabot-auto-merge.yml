@@ -26,6 +26,16 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Note: PRs that modify files under .github/workflows/ cannot be
+      # merged with the default GITHUB_TOKEN. The merge API rejects
+      # them with "refusing to allow a GitHub App to create or update
+      # workflow ... without `workflows` permission" — and this scope
+      # is NOT something you can grant via `permissions:`. The only
+      # routes are (a) a fine-grained PAT with the Workflows scope
+      # passed via `gh auth login --with-token`, or (b) a GitHub App
+      # installation. For now those PRs require a one-line manual
+      # merge. The action-group dependabot config (#workflows ecosystem)
+      # is the main source of these.
     steps:
       - name: Read dependabot metadata
         id: meta
@@ -38,6 +48,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          # Approve unconditionally — required by branch-protection's
+          # "Require pull request reviews" if it's ever turned on, and
+          # harmless if it isn't.
           gh pr review --approve "$PR_URL"
+
+          # PRs that modify workflow files (.github/workflows/**) can't
+          # be merged with the default GITHUB_TOKEN — see the comment
+          # block at the top of this file. Detect and skip with a
+          # human-readable note so the run shows green; the maintainer
+          # then merges manually.
+          TOUCHED_WORKFLOW=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '[.[] | select(.filename | startswith(".github/workflows/"))] | length')
+          if [ "$TOUCHED_WORKFLOW" -gt 0 ]; then
+            echo "::notice::PR touches $TOUCHED_WORKFLOW workflow file(s) — auto-merge skipped (GITHUB_TOKEN lacks the workflows scope). Merge manually."
+            exit 0
+          fi
+
           gh pr merge --auto --squash "$PR_URL"
