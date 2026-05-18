@@ -8,6 +8,11 @@ testfiles/
 test_output*
 .DS_Store
 
+# Defensive: never let a stray key or pem file get added
+*.pem
+*.key
+.aws/
+
 # PyInstaller build artifacts
 build/
 dist/
