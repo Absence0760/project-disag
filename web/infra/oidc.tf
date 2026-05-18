@@ -1,64 +1,26 @@
-# GitHub Actions → AWS via OIDC. No long-lived access keys; the
-# deploy workflow exchanges a short-lived OIDC token for the role
-# below using aws-actions/configure-aws-credentials.
+# GitHub Actions → AWS via OIDC.
 #
-# Trust policy is scoped to:
-#   - this GitHub repo (var.github_repository)
-#   - the GitHub Actions environment `production` — environment
-#     protection rules (required reviewers, branch restrictions) are
-#     what actually gate the credentials. A push to a long-running
-#     fork branch can't assume the role without going through the
-#     environment.
+# The OIDC provider and the deploy role are created by the cross-project
+# bootstrap (~/repos/templates/scripts/new-project-account.sh) in the
+# project's AWS account. The role's trust policy is already scoped to
+#   repo:<github_repo>:environment:<github_environment>
+# at bootstrap time (values come from the per-project tfvars on the
+# templates side, not from this repo's variables).
 #
-# Permissions policy is least-priv:
+# This file only adds the *permissions* the deploy workflow needs:
 #   - lambda:UpdateFunctionCode + GetFunction on the API function ARN
 #   - s3:PutObject/DeleteObject/ListBucket on the frontend bucket only
 #   - cloudfront:CreateInvalidation/GetDistribution on the site
 #     distribution ARN only
+#
+# Security note: the OIDC trust policy alone is necessary but not
+# sufficient. Configure required reviewers on the GitHub Actions
+# environment (Settings → Environments → production) — otherwise any
+# maintainer who pushes a workflow that requests `environment: production`
+# can assume the role.
 
-# Pull GitHub's current cert chain at plan time and derive the
-# thumbprint from it, so a GitHub-side cert rotation doesn't silently
-# break OIDC. AWS validates against its CA bundle in 2026 (so the
-# thumbprint is largely vestigial), but it's still a required input
-# and the dynamic source keeps it correct without manual touch.
-data "tls_certificate" "github" {
-  url = "https://token.actions.githubusercontent.com"
-}
-
-resource "aws_iam_openid_connect_provider" "github" {
-  url            = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
-  thumbprint_list = [
-    for cert in data.tls_certificate.github.certificates : cert.sha1_fingerprint
-  ]
-}
-
-data "aws_iam_policy_document" "github_assume" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        "repo:${var.github_repository}:environment:${var.github_deploy_environment}",
-      ]
-    }
-  }
-}
-
-resource "aws_iam_role" "github_deploy" {
-  name               = "${local.name_prefix}-github-deploy"
-  assume_role_policy = data.aws_iam_policy_document.github_assume.json
-  description        = "Assumed by GitHub Actions on release-published events to deploy the web app."
+data "aws_iam_role" "github_deploy" {
+  name = "${var.project}-deploy"
 }
 
 data "aws_iam_policy_document" "github_deploy" {
@@ -105,6 +67,6 @@ resource "aws_iam_policy" "github_deploy" {
 }
 
 resource "aws_iam_role_policy_attachment" "github_deploy" {
-  role       = aws_iam_role.github_deploy.name
+  role       = data.aws_iam_role.github_deploy.name
   policy_arn = aws_iam_policy.github_deploy.arn
 }

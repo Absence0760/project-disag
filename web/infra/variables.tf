@@ -93,23 +93,8 @@ variable "frontend_build_dir" {
   default     = "../frontend/build"
 }
 
-variable "github_repository" {
-  type        = string
-  description = <<EOT
-GitHub repo in `owner/name` form. Used to scope the OIDC trust policy
-so only this repo's release-published workflows can assume the deploy
-role. Override via terraform.tfvars when forking.
-EOT
-  default     = "Absence0760/project-disag"
-}
-
-variable "github_deploy_environment" {
-  type        = string
-  description = <<EOT
-GitHub Actions environment name allowed to assume the deploy role.
-Restricting on `environment:<name>` (rather than the ref) means the
-GitHub-side environment protection rules — required reviewers,
-branch restrictions — gate the AWS credentials.
-EOT
-  default     = "production"
-}
+# Note: github_repository and github_deploy_environment used to live here.
+# They're now set at bootstrap time (~/repos/templates/infra/bootstrap/projects/disag.tfvars)
+# and baked into the deploy role's trust policy by the cross-project
+# bootstrap. This repo only needs to look the role up by name and
+# attach permissions to it.

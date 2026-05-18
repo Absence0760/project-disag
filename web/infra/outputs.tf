@@ -35,5 +35,5 @@ ARN of the role GitHub Actions assumes on release-published events.
 Push this into a GitHub repo variable (e.g. via `pnpm tf:export-vars`)
 so .github/workflows/deploy.yml can pick it up.
 EOT
-  value       = aws_iam_role.github_deploy.arn
+  value       = data.aws_iam_role.github_deploy.arn
 }
