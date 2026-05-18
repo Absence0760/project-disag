@@ -259,5 +259,80 @@ class HighSyntheticWarningTests(unittest.TestCase):
                         os.unlink(p)
 
 
+class CliErrorPathTests(unittest.TestCase):
+    """The user-visible exit codes and stderr for common bad inputs."""
+
+    def test_missing_monthly_file_reports_error(self):
+        out = _tmp('.day')
+        rep = _tmp('.rep')
+        try:
+            res = subprocess.run(
+                [sys.executable, '-m', 'disag', '--no-gui',
+                 '--method', '0',
+                 '--monthly', '/nonexistent/path/missing.MON',
+                 '--daily1', _demo('method0_demo', 'data', 'gauge_complete.DAY'),
+                 '--output', out, '--report', rep],
+                capture_output=True, text=True, cwd=ROOT,
+            )
+            self.assertNotEqual(res.returncode, 0)
+            # The error message should reference the path or "not found".
+            combined = (res.stderr + res.stdout).lower()
+            self.assertTrue(
+                'missing.mon' in combined or 'no such file' in combined
+                or 'not found' in combined or 'error' in combined,
+                f'expected file-not-found error, got: {res.stderr!r}',
+            )
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_negative_method_rejected(self):
+        res = subprocess.run(
+            [sys.executable, '-m', 'disag', '--no-gui', '--method', '-1'],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        self.assertNotEqual(res.returncode, 0)
+
+    def test_non_numeric_method_rejected(self):
+        res = subprocess.run(
+            [sys.executable, '-m', 'disag', '--no-gui', '--method', 'one'],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        self.assertNotEqual(res.returncode, 0)
+
+
+class ExceedCliErrorPathTests(unittest.TestCase):
+    """Mirror coverage for the exceed CLI's error paths."""
+
+    def test_neither_monthly_nor_daily_rejected(self):
+        out = _tmp('.rep')
+        try:
+            res = subprocess.run(
+                [sys.executable, '-m', 'exceed', '--no-gui',
+                 '--output', out, '--intervals', '10'],
+                capture_output=True, text=True, cwd=ROOT,
+            )
+            self.assertNotEqual(res.returncode, 0)
+            combined = (res.stderr + res.stdout).lower()
+            self.assertTrue(
+                'monthly' in combined or 'daily' in combined
+                or 'required' in combined or 'error' in combined,
+                f'expected at-least-one-input error, got: {res.stderr!r}',
+            )
+        finally:
+            if os.path.exists(out):
+                os.unlink(out)
+
+    def test_help_exits_zero(self):
+        res = subprocess.run(
+            [sys.executable, '-m', 'exceed', '--help'],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        self.assertEqual(res.returncode, 0)
+        self.assertIn('--monthly', res.stdout)
+        self.assertIn('--daily', res.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

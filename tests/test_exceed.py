@@ -150,6 +150,72 @@ class ExceedReadMonthlyTests(unittest.TestCase):
             self.assertEqual(len(month_values), 3)
 
 
+class MatchExceedanceDirectionTests(unittest.TestCase):
+    """Each match entry exposes both the monthly and daily flow at the
+    matched exceedance percentage, plus the percentage diff between them."""
+
+    def test_match_entries_carry_both_flows(self):
+        # Monthly distribution shifted much higher than daily — the
+        # paired flows should reflect that even when their percentile
+        # ranks agree.
+        monthly = calculate_monthly_exceedance(
+            [100, 200, 300, 400, 500], num_intervals=5,
+        )
+        daily = calculate_monthly_exceedance(
+            [1, 2, 3, 4, 5], num_intervals=5,
+        )
+        matches = match_exceedance_values(monthly, daily, tolerance_pct=100.0)
+        self.assertGreater(len(matches), 0)
+        for m in matches:
+            self.assertIn('flow_monthly', m)
+            self.assertIn('flow_daily', m)
+            self.assertIn('exceed_monthly', m)
+            self.assertIn('exceed_daily', m)
+            self.assertIn('diff', m)
+            # The diff is exceedance % difference (non-negative)
+            self.assertGreaterEqual(m['diff'], 0.0)
+            self.assertLessEqual(m['diff'], 100.0)
+            # Monthly distribution was 100x larger throughout — paired
+            # flows must reflect that.
+            self.assertGreaterEqual(m['flow_monthly'], m['flow_daily'])
+
+    def test_huge_tolerance_returns_pairing_for_every_monthly_entry(self):
+        monthly = calculate_monthly_exceedance([1, 2, 3, 4, 5], num_intervals=5)
+        daily = calculate_monthly_exceedance([10, 20, 30, 40, 50], num_intervals=5)
+        matches = match_exceedance_values(monthly, daily, tolerance_pct=200.0)
+        # With tolerance > any possible diff (max diff is 100 pp),
+        # every monthly entry pairs.
+        self.assertEqual(len(matches), len(monthly.exceedance_pct))
+
+
+class SeasonalEdgeCasesTests(unittest.TestCase):
+    """Edge cases for calculate_seasonal_exceedance not covered above."""
+
+    def test_season_with_no_data_skipped(self):
+        # Monthly data only for Jan + Feb; a "summer" season covering
+        # Jun-Aug has zero values → it should be skipped, not raise.
+        monthly = {1: [1.0, 2.0, 3.0], 2: [4.0, 5.0]}
+        seasons = {'JanFeb': [1, 2], 'Summer': [6, 7, 8]}
+        results = calculate_seasonal_exceedance(monthly, seasons, num_intervals=3)
+        self.assertIn('JanFeb', results)
+        self.assertNotIn('Summer', results)
+
+    def test_algorithm_does_not_filter_negatives_caller_must(self):
+        # Document the contract: calculate_seasonal_exceedance treats
+        # every value in monthly_data as valid. Missing-data filtering
+        # happens at the reader boundary (exceed.files.read_monthly_file
+        # drops values < 0 at parse time). A caller that bypasses the
+        # reader and hands in raw -99.99 sentinels will see them
+        # bucketed as real flow.
+        monthly = {1: [1.0, -99.99, 3.0]}
+        seasons = {'Jan': [1]}
+        results = calculate_seasonal_exceedance(monthly, seasons, num_intervals=3)
+        self.assertEqual(
+            results['Jan'].total_count, 3,
+            'algorithm intentionally does not filter; pre-filter at the reader',
+        )
+
+
 class ExceedCliSmokeTest(unittest.TestCase):
     """Run python -m exceed --no-gui and confirm it produces a report."""
 

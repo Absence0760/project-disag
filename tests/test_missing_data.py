@@ -367,5 +367,61 @@ class MonthlyValueEdgeCasesTests(unittest.TestCase):
         )
 
 
+class IncrementalEdgeCasesTests(unittest.TestCase):
+    """INCREMENTAL = file1 - file2. The disag formula clamps negative
+    differences to zero before summing, so an over-correction never
+    produces negative daily flow."""
+
+    def test_negative_difference_clamped_to_zero(self):
+        # file 2 is everywhere bigger than file 1 → every day's qD is
+        # negative, gets clamped to zero. With qM == 0 the output month
+        # falls back to even distribution (well-defined behaviour) and
+        # emits the "monthly flow <= 0" line.
+        gen = _hydro_year_monthly(2000, vol=10.0)
+        daily1 = _hydro_year_daily(2000, per_day=1.0)
+        daily2 = _hydro_year_daily(2000, per_day=5.0)
+        recs, log = disaggregate(
+            DisagMethod.INCREMENTAL, gen, [daily1, daily2], no_files=2,
+        )
+        # All months disaggregated (no missing), with even-distribution
+        # fallback applied per month due to qM=0.
+        self.assertEqual(len(recs), 12)
+        self.assertTrue(any('Observed monthly flow <= 0' in l for l in log))
+        # Output daily values are uniform per month (even-distribution fallback).
+        for r in recs:
+            self.assertFalse(_is_missing(r))
+            self.assertEqual(len(set(r.v)), 1)
+
+
+class PatchFileStartDateTests(unittest.TestCase):
+    """PATCH_FILE only consults file 2 once file 2's own data begins.
+    Before file 2 starts, the method silently falls back to file 1
+    (same behaviour as method 0)."""
+
+    def test_before_file2_starts_uses_file1_only(self):
+        # gen_monthly spans 2 hydro years; file 1 covers both; file 2
+        # only covers the second hydro year. Months in hydro year 1 must
+        # come from file 1 alone — even if file 1 has gaps there, file 2
+        # must not be consulted (it would falsely appear absent).
+        gen = _two_hydro_years_monthly(2000, vol=10.0)
+        daily1 = _two_hydro_years_daily(2000, per_day=1.0)
+        # File 2 covers hydro year 2001 only (Oct 2001..Sep 2002)
+        daily2 = _hydro_year_daily(2001, per_day=2.0)
+        # Drop day 15 of Nov 2000 in file 1 — before file 2 starts.
+        v = list(daily1[(2000, 11)].v)
+        v[14] = MISSING
+        daily1[(2000, 11)] = DailyRecord(year=2000, month=11, v=v)
+
+        recs, _ = disaggregate(
+            DisagMethod.PATCH_FILE, gen, [daily1, daily2], no_files=2,
+        )
+        # Nov 2000 cannot be patched (file 2 hasn't started) → missing.
+        self.assertTrue(_is_missing(_record(recs, 2000, 11)))
+        # Months in hydro year 2001 are file-1-driven; file 2 only
+        # patches where file 1 is missing. With file 1 complete there,
+        # they're all fine.
+        self.assertFalse(_is_missing(_record(recs, 2001, 10)))
+
+
 if __name__ == '__main__':
     unittest.main()
