@@ -1,136 +1,115 @@
 ---
-description: Verify spend safeguards across AWS, the <CMS>, <email-service>, and <payment-processor> — no single failure should produce a runaway bill
+description: Verify spend safeguards across AWS — Lambda, CloudFront, API Gateway, S3 — so no single failure produces a runaway bill
 ---
 
-Audit every layer that bounds runaway spend across the stack. The realistic cost-vector accidents for this project: a leaked <email-service> / <CMS> API token, an unauthenticated Lambda burst from a botnet, a CloudFront egress flood, a <CMS> dataset overrun, a <payment-processor>-volume spike (legit or otherwise). Each one should be capped by **at least one** independent ceiling — none should run unbounded for hours before someone notices.
+Audit every layer that bounds runaway spend on AWS. The realistic cost-vector accidents for this project: an unauthenticated burst against the Lambda from a botnet, a CloudFront egress flood, an S3 lifecycle policy that lets old runs accumulate forever, a Lambda log group with infinite retention quietly bleeding $0.50/GB/month.
 
 ## Goal
 
-The baseline cost at launch is **~R380/month** (per `docs/architecture.md` cost analysis — AWS + the <CMS> paid plan + domain). A finding is anything that lets the bill exceed that by an order of magnitude before any alarm fires. <payment-processor> is per-transaction (no monthly subscription), so it doesn't have a runaway-cost path the way a token-billed AI service does — but it still has a real cost per legitimate order, which means a botnet hammering `POST /orders` indirectly hits <payment-processor> volume too.
+The whole stack is small and the legitimate traffic is low. A finding is anything that lets the bill exceed normal baseline by an order of magnitude before any alarm fires.
 
 ## What to check
 
-### 1. Backend rate limiting
+### 1. WAF rate limit on CloudFront
 
-`backend/src/rate-limit.ts` is the in-memory per-IP fixed-window limiter applied to:
+`web/infra/waf.tf` should declare an `aws_wafv2_web_acl` attached via `cloudfront.tf`'s `web_acl_id`. The ACL's `RateLimitPerIP` rule is the cheap, first-line cap on a flood-source IP. Verify:
 
-| Route | Window | Max per IP | Wired in |
-|---|---|---|---|
-| `POST /orders` | 15 min | 5 | `backend/src/routes/orders.ts` |
-| `POST /enquiries` | 15 min | 5 | `backend/src/routes/enquiries.ts` |
-| `GET /orders/:ref` | 1 min | 20 | `backend/src/routes/order-lookup.ts` |
-| `POST /webhooks/<payment>-webhook` | 1 min | 60 | `backend/src/routes/<payment>-webhook.ts` |
-| `POST /webhooks/cms-order` | 1 min | 60 | `backend/src/routes/cms-webhook.ts` |
+- The rule exists and the limit is the value of `var.waf_rate_limit_per_ip` (AWS minimum 100, evaluated over a rolling 5-minute window).
+- The ACL is actually attached to the distribution (`cloudfront.tf` references `aws_wafv2_web_acl.site.arn`). A WAF that exists but isn't attached is the most common misconfig.
+- `default_action = allow` (the rule is the gate; without an attached managed rule set the WAF is otherwise permissive — that's deliberate at this scale).
 
-Verify:
-- The limiter is wired into every public-facing route (`GET /products`, `/gallery`, `/testimonials`, and `/health` are intentionally unlimited — they're cacheable / unprivileged reads).
-- The 5/15min limits for `POST /orders` and `POST /enquiries` match the documented value in `docs/security.md § Risk 2`.
-- The 20/min limit on `GET /orders/:ref` lets a customer legitimately repeat-poll the tracking page without hitting the limit but caps a scripted enumeration attempt.
-- The 60/min webhook limits are permissive enough that a legitimate <payment-processor> / <CMS> retry burst isn't rate-limited (<CMS>'s IPs are stable; <payment-processor>'s are well-known) but still bound a runaway loop.
-
-**Caveat**: the limiter is per-Lambda-instance (in-memory). API Gateway's throttling is the cross-instance cap — see check 2 below.
+WAF costs ~$6/month ($5 base + $1/rule); if the project ever decides that's too much, the rule is also documented as "comment out and delete this file" in the file's header. Surface as a Low / Note if a future audit sees the WAF removed without a documented decision.
 
 ### 2. API Gateway throttling
 
-`infra/api_gateway.tf` should declare `throttling_burst_limit` and `throttling_rate_limit` on the `$default` route. The per-Lambda-instance rate limiter doesn't catch a distributed attack across many fresh Lambda cold-starts; API Gateway is the global cap.
+`web/infra/apigw.tf` — verify the `$default` route has `throttling_burst_limit` and `throttling_rate_limit` set, or that the stage-level defaults are explicitly bounded. API Gateway is the cross-instance cap; the WAF in front handles per-IP, but API Gateway is what saves you if WAF is misconfigured.
 
 - Limits set: green.
-- Unbounded throttling on `$default`: flag as High (this is the single most important cost-runaway gate for this project given how low the legitimate traffic is).
+- Unbounded throttling on `$default`: flag as High.
 
-### 3. AWS account budget
+### 3. AWS Budget + CloudWatch alarms (`web/infra/alarms.tf`)
 
-`infra/budget.tf` should declare an `aws_budgets_budget`:
+The cost-defence file is `web/infra/alarms.tf` (single file carrying SNS topic + Budget + per-resource CloudWatch alarms). Verify:
 
-- **`monthly_budget_limit_usd`** is reasonable — single-digit dollars/month given current scale. Anything over $50 without justification is suspicious for this project's traffic.
-- **Three notifications minimum**: `ACTUAL > 50 %`, `ACTUAL > 100 %`, `FORECASTED > 100 %`. Forecasted is the only one that catches a runaway *during* the month — actual lags by up to 24 h. Missing forecasted → High.
-- **`budget_alert_emails` non-empty** in `terraform.tfvars` (encrypted). A budget with zero subscribers is a no-op.
+- **`aws_budgets_budget`** declared with a monthly limit in the single-digit-dollar range (current default ~$10 — confirm against `var.monthly_budget_limit_usd`).
+- **Three notifications minimum**: `ACTUAL > 50 %`, `ACTUAL > 100 %`, `FORECASTED > 100 %`. Forecasted is the only one that catches a runaway *during* the month — actual lags by up to 24h. Missing forecasted → High.
+- **`aws_sns_topic` + `aws_sns_topic_subscription`** wired to `var.budget_alert_email`. The subscription is `count = 0` when the var is empty (alarms still fire visibly but no one gets paged) — that's tolerable in dev, flag as Medium if it ships to prod without a real email.
+- **Per-resource CloudWatch alarms** (Lambda errors / throttles / duration, CloudFront 5xx rate, API Gateway 5xx rate) all publish to the same SNS topic. Missing any of these is Medium — they catch a problem before the budget alarm does.
 
 ### 4. CloudWatch log retention
 
-A static site with poor cache-hit ratio can be drained on egress; a chatty Lambda with infinite log retention bleeds money slowly. Check:
+Every `aws_cloudwatch_log_group` in `web/infra/*.tf` must have `retention_in_days` set to a finite value (≤ 90 is reasonable; default = `null` = forever = $0.50/GB/month forever). Check:
 
-- Every `aws_cloudwatch_log_group` in `infra/*.tf` has `retention_in_days` ≤ 90 (default = forever = $0.50/GB/month forever).
-- The Lambda log group specifically — `/aws/lambda/<function-name>` — has it set.
-- (Historical: the Phase-0 EventBridge `pii_cleanup` schedule was deleted at the Day 8 cutover. PII retention is now handled by DynamoDB per-item TTL in `infra/dynamodb.tf`, which has no log group of its own. If you see this comment still mentioning a `pii_cleanup` schedule, that's the stale reference to flag.)
+- `/aws/lambda/<function-name>` (declared in `lambda.tf`).
+- API Gateway access log group (declared in `apigw.tf`).
+- Any WAF logging destination (if `aws_wafv2_web_acl_logging_configuration` is wired in `waf.tf`).
+
+Missing retention on any of these → High.
 
 ### 5. CloudFront cost guardrails
 
-- `price_class = "PriceClass_100"` or `_200` (not `_All`). PriceClass_All bills from every edge location regardless of where users actually live, and the site's audience is South African.
-- S3 lifecycle expiring non-current versions on the site bucket — missing = unbounded version growth at $0.023/GB/month forever.
-- No WAF needed at current scale (over-engineering for the traffic level) — but if one's been added, confirm it's attached and the scope-down filter doesn't accidentally rate-limit legitimate users.
+- `price_class = "PriceClass_100"` or `_200` (not `_All`). PriceClass_All bills from every edge location regardless of where users actually live. Flag a bump to `_All` without a documented reason.
+- `viewer_protocol_policy = "redirect-to-https"` — HTTP traffic still costs egress; redirecting funnels it to the encrypted path which is what the cache key expects.
+- S3 lifecycle on the `frontend` bucket expiring non-current versions — if versioning is enabled and lifecycle isn't, version count grows forever at $0.023/GB/month.
 
-### 6. <email-service> quota
+### 6. Lambda compute ceiling
 
-<email-service>'s free tier is 100 emails/day, 3,000/month. Customer-facing emails fire on:
+`web/infra/lambda.tf`:
 
-- Order creation → owner notification + customer pending-payment (2 emails/order).
-- ITN payment confirmation → customer "payment received" (1/order).
-- Status change in <CMS> Studio → customer status email (1/transition; typically 2-3 transitions per order).
+- `memory_size` ≤ 10240 (Lambda hard cap); default 4096 per `variables.tf`. The handler is sized this way because Method 5 (`PATCH_EXCEED`) on a large monthly file gets CPU-bound; flag a memory increase above the var without a documented reason.
+- `timeout` ≤ 900 (Lambda hard cap); default 300 per `variables.tf`. Past 5 min, `web/README.md` suggests switching to Fargate.
+- `reserved_concurrent_executions` — if unset, the function shares the account-wide concurrency pool (1000 by default). A runaway loop on a 4 GB × 5 min function can clear $1k/day at full concurrency. Setting `reserved_concurrent_executions` to a low number (e.g. 20) bounds the worst case. Flag as Medium if unset on prod.
 
-At ~50 orders/month, that's ~250 emails/month — comfortable within free tier.
+### 7. S3 lifecycle on `inputs` and `outputs` buckets
 
-Verify:
-- The <email-service> client (raw `fetch` in `backend/src/email.ts`, per `backend/CLAUDE.md`) handles 429 responses gracefully — doesn't bomb the user-facing request, doesn't auto-retry into a loop.
-- A burst of order failures (<CMS> write error) doesn't cascade-email the owner — `backend/src/routes/orders.ts` sends the owner notification AFTER the <CMS> write, so a <CMS> outage means no spam, but verify.
-- If `<EMAIL_SERVICE>_API_KEY` ever leaks, the daily/monthly cap on the <email-service> console is the only thing standing between the attacker and a giant bill. Surface as a manual check: "confirm the <email-service> project has its monthly send cap set to a value matching expected legitimate volume (e.g. 1,000/month, not unlimited)."
+`web/infra/s3.tf`:
 
-### 7. <CMS> dataset growth
+- `inputs/` bucket: lifecycle should expire objects after 7 days + `abort_incomplete_multipart_upload`. Presigned PUT URLs that never complete shouldn't accumulate.
+- `outputs/` bucket: lifecycle should expire non-current versions after 90 days (cost guardrail). Versioning enabled on this bucket guards against a Lambda bug silently overwriting a user's report; lifecycle keeps the cost bounded.
+- `frontend/` bucket: lifecycle on non-current versions; versioning optional.
 
-<CMS> charges per-dataset row count and asset storage on paid plans. At current scale we're on Growth ($15/month, comfortable). The migration to Free (per `docs/orders-pii-split-plan.md`) caps things differently — Free is 2 datasets, 20 user seats. Neither is hit at current scale.
+Missing lifecycle on `inputs/` → High (presigned-POST flood with `abort_incomplete_multipart_upload` disabled is a real DoS vector). Missing lifecycle on `outputs/` non-current → Medium.
 
-Verify:
-- No automated process is hammering <CMS> writes. (Phase 1+ note: there is no scheduled job touching <CMS> at all — PII retention is now DynamoDB-side TTL. Any EventBridge rule still targeting the backend Lambda is unexpected; flag.)
-- The <CMS> webhook on order changes fires per-mutation — bounded by the operator's editing rate. Safe.
-- Customer-facing surfaces (`POST /orders`) write one <CMS> doc per call. With backend rate limiting + API Gateway throttling in front of it, <CMS> write volume is bounded.
+### 8. Denial-of-wallet via the public Lambda routes
 
-### 8. <payment-processor> volume
+The public Lambda routes (`POST /upload`, `POST /disag`, `POST /exceed`, `GET /runs`, `GET /runs/{run_id}`) take no auth. The defences are:
 
-<payment-processor> charges per-transaction (~2.9% + R2). Cost scales with legitimate orders. The denial-of-wallet path here is: attacker hits `POST /orders` thousands of times → backend creates <CMS> order docs + <payment-processor> redirect URLs → no real charges because the attacker doesn't complete the redirect, BUT we've burned Lambda invocations + <CMS> rows + <email-service> emails.
+- **WAF rate limit** (check 1) → caps per-IP per 5-minute window.
+- **API Gateway throttling** (check 2) → caps cross-instance globally.
+- **`MAX_UPLOAD_BYTES`** in `handler.py` → caps per-upload size, enforced via the presigned-POST condition.
+- **`reserved_concurrent_executions`** (check 6) → caps the worst-case Lambda spend during a sustained attack.
 
-The protections:
+A finding is any of those four being unbounded, mis-set, or only-bounded-in-one-place. Two layers of defence is the bar.
 
-- Backend rate limiter (check 1) → caps per-IP per-window.
-- API Gateway throttling (check 2) → caps cross-instance globally.
-- <payment-processor>-side ITN sig verification (check 4 below) → ensures we never confirm a fake payment.
-
-### 9. <payment-processor> ITN-side checks
-
-If an attacker can fake an ITN callback, they can mark unpaid orders as `payment_received` and trigger downstream emails. Verify:
-
-- `backend/src/routes/<payment>-webhook.ts` verifies the MD5 signature over the **raw body** (per `backend/CLAUDE.md`).
-- `amount_gross` is cross-checked against the stored `amountZar` — mismatches rejected.
-- Status state machine is idempotent — replaying an ITN against an already-confirmed order is a no-op, not a duplicate email.
-
-### 10. Documentation matches reality
+### 9. Documentation matches reality
 
 This audit's value depends on the docs being honest:
 
-- `docs/security.md § Risk 8` (cost / spend) and `§ Risk 10` (<payment-processor> integrity) match the current code.
-- `docs/architecture.md` cost table reflects the actual baseline (~R380/month or whatever the current configuration produces).
-- The proposed `docs/orders-pii-split-plan.md` cost table (R77/month post-migration) is internally consistent.
+- `web/README.md`'s "Compute notes" section quotes Lambda sizing — confirm it matches the current `lambda.tf` + `variables.tf`.
+- `web/infra/alarms.tf` file-top comment claims it's the cost-runaway gate — confirm the resources it declares are still wired.
 
 ## Report
 
-- **Critical** — `aws_budgets_budget` missing entirely, API Gateway throttling unbounded on `$default`, <payment-processor> ITN signature not verified (already verified per code; flag if the diff weakens it), <email-service> API key in a path that auto-retries on 429.
-- **High** — log retention infinite, AWS budget exists but no `FORECASTED` notification (catches runaway only after the fact), `budget_alert_emails` empty / placeholder, CloudFront `PriceClass_All` without justification, no per-IP rate limit on `POST /orders`.
-- **Medium** — missing S3 lifecycle for non-current versions, <CMS> webhook handler does anything non-idempotent on status change, PII cleanup logs not captured.
-- **Low** — doc drift between `docs/architecture.md` cost table and configured values, alarm exists but not subscribed to a real email, <email-service> console-side monthly cap unconfirmed.
+- **Critical** — `aws_budgets_budget` missing entirely, WAF not attached to CloudFront, API Gateway throttling unbounded on `$default`, `MAX_UPLOAD_BYTES` unbounded.
+- **High** — log retention infinite anywhere, AWS budget exists but no `FORECASTED` notification, missing lifecycle on `inputs/` bucket, CloudFront `PriceClass_All` without justification.
+- **Medium** — `reserved_concurrent_executions` unset, missing lifecycle on `outputs/` non-current versions, `budget_alert_email` empty in prod, missing per-resource CloudWatch alarm, doc drift between `web/README.md` and `lambda.tf` sizing.
+- **Low** — WAF removed without a documented decision, no documented `lifecycle` choice, alarm exists but the SNS subscription is unconfirmed.
 
 For each finding: file:line + the concrete change. Don't apply fixes without explicit confirmation.
 
 ## Useful starting points
 
-- `backend/src/rate-limit.ts` — the in-memory limiter
-- `backend/src/routes/orders.ts`, `<payment>-webhook.ts`, `order-lookup.ts`, `cms-webhook.ts` — wired routes
-- `infra/budget.tf` — account-wide spend ceiling
-- `infra/api_gateway.tf` — request-rate cap
-- `infra/lambda.tf` — log retention, runtime, reserved concurrency
-- `infra/s3_cloudfront.tf` — CDN cost levers
-- `docs/security.md § Risk 8` + `§ Risk 10` — risk register
-- `docs/architecture.md` — cost projection these guards defend
+- `web/infra/alarms.tf` — Budget + SNS + per-resource CloudWatch alarms (single file)
+- `web/infra/waf.tf` — per-IP rate limit on CloudFront
+- `web/infra/apigw.tf` — request-rate cap + access log retention
+- `web/infra/lambda.tf` — memory / timeout / reserved-concurrency / log retention
+- `web/infra/s3.tf` — bucket lifecycle policies
+- `web/infra/cloudfront.tf` — `price_class` + WAF attachment
+- `web/backend/handler.py` — `MAX_UPLOAD_BYTES`, `UPLOAD_TTL`, `DOWNLOAD_TTL`
+- `web/README.md § Compute notes` — claimed sizing baseline
 
 ## Delegate to
 
-`general-purpose` agent with this file as the prompt body. Cross-cuts code + IaC + docs + provider-console gaps, so it doesn't fit one of the specialised auditors.
+`general-purpose` agent with this file as the prompt body. Cross-cuts code + IaC + docs, so it doesn't fit one of the specialised auditors.
 
-Read-only. Findings only. The audit must NOT mutate IaC, run `terraform plan`, hit AWS / <CMS> / <email-service> APIs, or load-test the backend — a load test against `POST /orders` is itself a small spend event.
+Read-only. Findings only. The audit must NOT mutate IaC, run `terraform plan` against the real account, or load-test the backend — a load test against `POST /upload` is itself a small spend event.

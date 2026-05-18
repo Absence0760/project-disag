@@ -1,34 +1,46 @@
-# .claude/ — Claude Code tooling
+# .claude/ — Claude Code tooling for project-disag
 
-These agents and commands were derived from real working projects (primarily `meryl-green-designs`, a SvelteKit + Hono + DynamoDB e-commerce site) and **lightly generalized** with placeholder names: `<payment-processor>`, `<CMS>`, `<email-service>`, `<aws-region>`, `<EMAIL_SERVICE>_API_KEY`, etc.
-
-**They will not be 100% accurate for your project out of the box.** Each new project should re-read these and replace placeholder examples with the actual services / routes / file paths in use. Treat them as templates of *structure and rigor*, not as fully-portable boilerplate.
+Project-specific agents, commands, and settings that Claude Code (and the slash-command UI) picks up when running in this repo.
 
 ## What's here
 
 ### Agents (`agents/`)
 
-- **`code-reviewer.md`** — invoked at PR / pre-commit time to review the diff against the project's documented rules.
-- **`doc-hygiene-checker.md`** — checks that code changes update docs and tests in the same change.
-- **`test-gap-checker.md`** — finds modules / routes without test coverage.
-- **`ui-polisher.md`** — applies typography / layout polish to frontend surfaces. Heavily SvelteKit-flavoured; adapt for other frontend frameworks.
-- **`repo-security-auditor.md`** — read-only security auditor. The "trust boundaries" section needs rewriting per project — the example boundaries (frontend ↔ user, backend ↔ caller, backend ↔ <CMS>, backend ↔ <payment-processor>) are meryl-shape, not universal.
+- **`code-reviewer.md`** — invoked at PR / pre-commit time by `/safe-edit` and `/check` to review the working diff against the project's documented conventions (root `CLAUDE.md`, `disag/CLAUDE.md`, `exceed/CLAUDE.md`, `web/README.md`, file-format gotchas, fail-closed defaults). Read-only.
+- **`doc-hygiene-checker.md`** — flags docs that need updating when a code change lands. Reads only.
+- **`test-gap-checker.md`** — flags missing unit / e2e coverage when a source surface changes without a matching test. Reads only.
+- **`repo-security-auditor.md`** — the read-only security auditor. Knows the project's four trust boundaries (CloudFront → user, API Gateway → Lambda with anonymous `X-Client-Id` scoping, Lambda → S3 via pre-signed URLs, GitHub OIDC → AWS) and the audit-area routing table. Invoked by `/audit/secrets` and `/audit/xss`.
+- **`ui-polisher.md`** — applies hierarchy + archetype + accessibility polish to a single SvelteKit page / component. The project does not yet have a mature design system, so the agent is biased toward reading whatever exists in `web/frontend/src/app.css` before applying changes.
 
 ### Commands (`commands/`)
 
-- **`check.md`** — run typecheck + tests + format + lint and report.
-- **`safe-edit.md`** — workflow for edits to security-sensitive or load-bearing files.
-- **`polish-ui.md`** — orchestrates the `ui-polisher` agent against a target surface.
-- **`release-readiness.md`** — go/no-go checklist before tagging a release.
-- **`audit/`** — directory of focused security audits. Each command delegates to the `repo-security-auditor` agent with a specific area:
-  - `secrets.md`, `infra.md`, `deps.md`, `xss.md`, `cost-controls.md`
-  - `all.md` runs them all in sequence
-  - `README.md` is the index
+| Command | Purpose |
+|---|---|
+| [/check](commands/check.md) | Pre-commit gate — `code-reviewer` + `test-gap-checker` + `doc-hygiene-checker` in parallel. Advisory output. |
+| [/safe-edit](commands/safe-edit.md) | Coder ↔ reviewer loop for non-trivial changes (~2-3x cost; for security / algorithm / file-format edits). |
+| [/polish-ui](commands/polish-ui.md) | Polish a single page or component under `web/frontend/` — delegates to the `ui-polisher` agent. |
+| [/release-readiness](commands/release-readiness.md) | Pre-tag gate before publishing a `v*` (python) or `web-v*` (web) release. Working tree, CI, deltas. Read-only. |
 
-## Adapting these for a new project
+### Audit commands (`commands/audit/`)
 
-1. Rewrite the trust-boundary map in `agents/repo-security-auditor.md` to match your stack's actual third-party integrations.
-2. Update route tables in `audit/cost-controls.md` and `audit/infra.md` to match your `backend/src/routes/*` and `infra/*.tf`.
-3. Replace the `<placeholder>` tokens (`<payment-processor>`, `<CMS>`, `<email-service>`, `<aws-region>`) with real service names so the agents stop emitting them in reports.
-4. Add stack-specific audits not covered here (Postgres RLS? Edge functions? Mobile-twin parity? — see `project-running`'s `.claude/commands/audit/` for ideas).
-5. Remove audits that don't apply (e.g. `cost-controls.md` doesn't apply to a static-only site with no Lambda / no third-party APIs).
+Focused read-only sweeps; each delegates either to `repo-security-auditor` or to a `general-purpose` agent. See [commands/audit/README.md](commands/audit/README.md) for the index.
+
+| Command | What it checks |
+|---|---|
+| `/audit/secrets` | SOPS encryption, plaintext-in-git, server-only env in client paths, GitHub Actions secret hygiene |
+| `/audit/xss` | Svelte `{@html}`, dynamic `href` / `src`, user-supplied file names / error strings |
+| `/audit/deps` | `pnpm audit`, Dependabot coverage, GitHub Actions pin status, override hygiene, Terraform provider pins |
+| `/audit/infra` | Terraform under `web/infra/` — IAM, OIDC, S3, CloudFront, WAF, alarms + budget, SOPS, drift |
+| `/audit/cost-controls` | WAF rate limit, API Gateway throttling, budget alarms, Lambda concurrency caps, S3 lifecycle, log retention |
+| `/audit/accessibility` | WCAG 2.2 AA pass on the SvelteKit frontend |
+| `/audit/all` | All of the above in parallel + consolidated report. Optional area filter. |
+
+### `settings.json`
+
+The per-project permission allowlist (and denylist). Things on the allowlist run without a prompt; things on the denylist refuse outright. See the comments on the file itself.
+
+## Why this set, and not more
+
+The two Python packages (`disag/` and `exceed/`) are stdlib-only by repo policy and have no auth / database / multi-tenant concerns. The `web/` workspace is a SvelteKit static frontend + a single Python Lambda behind API Gateway, with anonymous `X-Client-Id` scoping (no accounts, no PII collection beyond what the user uploads in their own files), no payment processor, no CMS, and no email service.
+
+So this `.claude/` tree intentionally omits the kinds of agents/commands a full SaaS would carry — migration coordination, GDPR / cookie-consent / data-export / account-deletion audits, third-party data-flow mapping, mobile-twin parity, auth-middleware gating. If the project ever grows in any of those directions, add the relevant command then; don't pre-create empty ones.
