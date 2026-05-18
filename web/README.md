@@ -92,42 +92,61 @@ endpoint your AWS profile resolves to.
 
 ## Provisioning infrastructure (local, with AWS SSO)
 
-Terraform talks to AWS through the standard credential chain — no
-profile is baked into the provider — so any SSO-authenticated
-profile works.
+This project runs in its own AWS sub-account (`disag-prod`) under the
+`jaredhoward` AWS Organization, with `disag.jaredhoward.com` as a
+delegated Route 53 subdomain. **The account and its baseline are
+provisioned by the cross-project bootstrap tooling**, not by this
+repo's Terraform.
 
-### One-time bootstrap
+### One-time bootstrap (cross-project tooling)
+
+The account itself, plus tfstate bucket, sops KMS key, GitHub OIDC
+provider + scoped deploy role, child Route 53 zone, and budget alarm,
+are all created by:
 
 ```bash
-# 1. Configure an SSO profile if you don't already have one.
-aws configure sso --profile disag-md           # answer the prompts
+cd ~/repos/templates
+cp infra/bootstrap/projects/example.tfvars infra/bootstrap/projects/disag.tfvars
+$EDITOR infra/bootstrap/projects/disag.tfvars        # project=disag, github_repo=…, etc.
+./scripts/new-project-account.sh disag --plan        # dry-run
+./scripts/new-project-account.sh disag               # apply (~3-5 min)
+```
 
-# 2. Create the KMS key + alias, then run sops:bootstrap to inject
-#    your account-id into .sops.yaml. The key only needs Encrypt /
-#    Decrypt from the SSO role you'll be using.
-aws kms create-alias \
-  --alias-name alias/disag-md-sops \
-  --target-key-id "$(aws kms create-key --description 'sops for disag-md' \
-                       --query 'KeyMetadata.KeyId' --output text)"
-pnpm sops:bootstrap                  # rewrites .sops.yaml's REPLACE_ME → your account-id
+The script prints the new account ID, state bucket, KMS alias, deploy
+role ARN, hosted zone ID, etc. Source of truth:
+[~/repos/templates/infra/bootstrap/README.md](../../templates/infra/bootstrap/README.md).
 
-# 3. Drop your project-level overrides into tfvars.
+### Wire up this repo
+
+After bootstrap completes:
+
+```bash
+# 1. Add an SSO profile for the new account.
+aws configure sso --profile disag
+#    SSO start URL: same as mgmt; account: <bootstrap output>; role: AdministratorAccess
+
+# 2. Fill in the project's bootstrap-derived values.
 cp web/infra/terraform.tfvars.example web/infra/terraform.tfvars
+$EDITOR web/infra/terraform.tfvars
+#    domain_name, hosted_zone_id, deploy_role_arn — all from the bootstrap output
 
-# 4. (Optional) wire a remote state backend now — see the commented
-#    `backend "s3"` block in web/infra/versions.tf. For solo work
-#    local state is fine to start.
+# 3. Uncomment the backend "s3" block in web/infra/versions.tf and fill in
+#    the tfstate bucket + lock table from bootstrap.
 
-# 5. Log in + apply.
-export AWS_PROFILE=disag-md
-pnpm tf:login                   # aws sso login
+# 4. Fill in .sops.yaml with the KMS alias from bootstrap (replaces REPLACE_ME).
+
+# 5. Apply this repo's Terraform (creates the us-east-1 ACM cert for the
+#    subdomain, CloudFront distribution with the alias, three S3 buckets,
+#    Lambda + API Gateway, and attaches deploy policies to the OIDC role).
+export AWS_PROFILE=disag
+pnpm tf:login
 pnpm tf:init
 pnpm tf:apply
 ```
 
-The first apply creates: three S3 buckets (inputs / outputs / frontend),
-the Lambda function, API Gateway, CloudFront, plus the OIDC
-provider + deploy role that GitHub Actions will assume on releases.
+The ACM cert is created here (not in the bootstrap baseline) because
+its DNS validation requires the parent zone's NS delegation to be live,
+which only happens after the bootstrap's final stage.
 
 ### Editing sensitive infra config
 
