@@ -41,14 +41,17 @@ name: Dependabot lockfile sync
 # code. The split below is the GitHub Security Lab-approved pattern:
 #
 #   regenerate: NO secrets. Runs `pnpm install --lockfile-only` on
-#               the PR-head. Worst a malicious bump could do is
+#               the PR-head SHA (NOT the ref — a force-push between
+#               event fire and checkout would otherwise swap in
+#               different code). Worst a malicious bump could do is
 #               produce a bogus lockfile — which would fail the next
 #               --frozen-lockfile run, so a human notices.
 #
-#   push:       NO PR-head code in the working tree. Has the PAT.
-#               Downloads the lockfile artifact, validates the PR
-#               head ref against the event payload, commits + pushes
-#               via the PAT. Never runs PR-head code.
+#   push:       NO PR-head code in the working tree, ever — uses the
+#               GitHub Contents API (PUT /repos/.../contents/...) to
+#               upload the regenerated lockfile directly. The PAT is
+#               passed to `gh api` only; no `git checkout` of PR-head
+#               happens in this privileged job.
 
 on:
   pull_request:
@@ -69,9 +72,12 @@ jobs:
       - name: Checkout PR branch (no credentials)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          # Belt-and-braces: even though no secrets are exposed here,
-          # don't leave the GITHUB_TOKEN sitting in .git/config.
+          # Pin to the immutable SHA from the event payload, not the
+          # mutable ref name. A force-push between event-fire and
+          # checkout would otherwise swap in code we never consented
+          # to run. (CodeQL: untrusted-checkout/medium clears under
+          # this pin + persist-credentials: false combination.)
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Set up pnpm
@@ -141,41 +147,53 @@ jobs:
         with:
           name: pnpm-lock
 
-      - name: Validate + push lockfile
+      - name: Push lockfile via Contents API
         if: steps.gate.outputs.skip == 'false' && steps.download.outcome == 'success'
         env:
-          DEPENDABOT_LOCKFILE_PAT: ${{ secrets.DEPENDABOT_LOCKFILE_PAT }}
+          GH_TOKEN: ${{ secrets.DEPENDABOT_LOCKFILE_PAT }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # PR_HEAD_REF comes from the trusted event payload, not from
-          # any file in the PR-head workspace — defensive sanity check
-          # only.
+          # any file in the PR-head workspace — defensive sanity check.
           if [ -z "$PR_HEAD_REF" ]; then
             echo "::error::Missing PR head ref in event payload." >&2
             exit 1
           fi
 
-          # Fresh clone, no PR-head code on disk. Fetch the PR head,
-          # check out its SHA, copy in the regenerated lockfile, push
-          # as a single commit. No code from the PR-head ever
-          # executes in this step.
-          mkdir push-workspace && cd push-workspace
-          git init -q
-          git config user.name "dependabot[bot]"
-          git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
-          git remote add origin "https://x-access-token:${DEPENDABOT_LOCKFILE_PAT}@github.com/${REPO}.git"
-          git fetch origin "$PR_HEAD_REF" --depth 1
-          git checkout "$PR_HEAD_SHA"
+          # Look up the existing lockfile's blob SHA on the PR head
+          # branch — the Contents API requires it for an update. A 404
+          # means Dependabot created pnpm-lock.yaml fresh in this PR
+          # and we're effectively doing a creation (no sha arg).
+          set +e
+          EXISTING_SHA=$(gh api "repos/${REPO}/contents/pnpm-lock.yaml?ref=${PR_HEAD_REF}" --jq .sha 2>/dev/null)
+          set -e
 
-          cp ../pnpm-lock.yaml ./pnpm-lock.yaml
+          B64=$(base64 -w0 pnpm-lock.yaml)
 
-          if git diff --quiet pnpm-lock.yaml; then
-            echo "Lockfile already in sync after fetch — nothing to commit."
-            exit 0
+          # Compare with the current PR-head version; skip if identical
+          # so we don't churn the PR with no-op commits.
+          if [ -n "$EXISTING_SHA" ]; then
+            REMOTE_CONTENT=$(gh api "repos/${REPO}/contents/pnpm-lock.yaml?ref=${PR_HEAD_REF}" --jq .content | tr -d '\n')
+            if [ "$REMOTE_CONTENT" = "$B64" ]; then
+              echo "Lockfile already in sync on PR head — nothing to push."
+              exit 0
+            fi
           fi
-          git add pnpm-lock.yaml
-          git commit -m "chore: sync pnpm-lock.yaml"
-          git push origin "HEAD:${PR_HEAD_REF}"
+
+          # PUT the regenerated lockfile. The Contents API treats it
+          # as opaque blob data — nothing from the PR-head workspace
+          # ever runs in this step.
+          ARGS=(
+            -X PUT "repos/${REPO}/contents/pnpm-lock.yaml"
+            -f message="chore: sync pnpm-lock.yaml"
+            -f content="$B64"
+            -f branch="$PR_HEAD_REF"
+            -f "committer[name]=dependabot[bot]"
+            -f "committer[email]=49699333+dependabot[bot]@users.noreply.github.com"
+          )
+          if [ -n "$EXISTING_SHA" ]; then
+            ARGS+=( -f "sha=${EXISTING_SHA}" )
+          fi
+          gh api "${ARGS[@]}"
