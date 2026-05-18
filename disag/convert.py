@@ -88,3 +88,46 @@ def ans_to_mon(src: str, dst: str) -> ConversionResult:
         last_year=rows[-1][0],
         skipped=skipped,
     )
+
+
+def _cli(argv: list | None = None) -> int:
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        prog='python -m disag.convert',
+        description='Convert a Pitman .ANS monthly file to a NinhamShand .MON file.',
+    )
+    parser.add_argument('src', help='Source .ANS file')
+    parser.add_argument('dst', help='Destination .MON file')
+    parser.add_argument(
+        '--quiet', '-q', action='store_true',
+        help='Suppress the conversion summary on stderr.',
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        result = ans_to_mon(args.src, args.dst)
+    except (OSError, ValueError) as exc:
+        print(f'error: {exc}', file=sys.stderr)
+        return 1
+
+    if not args.quiet:
+        print(
+            f'wrote {result.rows_written} hydro-year rows '
+            f'({result.first_year}–{result.last_year}) to {args.dst}',
+            file=sys.stderr,
+        )
+        if result.skipped:
+            print(
+                f'skipped {len(result.skipped)} non-data line(s) '
+                f'(AVERAGE trailer / blanks)',
+                file=sys.stderr,
+            )
+    return 0
+
+
+if __name__ == '__main__':
+    import sys
+
+    sys.exit(_cli())
