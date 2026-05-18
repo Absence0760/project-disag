@@ -7,6 +7,7 @@ these. ``pytest`` also picks them up automatically.
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 # Make ``disag`` importable when running tests from anywhere
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -20,6 +21,7 @@ from disag.algorithm import (
     _monthly_totals_from_daily,
     _per_month_distributions,
     _tier2_scale_factors,
+    disaggregate,
     find_exceed_donor,
 )
 from disag.files import DailyRecord, MISSING
@@ -192,6 +194,135 @@ class MethodTableTests(unittest.TestCase):
 
     def test_patch_exceed_minimum_files_is_one(self):
         self.assertEqual(NO_FILES[DisagMethod.PATCH_EXCEED], 1)
+
+
+class PatchExceedDonorGapTests(unittest.TestCase):
+    """Defence-in-depth for the donor-coverage validation in
+    `_convert_month`'s PATCH_EXCEED branch.
+
+    `find_exceed_donor` picks by monthly-volume percentile only — it
+    does not inspect day-level completeness of the donor's record. The
+    upstream filter `_monthly_totals_from_daily` does enforce
+    completeness today, so incomplete records never reach the donor
+    pool. But a single-line regression of that filter (or a future
+    caller that builds `obs_totals` differently) would expose the qD
+    loop's `val = -999.0` fall-through path, which silently clamps to
+    0 and emits synthetic zero-flow days no audit line announces.
+
+    The validation in `_convert_month` catches that case explicitly:
+    if the picked donor's record is short, or has its own MISSING value
+    on a day we need, the target month is marked MISSING with a
+    "Donor … missing day(s) X — month marked missing" report line.
+
+    These tests bypass `_monthly_totals_from_daily` via mock so the
+    broken-donor case can actually fire.
+    """
+
+    def _full_month(self, year, total_proxy):
+        return DailyRecord(year=year, month=6, v=[total_proxy / 30.0] * 30)
+
+    def _scenario(self, donor_record):
+        """Target = 2003 June, day 15 (1-indexed) missing in both files.
+        The picked donor candidate is whatever ``donor_record`` is —
+        nothing else is eligible (file 1 has no other Junes; file 2 has
+        only the gappy target + this candidate).
+        """
+        # gen_monthly needs >=2 Junes so target_dist has the >=2 entries
+        # find_exceed_donor requires.
+        gen_monthly = {
+            (2001, 6): 100.0,
+            (2003, 6): 300.0,
+        }
+        # File 1 has only the gappy target. donor_dist for file 1 ends
+        # up length 1 (with the mock bypass) → excluded by find_exceed_donor.
+        f1 = {
+            (2003, 6): DailyRecord(
+                year=2003, month=6,
+                v=[10.0] * 14 + [MISSING] + [10.0] * 15,
+            ),
+        }
+        # File 2 has the same gappy target + one donor candidate. After
+        # self-exclusion, (2001, 6) = donor_record is the only candidate.
+        f2 = {
+            (2003, 6): DailyRecord(
+                year=2003, month=6,
+                v=[10.0] * 14 + [MISSING] + [10.0] * 15,
+            ),
+            (2001, 6): donor_record,
+        }
+        return gen_monthly, [f1, f2]
+
+    def _run_with_broken_donor_filter(self, gen, daily):
+        """Run disaggregate with the donor-completeness filter disabled,
+        so the test can drive an incomplete donor through the rest of
+        the pipeline. Real callers always go through the filter."""
+
+        def _no_filter_totals(obs):
+            # Same shape as _monthly_totals_from_daily but accepts every
+            # record regardless of length / MISSING values.
+            return {
+                (y, m): sum(v for v in rec.v if v >= 0)
+                for (y, m), rec in obs.items() if rec is not None
+            }
+
+        with patch(
+            'disag.algorithm._monthly_totals_from_daily',
+            side_effect=_no_filter_totals,
+        ):
+            return disaggregate(
+                DisagMethod.PATCH_EXCEED, gen, daily, no_files=2
+            )
+
+    def _patch_log(self, log):
+        return [
+            l for l in log
+            if l[:4].strip().isdigit() and '2003  6' in l
+        ]
+
+    def test_short_donor_marks_month_missing(self):
+        short = DailyRecord(year=2001, month=6, v=[5.0] * 10)
+        gen, daily = self._scenario(short)
+        recs, log = self._run_with_broken_donor_filter(gen, daily)
+
+        june_2003 = next(r for r in recs if (r.year, r.month) == (2003, 6))
+        # Validation in _convert_month must reject the short donor — no
+        # silent zero-fill on the missing day, no truncated patch.
+        self.assertTrue(
+            all(v == MISSING for v in june_2003.v),
+            f'June 2003 should be MISSING when donor is short; got {june_2003.v}',
+        )
+        msg = self._patch_log(log)
+        self.assertTrue(
+            any('missing day(s) 15' in l and 'month marked missing' in l
+                for l in msg),
+            f'expected explicit donor-gap log line, got: {msg}',
+        )
+
+    def test_donor_with_gap_on_required_day_marks_month_missing(self):
+        # Full length, but MISSING on the exact day we need.
+        gappy = DailyRecord(
+            year=2001, month=6,
+            v=[5.0] * 14 + [MISSING] + [5.0] * 15,
+        )
+        gen, daily = self._scenario(gappy)
+        recs, log = self._run_with_broken_donor_filter(gen, daily)
+
+        june_2003 = next(r for r in recs if (r.year, r.month) == (2003, 6))
+        self.assertTrue(
+            all(v == MISSING for v in june_2003.v),
+            f'June 2003 should be MISSING when donor shares the gap; got {june_2003.v}',
+        )
+        msg = self._patch_log(log)
+        self.assertTrue(
+            any('missing day(s) 15' in l and 'month marked missing' in l
+                for l in msg),
+            f'expected explicit donor-gap log line, got: {msg}',
+        )
+
+    # Happy-path regression for PATCH_EXCEED is covered end-to-end by
+    # the existing scenario tests in tests/test_e2e.py against the
+    # committed examples/method5_demo/data/ fixtures — no need for an
+    # additional one here.
 
 
 if __name__ == '__main__':

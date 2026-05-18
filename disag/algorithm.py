@@ -421,16 +421,20 @@ def _convert_month(
                 missing = True
 
     elif method == DisagMethod.PATCH_EXCEED:
-        # Tier 1+2: any day missing in BOTH files triggers tier 3
-        needs_donor = False
+        # Tier 1+2: any day missing in BOTH files triggers tier 3.
+        # Collect the day indices that need a donor so we can validate
+        # the donor's coverage at those positions below — find_exceed_donor
+        # picks by monthly-volume percentile and doesn't check day-level
+        # completeness, so a donor month could itself be short or have
+        # gaps on the exact days we need.
+        needs_donor_days = []
         for d in range(dim):
             f1 = rec1.v[d] if rec1 and d < len(rec1.v) else -999.0
             f2 = rec2.v[d] if rec2 and d < len(rec2.v) else -999.0
             if f1 < 0 and f2 < 0:
-                needs_donor = True
-                break
+                needs_donor_days.append(d)
 
-        if needs_donor:
+        if needs_donor_days:
             donor = find_exceed_donor(
                 year, month, gen_monthly, obs_totals or [],
                 target_dists=target_dists, donor_dists=donor_dists,
@@ -458,18 +462,43 @@ def _convert_month(
                         pm_entry['missing_reason'] = 'donor record vanished'
                     missing = True
                 else:
-                    report_lines.append(
-                        f'{year:4d}{month:3d}'
-                        f' Observed daily flow < 0,'
-                        f'   Patched with file {file_idx + 1}'
-                        f' {donor_year:4d}{month:3d}'
-                        f' (target exceed%={p_target:5.1f},'
-                        f' donor exceed%={p_donor:5.1f})'
-                    )
-                    if pm_entry is not None:
-                        pm_entry['donor'] = (
-                            file_idx, donor_year, p_target, p_donor
+                    # Validate the donor covers every still-missing day with
+                    # a non-missing value. Without this check, a short donor
+                    # record (truncated file) or a donor month with its own
+                    # gaps would silently fall through to `val = -999.0` in
+                    # the qD loop, get clamped to 0, and emit synthetic
+                    # zero-flow days no audit line ever announced.
+                    bad = [
+                        d for d in needs_donor_days
+                        if d >= len(exceed_donor.v) or exceed_donor.v[d] < 0
+                    ]
+                    if bad:
+                        report_lines.append(
+                            f'{year:4d}{month:3d}'
+                            f' Observed daily flow < 0,'
+                            f'   Donor file {file_idx + 1}'
+                            f' {donor_year:4d}{month:3d}'
+                            f' missing day(s) {",".join(str(d + 1) for d in bad)}'
+                            f' — month marked missing'
                         )
+                        if pm_entry is not None:
+                            pm_entry['missing_reason'] = (
+                                'donor missing required day'
+                            )
+                        missing = True
+                    else:
+                        report_lines.append(
+                            f'{year:4d}{month:3d}'
+                            f' Observed daily flow < 0,'
+                            f'   Patched with file {file_idx + 1}'
+                            f' {donor_year:4d}{month:3d}'
+                            f' (target exceed%={p_target:5.1f},'
+                            f' donor exceed%={p_donor:5.1f})'
+                        )
+                        if pm_entry is not None:
+                            pm_entry['donor'] = (
+                                file_idx, donor_year, p_target, p_donor
+                            )
 
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
