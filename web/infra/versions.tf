@@ -23,6 +23,13 @@ terraform {
       source  = "carlpett/sops"
       version = "~> 1.2"
     }
+    # Used by oidc.tf to fetch GitHub's current cert chain and
+    # derive the OIDC provider's thumbprint dynamically, so a
+    # GitHub-side cert rotation doesn't silently break deploys.
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   # Initialise the S3-backed state separately (see web/README.md) and

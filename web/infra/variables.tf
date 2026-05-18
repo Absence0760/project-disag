@@ -40,6 +40,14 @@ variable "allowed_origin" {
   type        = string
   description = "CORS allow-origin header — narrow to the CloudFront URL in prod."
   default     = "*"
+
+  # Cross-variable validation (Terraform 1.9+) — `*` is convenient in
+  # dev but a real leak in prod. Apply fails fast rather than later
+  # when someone notices their inputs bucket is open to the world.
+  validation {
+    condition     = !(var.environment == "prod" && var.allowed_origin == "*")
+    error_message = "allowed_origin must be narrowed when environment = \"prod\". Set it to your CloudFront URL (e.g. https://d12345.cloudfront.net)."
+  }
 }
 
 variable "presign_ttl_seconds" {

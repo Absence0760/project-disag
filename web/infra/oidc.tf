@@ -16,15 +16,20 @@
 #   - cloudfront:CreateInvalidation/GetDistribution on the site
 #     distribution ARN only
 
+# Pull GitHub's current cert chain at plan time and derive the
+# thumbprint from it, so a GitHub-side cert rotation doesn't silently
+# break OIDC. AWS validates against its CA bundle in 2026 (so the
+# thumbprint is largely vestigial), but it's still a required input
+# and the dynamic source keeps it correct without manual touch.
+data "tls_certificate" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
   thumbprint_list = [
-    # Well-known GitHub OIDC thumbprints. AWS validates the cert
-    # chain against its own CA bundle so these are largely vestigial
-    # in 2026, but keeping them avoids surprise behaviour changes.
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+    for cert in data.tls_certificate.github.certificates : cert.sha1_fingerprint
   ]
 }
 

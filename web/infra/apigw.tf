@@ -31,6 +31,16 @@ resource "aws_apigatewayv2_stage" "default" {
   name        = "$default"
   auto_deploy = true
 
+  # Global throttle on the `$default` route. Lambda has implicit
+  # concurrency limits, but API Gateway is what stops a runaway
+  # client (or denial-of-wallet attack) before it pages reserved
+  # concurrency. Numbers are conservative for a small hydrology
+  # tool — bump if real traffic justifies it.
+  default_route_settings {
+    throttling_burst_limit = 100
+    throttling_rate_limit  = 50
+  }
+
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.apigw.arn
     format = jsonencode({

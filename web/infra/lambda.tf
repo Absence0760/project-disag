@@ -47,6 +47,18 @@ resource "aws_lambda_function" "api" {
   # CloudWatch logs default to never expire; the log group is created
   # by the first invocation, so claim it here and set retention.
   depends_on = [aws_cloudwatch_log_group.lambda]
+
+  # `.github/workflows/deploy.yml` pushes new code via
+  # `aws lambda update-function-code --publish`, which mutates
+  # `source_code_hash` outside Terraform's view. Without this,
+  # every post-deploy `pnpm tf:plan` would try to revert the
+  # function to whatever zip was on disk at apply time. The
+  # null_resource above still triggers a rebuild when local
+  # source changes — that path remains the source of truth for
+  # local applies.
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
