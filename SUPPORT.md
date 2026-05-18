@@ -4,7 +4,7 @@ Need help with this project? Here's where to go.
 
 ## Questions about usage
 
-1. Read `README.md` first, then `docs/STACK.md` for stack-specific setup steps.
+1. Read `README.md` first, then the per-area docs under `docs/` (algorithm, file formats, building binaries, exceedance analysis, Method 5 deep-dive). The web-app subtree has its own `web/README.md`.
 2. Search [existing issues](../../issues) — your question may already be answered or being worked on.
 3. If not, open a new issue. Pick the **Feature request** template if you're proposing a change, or open a blank issue with a clear question if you're stuck.
 
