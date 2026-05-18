@@ -39,6 +39,9 @@ python3 -m disag --no-gui --method 0 \
     --daily1  testfiles/RUKOKI-l.DAY \
     --output  /tmp/out.day --report /tmp/out.rep
 
+# Convert a Pitman .ANS monthly file into the NinhamShand .MON layout
+python3 -m disag.convert path/to/PUNRQ6.ANS path/to/PUNRQ6.MON
+
 # Exceed — flow-frequency analysis
 python3 -m exceed                                 # GUI (3 tabs)
 python3 -m exceed --no-gui \
@@ -55,13 +58,16 @@ Automated tests live in [tests/](tests/) and run with the standard
 library's unittest module:
 
 ```bash
-python3 -m unittest discover tests             # whole suite
+python3 -m unittest discover tests             # whole suite (140+ tests)
 python3 -m unittest tests.test_algorithm       # PATCH_EXCEED helper unit tests
 python3 -m unittest tests.test_e2e             # PATCH_EXCEED scenarios + observability
 python3 -m unittest tests.test_demo_methods    # methods 0–4 end-to-end
 python3 -m unittest tests.test_file_io         # files.py + report.py round-trip
 python3 -m unittest tests.test_exceed          # exceed/ package
 python3 -m unittest tests.test_cli             # subprocess-driven CLI
+python3 -m unittest tests.test_convert         # .ANS → .MON converter
+python3 -m unittest tests.test_missing_data    # missing-day/month/year edge cases
+python3 -m unittest tests.test_tier3           # PATCH_EXCEED tier-3 sub-processes
 ```
 
 The end-to-end tests use the deterministically-generated mock data in
@@ -157,6 +163,7 @@ reader keys by `(calendar_year, calendar_month)`. Mind the off-by-one.
 disag/              Python package — disaggregation
   files.py          File I/O — authoritative .day / .mon reader/writer
   algorithm.py      Core disaggregation logic (6 methods)
+  convert.py        Pitman .ANS → NinhamShand .MON converter (`python -m disag.convert`)
   gui.py            Tkinter GUI
   report.py         .rep file writer
   __main__.py       Entry point (GUI + CLI)

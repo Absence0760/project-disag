@@ -92,6 +92,22 @@ python3 -m disag --no-gui \
 
 Run `python3 -m disag --help` for full usage.
 
+### Converting a Pitman `.ANS` file to a `.MON`
+
+The disag tool reads NinhamShand-style `.MON` monthly files. If your
+monthly data is in the Pitman model's `.ANS` format (fixed-width 8-char
+columns, hydro-year layout), convert it first:
+
+```bash
+python3 -m disag.convert path/to/input.ANS path/to/output.MON
+```
+
+The converter slices by column position so it survives wet-year rows
+where adjacent columns butt up with no whitespace (e.g.
+`14639.1213670.74`) — a case that silently truncates values when
+parsed with `.split()`. Same logic is wired into the disag GUI as a
+**Convert .ANS to .MON…** button.
+
 ---
 
 ## Disaggregation methods
@@ -123,6 +139,7 @@ Claude Code).
 | `.mon` / `.nat` / `.cur` | Monthly input — one record per hydro year (Oct–Sep), values in Mm3/month |
 | `.day` | Daily input or output — one record per calendar month, values in m3/s |
 | `.rep` | Text report — logs any months where patching or fallback was applied |
+| `.ans` | Pitman model monthly output — converted to `.mon` via `python -m disag.convert` (see above) |
 
 See [docs/file-formats.md](docs/file-formats.md) for the exact file layout.
 
@@ -134,6 +151,7 @@ See [docs/file-formats.md](docs/file-formats.md) for the exact file layout.
 disag/              Python package
   files.py          File I/O (read/write .day and .mon)
   algorithm.py      Core disaggregation logic
+  convert.py        Pitman .ANS → NinhamShand .MON converter
   gui.py            Tkinter GUI
   __main__.py       Entry point (GUI + CLI)
 

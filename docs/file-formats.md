@@ -71,6 +71,34 @@ For February (28 days), line 6 is blank.
 
 ---
 
+## Pitman monthly output (`.ANS`) — and converting to `.mon`
+
+Some upstream tools (the Pitman stochastic streamflow model in particular)
+emit monthly output in a `.ANS` file rather than the NinhamShand `.MON`
+layout the disag tool reads. The `.ANS` layout is **fixed-width 8-character
+columns** — year, then 12 monthly values, then total + average — with a
+final `AVERAGE` summary row and optional blank padding.
+
+Critically, the columns are **not whitespace-separated**: in wet years a
+value can fill the full 8 characters and butt directly against the next
+column (e.g. `14639.1213670.74`). Parsing with `.split()` silently
+truncates the leading digit of the second value — we have seen
+customer-side converters mis-record `14639.12` as `4639.12` this way.
+
+The bundled converter slices by column position and handles this case:
+
+```bash
+python3 -m disag.convert path/to/input.ANS path/to/output.MON
+```
+
+It also skips the trailing `AVERAGE` row and any blank lines, and prepends
+the five-line `.MON` header the disag reader expects. The same logic is
+wired into the disag GUI as a **Convert .ANS to .MON…** button. The
+output is keyed by **hydro year** (Oct→Sep), matching the `.ANS` row
+layout exactly, so no month reshuffling happens.
+
+---
+
 ## Monthly file (`.mon` / `.nat` / `.cur`)
 
 ### Header (5 lines)
