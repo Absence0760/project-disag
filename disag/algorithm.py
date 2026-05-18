@@ -711,6 +711,22 @@ def disaggregate(
                 f'years for calendar month(s) {flat} — tier-3 donor '
                 'selection there will be decided purely by year proximity.'
             )
+        # Sparse per-file donor pools — tier-3 also needs ≥2 complete
+        # donor months in *each* file's per-calendar-month pool. Without
+        # this warning, a daily file with only one complete record for a
+        # given calendar month would silently lose tier-3 capability
+        # there — at run time the report shows a "No tier-3 donor
+        # available" line per affected month, but never explains *why*
+        # the donor pool failed.
+        if donor_dists is not None:
+            for file_idx, per_month in enumerate(donor_dists):
+                short = [m for m in range(1, 13) if len(per_month[m]) < 2]
+                if short:
+                    report_lines.append(
+                        f'Warning: daily file {file_idx + 1} has fewer than 2 '
+                        f'complete months for calendar month(s) {short} — '
+                        'tier 3 cannot draw a donor from this file there.'
+                    )
 
     # Tier-2 scale factor block — placed after warnings so the file
     # header clearly precedes the per-month log lines.

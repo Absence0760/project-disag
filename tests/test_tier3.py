@@ -215,6 +215,26 @@ class DistributionSizeGateTests(unittest.TestCase):
         # → excluded by completeness filter). donor_dist len = 1 → None.
         self.assertIsNone(find_exceed_donor(2000, 6, gen, totals, td, dd))
 
+    def test_sparse_per_file_donor_pool_warned_in_report(self):
+        # gen has 3 valid Junes (target_dist OK), but file 1 has only 1
+        # complete June. At run time tier-3 will skip June; the warning
+        # makes that visible up front instead of leaving the operator to
+        # infer it from the per-month "No tier-3 donor available" lines.
+        gen = {(2000, 6): 100.0, (2001, 6): 200.0, (2002, 6): 300.0}
+        f1 = {
+            (2000, 6): _gappy(2000, 6, 100.0 / 30, 15),
+            (2001, 6): _gappy(2001, 6, 200.0 / 30, 15),
+            (2002, 6): _full(2002, 6, 300.0 / 30),
+        }
+        _, log = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [f1], no_files=1,
+        )
+        self.assertTrue(
+            any('daily file 1 has fewer than 2 complete months' in l
+                and '6' in l for l in log),
+            f'expected sparse-donor warning for file 1 / month 6, got: {log!r}',
+        )
+
 
 # ---------------------------------------------------------------------------
 # Sub-process: whole-month tier-3 fill
