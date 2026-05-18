@@ -20,6 +20,32 @@ resource "aws_wafv2_web_acl" "site" {
     allow {}
   }
 
+  # Priority 0 — per-IP rate limit. Runs before the managed rule set
+  # so a flood-source IP gets shed cheaply (no rules evaluated, no
+  # CloudFront cache miss). 5-minute rolling window per
+  # var.waf_rate_limit_per_ip; AWS minimum is 100.
+  rule {
+    name     = "RateLimitPerIP"
+    priority = 0
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = var.waf_rate_limit_per_ip
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
   rule {
     name     = "AWSManagedCommonRuleSet"
     priority = 1

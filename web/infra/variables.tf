@@ -38,22 +38,53 @@ variable "lambda_timeout_seconds" {
 
 variable "allowed_origin" {
   type        = string
-  description = "CORS allow-origin header — narrow to the CloudFront URL in prod."
+  description = "CORS allow-origin header — must be a concrete https:// URL."
   default     = "*"
 
-  # Cross-variable validation (Terraform 1.9+) — `*` is convenient in
-  # dev but a real leak in prod. Apply fails fast rather than later
-  # when someone notices their inputs bucket is open to the world.
+  # `*` is convenient for the very first `terraform apply` (before
+  # the CloudFront URL is known) but a real leak in any longer-lived
+  # environment. Apply fails fast in prod so wildcard never lands
+  # there; dev/staging keep the escape hatch.
   validation {
     condition     = !(var.environment == "prod" && var.allowed_origin == "*")
     error_message = "allowed_origin must be narrowed when environment = \"prod\". Set it to your CloudFront URL (e.g. https://d12345.cloudfront.net)."
   }
 }
 
-variable "presign_ttl_seconds" {
+variable "upload_ttl_seconds" {
   type        = number
-  description = "How long pre-signed PUT/GET URLs stay valid."
-  default     = 3600
+  description = "Presigned POST URL TTL for uploads (kept short — captured-URL replay is the main risk)."
+  default     = 300
+}
+
+variable "download_ttl_seconds" {
+  type        = number
+  description = "Presigned GET URL TTL for downloads."
+  default     = 600
+}
+
+variable "max_upload_bytes" {
+  type        = number
+  description = "Per-file upload size cap enforced via the presigned POST policy."
+  default     = 10485760 # 10 MiB
+}
+
+variable "budget_monthly_usd" {
+  type        = number
+  description = "Monthly AWS spend ceiling that triggers an alert (0 disables the budget)."
+  default     = 50
+}
+
+variable "budget_alert_email" {
+  type        = string
+  description = "Email subscriber for budget + Lambda alarms. Empty = no SNS subscription created (alarms still fire, you just won't be paged)."
+  default     = ""
+}
+
+variable "waf_rate_limit_per_ip" {
+  type        = number
+  description = "5-minute rolling request count per source IP that triggers a 403 from CloudFront. AWS recommends 100–2000 for typical APIs."
+  default     = 500
 }
 
 variable "frontend_build_dir" {

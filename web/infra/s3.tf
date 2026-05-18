@@ -100,20 +100,36 @@ resource "aws_s3_bucket_lifecycle_configuration" "inputs" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "outputs" {
   bucket = aws_s3_bucket.outputs.id
+
+  # Hard ceiling on storage growth: current versions expire 30 days
+  # after upload (operator can re-run for fresh data); noncurrent
+  # versions 7 days after being superseded (versioning is there to
+  # catch a Lambda bug overwriting a report, not long-term retention).
+  rule {
+    id     = "expire-current-versions"
+    status = "Enabled"
+    filter {}
+    expiration { days = 30 }
+  }
+
   rule {
     id     = "expire-noncurrent-versions"
     status = "Enabled"
     filter {}
-    noncurrent_version_expiration { noncurrent_days = 90 }
+    noncurrent_version_expiration { noncurrent_days = 7 }
+    abort_incomplete_multipart_upload { days_after_initiation = 1 }
   }
 }
 
-# CORS on the inputs bucket — the browser PUTs upload bytes directly
-# to S3 using the pre-signed URL the Lambda returns.
+# CORS on the inputs bucket — the browser POSTs multipart form-data
+# directly to S3 using the pre-signed POST policy the Lambda returns
+# (handler.py: generate_presigned_post). PUT is left out on purpose —
+# the application no longer issues presigned PUTs and CORS should
+# not advertise methods we don't expect.
 resource "aws_s3_bucket_cors_configuration" "inputs" {
   bucket = aws_s3_bucket.inputs.id
   cors_rule {
-    allowed_methods = ["PUT"]
+    allowed_methods = ["POST"]
     allowed_origins = [var.allowed_origin]
     allowed_headers = ["*"]
     expose_headers  = ["ETag"]

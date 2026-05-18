@@ -38,7 +38,9 @@ resource "aws_lambda_function" "api" {
     variables = {
       INPUTS_BUCKET    = aws_s3_bucket.inputs.id
       OUTPUTS_BUCKET   = aws_s3_bucket.outputs.id
-      PRESIGN_TTL      = tostring(var.presign_ttl_seconds)
+      UPLOAD_TTL       = tostring(var.upload_ttl_seconds)
+      DOWNLOAD_TTL     = tostring(var.download_ttl_seconds)
+      MAX_UPLOAD_BYTES = tostring(var.max_upload_bytes)
       ALLOWED_ORIGIN   = var.allowed_origin
       PYTHONUNBUFFERED = "1"
     }

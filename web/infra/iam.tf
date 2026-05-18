@@ -29,12 +29,14 @@ data "aws_iam_policy_document" "lambda_s3" {
   }
 
   # Outputs bucket: read + write run artefacts, list for /runs.
+  # No s3:DeleteObject — the handler never deletes outputs; lifecycle
+  # rules handle expiry. Granting Delete would let a compromised
+  # handler wipe every run.
   statement {
     sid = "OutputsReadWrite"
     actions = [
       "s3:GetObject",
       "s3:PutObject",
-      "s3:DeleteObject",
     ]
     resources = ["${aws_s3_bucket.outputs.arn}/*"]
   }
