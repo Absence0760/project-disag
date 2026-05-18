@@ -16,6 +16,7 @@ resource "aws_cloudfront_distribution" "site" {
   default_root_object = "index.html"
   price_class         = "PriceClass_100" # NA + EU only; cheap default.
   comment             = "${local.name_prefix} site"
+  web_acl_id          = aws_wafv2_web_acl.site.arn
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
