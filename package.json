@@ -55,5 +55,6 @@
   },
   "devDependencies": {
     "concurrently": "9.2.1"
-  }
+  },
+  "//-- overrides --": "pnpm overrides live in pnpm-workspace.yaml for v10+ workspaces."
 }

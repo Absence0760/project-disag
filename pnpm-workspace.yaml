@@ -1,2 +1,11 @@
 packages:
   - 'web/frontend'
+
+# Force-bump transitive deps that ship CVEs upstream hasn't patched yet.
+# Each entry should reference the GHSA in a comment so a future reader
+# knows why the pin exists.
+overrides:
+  # GHSA-pxg6-pf52-xh8x (low) — cookie accepts name/path/domain with
+  # out-of-bounds characters. SvelteKit 2.x still pulls cookie@^0.6.0;
+  # force the patched line. 0.6 → 0.7 is API-compatible.
+  cookie: '>=0.7.0'
