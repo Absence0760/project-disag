@@ -32,7 +32,7 @@ chore(scope): bump dependency Z
 docs(scope): clarify the setup steps for X
 ```
 
-Scope is the area you're touching (e.g. `frontend`, `backend`, `infra`, `auth`, `audit`, etc.). Keep the subject line under 70 characters; put rationale in the body if the change isn't self-evident.
+Scope is the area you're touching (e.g. `disag`, `exceed`, `web`, `infra`, `tests`, `docs`, `ci`). Keep the subject line under 70 characters; put rationale in the body if the change isn't self-evident.
 
 ## Tests + docs are part of the change
 

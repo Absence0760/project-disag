@@ -45,14 +45,15 @@ on a Mac, code-signing notes, and troubleshooting — see
 
 ## Running from source
 
-Python 3.8 or later. No third-party packages — only the standard library
-(`tkinter`, `calendar`, `argparse`).
+Python 3.14 (matches the deployed Lambda runtime). The `disag/` and `exceed/`
+packages are stdlib-only — no third-party dependencies, just `tkinter`,
+`calendar`, `argparse`, etc.
 
 > **macOS note:** Apple's Xcode Command Line Tools Python has a broken tkinter
-> on macOS 15 (Sequoia). Use Homebrew Python instead:
+> on recent macOS releases. Use Homebrew Python instead:
 > ```bash
-> brew install python@3.13 python-tk@3.13
-> python3.13 -m disag
+> brew install python@3.14 python-tk@3.14
+> python3.14 -m disag
 > ```
 
 ---
@@ -148,19 +149,27 @@ See [docs/file-formats.md](docs/file-formats.md) for the exact file layout.
 ## Project layout
 
 ```
-disag/              Python package
+disag/              Python package — disaggregation
   files.py          File I/O (read/write .day and .mon)
   algorithm.py      Core disaggregation logic
   convert.py        Pitman .ANS → NinhamShand .MON converter
   gui.py            Tkinter GUI
   __main__.py       Entry point (GUI + CLI)
 
-exceed/             Exceedance analysis package
+exceed/             Python package — exceedance analysis
   files.py          File I/O (read .day and .mon)
   algorithm.py      Frequency/exceedance & seasonal grouping
   gui.py            Tkinter GUI (basic, seasonal, matching tabs)
   __main__.py       CLI + GUI entry point
 
+web/                Browser front-end + AWS Lambda back-end (see web/README.md)
+  frontend/         SvelteKit static site
+  backend/          Python Lambda wrapping the two packages above
+  infra/            Terraform — S3, CloudFront, API Gateway, Lambda, WAF, OIDC
+
+tests/              Stdlib unittest suite (140+ tests, no external deps)
+examples/           Per-method runnable demos with deterministic mock data
+packaging/          PyInstaller build script for the standalone CLI binaries
 delphi_files/       Original Delphi/Pascal source (reference only)
 docs/               Detailed technical documentation
 ```
@@ -198,3 +207,36 @@ python3 -m exceed --no-gui \
 
 Run `python3 -m exceed --help` for full usage. Algorithm details and the
 seasonal / matching modes are documented in [docs/exceed.md](docs/exceed.md).
+
+---
+
+## Web app — disag / exceed in the browser
+
+[`web/`](web/) ships a SvelteKit single-page app in front of an AWS Lambda
+that wraps the `disag/` and `exceed/` packages above. You upload `.mon` /
+`.day` files in the browser, the Lambda runs the same code as the CLI,
+and the resulting `.day` + `.rep` files come back as pre-signed download
+URLs.
+
+```
+web/
+  frontend/   SvelteKit + TypeScript + adapter-static (served from S3 behind CloudFront)
+  backend/    Lambda handler (handler.py) — imports disag/ and exceed/, processes inputs in /tmp
+  infra/      Terraform: S3 × 3, Lambda, API Gateway, CloudFront, WAF, OIDC role for CI deploys
+```
+
+Local dev:
+
+```bash
+corepack enable
+pnpm setup                              # one-time: pnpm install + Python venv
+pnpm dev                                # SvelteKit on :5173, local Lambda shim on :8000
+```
+
+The web app is provisioned and released independently of the CLI tool —
+CLI releases are tagged `v*`, the web app uses `web-v*`. Full provisioning
++ deployment walkthrough lives in [web/README.md](web/README.md).
+
+No accounts, no sign-up: the browser generates a UUID v4 on first visit
+and uses it as a coarse scoping bucket for run history (see the handler
+file's docstring for the trade-offs).

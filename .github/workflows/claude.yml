@@ -66,9 +66,13 @@ jobs:
       # deploys), `gh secret set`, `gh workflow run`, etc.; `Bash(git *)`
       # would allow `git push --force`. Each command below is read-only or
       # scoped to repo-local development tasks.
+      #
+      # Deliberately excluded: pnpm dev/dev:* (long-running), pnpm tf:* +
+      # pnpm deploy* (real AWS), pnpm sops:* (KMS access). Use the canonical
+      # check / build / e2e scripts that exist in package.json.
       - name: Run Claude Code
         uses: anthropics/claude-code-action@51ea8ea73a139f2a74ff649e3092c25a904aed7e # v1.0.123
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: "--max-turns 40 --allowedTools 'Read,Write,Edit,Glob,Grep,Bash(pnpm test),Bash(pnpm test:watch),Bash(pnpm check),Bash(pnpm build),Bash(pnpm install --frozen-lockfile),Bash(pnpm frontend test),Bash(pnpm backend test),Bash(pnpm studio test),Bash(pnpm frontend check),Bash(pnpm backend check),Bash(pnpm studio check),Bash(pnpm frontend build),Bash(pnpm backend build),Bash(pnpm studio build),Bash(git log:*),Bash(git diff:*),Bash(git status),Bash(git show:*),Bash(git blame:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh run view:*),Bash(gh run list:*)'"
+          claude_args: "--max-turns 40 --allowedTools 'Read,Write,Edit,Glob,Grep,Bash(pnpm install --frozen-lockfile),Bash(pnpm check),Bash(pnpm check:*),Bash(pnpm build),Bash(pnpm build:*),Bash(pnpm e2e),Bash(pnpm e2e:*),Bash(pnpm format),Bash(pnpm preview:web),Bash(python3 -m unittest:*),Bash(python3 -m disag:*),Bash(python3 -m disag.convert:*),Bash(python3 -m exceed:*),Bash(git log:*),Bash(git diff:*),Bash(git status),Bash(git show:*),Bash(git blame:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh run view:*),Bash(gh run list:*)'"

@@ -57,15 +57,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # javascript-typescript covers backend (Hono), frontend (SvelteKit),
-        # studio (<CMS> / React). The extractor picks up .ts, .js, .svelte,
-        # and .tsx automatically.
+        # javascript-typescript covers the SvelteKit frontend under
+        # web/frontend/. The extractor picks up .ts, .js, .svelte, and
+        # .tsx automatically.
         #
         # actions covers every workflow under .github/workflows/. The query
         # set flags untrusted-input → shell-script injection (e.g. PR title
         # interpolated into a `run:` block), unpinned action references,
         # and a handful of other GHA-specific sinks. Cheap to run — adds
         # ~30s to the matrix.
+        #
+        # Note: the Python code in disag/, exceed/, and web/backend/ is
+        # NOT analysed here. SECURITY.md currently claims CodeQL covers
+        # Python — that's drift; either add `python` to this matrix or
+        # update SECURITY.md.
         language: [javascript-typescript, actions]
 
     steps:
