@@ -17,11 +17,26 @@ resource "aws_s3_bucket" "inputs" {
 resource "aws_s3_bucket" "outputs" {
   bucket        = "${local.name_prefix}-outputs-${random_id.bucket_suffix.hex}"
   force_destroy = var.environment != "prod"
+
+  # Outputs carry the user-visible run artefacts (.day + .rep files).
+  # A stray `terraform destroy` in prod would lose every history page
+  # the moment versioning's noncurrent retention expires (7 days),
+  # well before the operator notices.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket" "frontend" {
   bucket        = "${local.name_prefix}-frontend-${random_id.bucket_suffix.hex}"
   force_destroy = var.environment != "prod"
+
+  # Re-creating the frontend bucket changes its name (random_id suffix
+  # is stable, but the bucket policy + CloudFront OAC binding both
+  # have to be reapplied). Same prevent_destroy rationale as outputs.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # ── Block public access on every bucket. Static site is served via

@@ -36,13 +36,14 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      INPUTS_BUCKET    = aws_s3_bucket.inputs.id
-      OUTPUTS_BUCKET   = aws_s3_bucket.outputs.id
-      UPLOAD_TTL       = tostring(var.upload_ttl_seconds)
-      DOWNLOAD_TTL     = tostring(var.download_ttl_seconds)
-      MAX_UPLOAD_BYTES = tostring(var.max_upload_bytes)
-      ALLOWED_ORIGIN   = var.allowed_origin
-      PYTHONUNBUFFERED = "1"
+      INPUTS_BUCKET            = aws_s3_bucket.inputs.id
+      OUTPUTS_BUCKET           = aws_s3_bucket.outputs.id
+      UPLOAD_TTL               = tostring(var.upload_ttl_seconds)
+      DOWNLOAD_TTL             = tostring(var.download_ttl_seconds)
+      MAX_UPLOAD_BYTES         = tostring(var.max_upload_bytes)
+      ALLOWED_ORIGIN           = var.allowed_origin
+      CLOUDFRONT_SHARED_SECRET = random_password.cloudfront_shared_secret.result
+      PYTHONUNBUFFERED         = "1"
     }
   }
 

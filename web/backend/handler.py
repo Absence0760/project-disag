@@ -100,6 +100,14 @@ CLIENT_ID_RE = re.compile(
 )
 RUN_ID_RE = re.compile(r'^\d+-[0-9a-f]{8}$')
 
+# CloudFront stamps every /api/* request with this header at the
+# origin layer (see web/infra/cloudfront.tf:custom_header). If the
+# env var is set, the handler requires it on every non-OPTIONS
+# request — so the bare API Gateway URL (a long .execute-api host
+# that bypasses WAF + the rate-limit rule) is unreachable. Unset
+# in local dev so curl/Playwright don't need to inject the header.
+CLOUDFRONT_SHARED_SECRET = os.environ.get('CLOUDFRONT_SHARED_SECRET')
+
 _s3_client = None
 
 
@@ -131,6 +139,7 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         return _respond(204, '')
 
     try:
+        _require_cloudfront(event)
         client_id = _client_id(event)
 
         if method == 'POST' and path == '/upload':
@@ -154,6 +163,31 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         # {exc}` shape as info-disclosure (A09).
         traceback.print_exc()
         return _respond(500, {'error': 'Internal server error'})
+
+
+def _require_cloudfront(event: dict[str, Any]) -> None:
+    """Reject requests that didn't come through CloudFront.
+
+    CloudFront stamps every request with a shared secret header
+    (web/infra/cloudfront.tf). A bare-API-Gateway-URL hit won't have
+    it. Locally CLOUDFRONT_SHARED_SECRET is unset and the check
+    becomes a no-op.
+
+    Compares with hmac.compare_digest to dodge timing-leak nags from
+    static analysers; the value is opaque and high-entropy, so
+    practical attack value is near zero either way.
+    """
+    if not CLOUDFRONT_SHARED_SECRET:
+        return
+    headers = event.get('headers') or {}
+    sent = headers.get('x-cloudfront-shared-secret') or headers.get(
+        'X-CloudFront-Shared-Secret', ''
+    )
+    import hmac
+    if not isinstance(sent, str) or not hmac.compare_digest(
+        sent, CLOUDFRONT_SHARED_SECRET
+    ):
+        raise _ClientError(403, 'Forbidden')
 
 
 def _client_id(event: dict[str, Any]) -> str:

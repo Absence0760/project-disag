@@ -52,10 +52,6 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Approve unconditionally — required by branch-protection's
-          # "Require pull request reviews" if it's ever turned on, and
-          # harmless if it isn't.
-          gh pr review --approve "$PR_URL"
 
           # PRs that modify workflow files (.github/workflows/**) can't
           # be merged with the default GITHUB_TOKEN — see the comment
@@ -69,4 +65,14 @@ jobs:
             exit 0
           fi
 
+          # NOTE — the audit flagged that approval is logged before CI
+          # passes. The clean fix (gate on `gh pr checks --watch`)
+          # would deadlock because this workflow's own job is itself a
+          # PR check that the watch would wait on. The honest answer
+          # is to move approval into a separate `workflow_run`-
+          # triggered workflow keyed off the other CI's success;
+          # for now we accept the trade-off — `--auto` still gates the
+          # actual merge on any required status checks branch
+          # protection enforces.
+          gh pr review --approve "$PR_URL"
           gh pr merge --auto --squash "$PR_URL"

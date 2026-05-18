@@ -7,7 +7,19 @@ region           = "us-east-1"
 lambda_memory_mb       = 4096
 lambda_timeout_seconds = 300
 
-# Narrow this to your CloudFront URL after the first apply so the
-# upload bucket and API stop accepting cross-origin traffic from
-# anywhere.
-allowed_origin = "*"
+# REPLACE with your CloudFront URL after the first apply. The default
+# below is a placeholder, NOT a wildcard — leaving it as-is means CORS
+# blocks every browser, which is the right failure mode. The
+# `var.environment == "prod" && var.allowed_origin == "*"` validation
+# in variables.tf blocks the wildcard in prod, but you should narrow
+# this in every environment, not just prod.
+allowed_origin = "https://CHANGE-ME.cloudfront.net"
+
+# Wallet-bleed defences. Defaults in variables.tf are reasonable;
+# uncomment any line below only when you want to override.
+# budget_monthly_usd    = 50
+# budget_alert_email    = "you@example.com"
+# waf_rate_limit_per_ip = 500
+# max_upload_bytes      = 10485760  # 10 MiB
+# upload_ttl_seconds    = 300
+# download_ttl_seconds  = 600

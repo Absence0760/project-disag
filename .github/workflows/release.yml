@@ -16,6 +16,7 @@ jobs:
   build:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30 # PyInstaller occasionally hangs on macOS — bound the bill.
     strategy:
       fail-fast: false
       matrix:
