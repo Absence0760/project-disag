@@ -1,6 +1,11 @@
 import type { DisagRequest, ExceedRequest, RunResult, RunSummary, UploadTarget } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+// Default to `/api` so production hits CloudFront's `/api/*` behaviour
+// (forwarded to API Gateway → Lambda). In dev, vite.config.ts proxies
+// `/api` to the local backend on port 8000, so the same paths work
+// without a per-environment override. VITE_API_BASE in `.env` can still
+// override (e.g. point at a deployed API Gateway URL directly).
+const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {

@@ -133,10 +133,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:web
         env:
-          # Production frontend talks to the API through CloudFront's
-          # /api/* behaviour, so the API base is same-origin (empty).
-          # Override here only if a custom domain is in play.
-          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          # The default in api.ts is `/api` (proxied by CloudFront's
+          # `/api/*` behaviour to API Gateway → Lambda). Falling back
+          # to `/api` ensures an unset repo variable doesn't produce
+          # `VITE_API_BASE=""` (which would override the default with
+          # an empty string and break the deployed site). Override the
+          # repo variable to point at a deployed API Gateway URL
+          # directly only if you're not fronting via CloudFront.
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || '/api' }}
 
       - uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885 # v6.1.1
         with:

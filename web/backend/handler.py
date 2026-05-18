@@ -86,6 +86,13 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     method = event.get('requestContext', {}).get('http', {}).get('method', 'GET')
     path = event.get('rawPath', '/')
 
+    # CloudFront's `/api/*` behaviour forwards the full path to API
+    # Gateway, which means production requests arrive as `/api/upload`
+    # etc. The route table below uses bare `/upload` so both prefixes
+    # work — strip a leading `/api` if present.
+    if path.startswith('/api/') or path == '/api':
+        path = path[len('/api'):] or '/'
+
     if method == 'OPTIONS':
         return _respond(204, '')
 
