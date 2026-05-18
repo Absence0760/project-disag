@@ -40,7 +40,7 @@ Walk the changed-files list. Slot each into one of these buckets — the bucket 
 | `disag/report.py` | extend `tests/test_e2e.py` (asserts on report text) | extend `web/frontend/e2e/integration/disag.spec.ts` if the report's user-visible text changed |
 | `disag/__main__.py` | extend `tests/test_cli.py` | none |
 | `disag/gui.py` | **none — by design.** Tk needs a display server; covered by manual GUI run | none |
-| `disag/convert.py` | extend `tests/test_file_io.py` or add a sibling test | none |
+| `disag/convert.py` | extend `tests/test_convert.py` (covers `ans_to_mon` and the `python -m disag.convert` CLI) | none |
 | `exceed/algorithm.py` | extend `tests/test_exceed.py` | extend `web/frontend/e2e/integration/exceed.spec.ts` if user-visible |
 | `exceed/files.py` | extend `tests/test_exceed.py` | none |
 | `exceed/__main__.py` | extend `tests/test_cli.py` | none |
