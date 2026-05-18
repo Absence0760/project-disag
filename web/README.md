@@ -40,6 +40,7 @@ web/
 | `pnpm tf:init` / `tf:plan` / `tf:apply` / `tf:destroy` | Terraform lifecycle. |
 | `pnpm tf:outputs` | Dump terraform outputs as JSON (function name, buckets, role ARN, etc.). |
 | `pnpm tf:export-vars` | Push Terraform outputs into GitHub repo variables so `deploy.yml` can read them. |
+| `pnpm sops:bootstrap` | Replace the `REPLACE_ME` account-id placeholder in `.sops.yaml` with the active AWS account (via `aws sts get-caller-identity`). Idempotent. |
 | `pnpm sops:edit` | `sops web/infra/secrets.enc.yaml` — edit in `$EDITOR`, re-encrypt on save. |
 | `pnpm sops:rotate` | Re-encrypt with the keys in `.sops.yaml` after a key rotation. |
 | `pnpm deploy` | Local one-shot deploy: build → `terraform apply` → sync site → invalidate. |
@@ -101,14 +102,14 @@ profile works.
 # 1. Configure an SSO profile if you don't already have one.
 aws configure sso --profile disag-md           # answer the prompts
 
-# 2. Edit .sops.yaml so the `kms:` ARN matches the KMS key in your
-#    account (alias/disag-md-sops is suggested). You'll need at
-#    minimum kms:Encrypt + kms:Decrypt on that key from the SSO
-#    role you'll be using. Create the key with:
+# 2. Create the KMS key + alias, then run sops:bootstrap to inject
+#    your account-id into .sops.yaml. The key only needs Encrypt /
+#    Decrypt from the SSO role you'll be using.
 aws kms create-alias \
   --alias-name alias/disag-md-sops \
   --target-key-id "$(aws kms create-key --description 'sops for disag-md' \
                        --query 'KeyMetadata.KeyId' --output text)"
+pnpm sops:bootstrap                  # rewrites .sops.yaml's REPLACE_ME → your account-id
 
 # 3. Drop your project-level overrides into tfvars.
 cp web/infra/terraform.tfvars.example web/infra/terraform.tfvars
