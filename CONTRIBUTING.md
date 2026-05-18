@@ -6,7 +6,7 @@ Thanks for considering a contribution. This file describes how to work in this r
 
 - Open an issue (or comment on an existing one) describing what you want to change. For non-trivial changes, get rough agreement on the approach before opening a PR — it's easier to redirect a sentence than a 500-line diff.
 - Look at recent commits in the area you're touching for style cues.
-- Stack-specific dev setup is in `docs/STACK.md`.
+- Repo orientation: [CLAUDE.md](CLAUDE.md) for the project layout and gotchas, [docs/](docs/) for per-area technical specs, and [web/README.md](web/README.md) for the SvelteKit + Lambda + Terraform web app.
 
 ## Branching
 
@@ -40,14 +40,23 @@ Per the rule in `CLAUDE.md`: every PR that touches code also touches tests and d
 
 ## Running the checks locally
 
+The Python packages and the web app share one set of scripts driven from
+the pnpm workspace at the repo root:
+
 ```
-pnpm install               # bootstrap (or the stack's equivalent)
-pnpm check                 # typecheck across workspaces
-pnpm test                  # unit / integration tests
-pre-commit run --all-files # gitleaks + the other hygiene hooks
+pnpm setup                 # one-time: pnpm deps + web/backend/.venv
+pnpm check                 # SvelteKit check+lint, Python unittests, terraform fmt+validate
+pnpm e2e                   # Playwright (mocked backend) — fast
+pnpm e2e:integration       # Playwright against a real local backend
 ```
 
-Or, if Claude Code is available: `/check` runs all of the above in sequence and reports.
+The Python suite alone (no web stack needed):
+
+```
+python3 -m unittest discover tests
+```
+
+Or, if Claude Code is available: `/check` runs the equivalent across the workspace and reports.
 
 ## Opening a PR
 
