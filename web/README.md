@@ -228,7 +228,7 @@ gh workflow run deploy.yml -f tag=web-v0.2.0
 If GitHub Actions is down, the same actions can run locally:
 
 ```bash
-export AWS_PROFILE=disag-md
+export AWS_PROFILE=disag
 pnpm tf:login
 pnpm deploy                     # build → tf:apply → deploy:web
 ```

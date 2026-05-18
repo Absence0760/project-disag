@@ -6,14 +6,16 @@
 # for the full flow.
 #
 # To wire a new account / key:
-#   1. Create or import a KMS key. Recommended alias: `alias/disag-md-sops`.
-#   2. Note the full ARN (KMS keys are regional, so include the region).
-#   3. Update the `kms` value below.
-#   4. Re-encrypt existing files: `sops updatekeys web/infra/<file>.enc.yaml`.
+#   1. Run ~/repos/templates/scripts/new-project-account.sh disag — this
+#      creates the AWS account, the KMS key, and prints the `sops_kms_arn`
+#      output (an ARN like arn:aws:kms:us-east-1:<acct>:key/<uuid>).
+#   2. Replace `REPLACE_ME` below with that account ID (or paste the full
+#      ARN in place of the whole `kms:` value).
+#   3. Re-encrypt existing files: `sops updatekeys web/infra/<file>.enc.yaml`.
 
 creation_rules:
   - path_regex: web/infra/.*\.enc\.yaml$
     # Replace with your KMS key ARN, e.g.
-    # arn:aws:kms:us-east-1:111122223333:alias/disag-md-sops
-    kms: arn:aws:kms:us-east-1:REPLACE_ME:alias/disag-md-sops
+    # arn:aws:kms:us-east-1:111122223333:alias/disag-sops
+    kms: arn:aws:kms:us-east-1:REPLACE_ME:alias/disag-sops
     encrypted_regex: "^(data|stringData|password|secret|token|key|.*_key|.*_secret)$"
