@@ -159,11 +159,16 @@ The `.rep` file produced by Method 5 contains, in order:
      produce all-zero output (the math is correct, just worth flagging).
    - `Warning: gen_monthly has fewer than 2 valid values for calendar
      month(s) [...]` — Tier 3 cannot fire for those calendar months
-     because percentile rank is undefined; any gappy month there will
-     be marked missing.
+     because percentile rank in `gen_monthly` is undefined; any gappy
+     month there will be marked missing.
    - `Warning: gen_monthly has identical values across all years for
      calendar month(s) [...]` — Tier-3 donor selection collapses to
      year proximity for those months.
+   - `Warning: daily file N has fewer than 2 complete months for
+     calendar month(s) [...]` — Tier 3 cannot draw a donor from that
+     file for those calendar months. With only one daily file supplied,
+     this is the same as "tier 3 cannot fire there"; with two files,
+     tier 3 may still succeed if the other file has a sufficient pool.
 2. **Tier-2 cross-river scale factors** (only when file 2 is supplied
    and at least one factor differs from 1.0):
 
@@ -185,13 +190,29 @@ The `.rep` file produced by Method 5 contains, in order:
    2003  6 Observed daily flow < 0,   Patched with file 1 2004  6 (target exceed%= 33.3, donor exceed%= 25.0)
    ```
 
-4. **Per-month tier-3 failures** (when no donor exists):
+4. **Per-month tier-3 failures** (when no donor exists, or when the
+   percentile-matched donor turns out to be missing the exact day the
+   target still needs — defence-in-depth in case the upstream donor
+   completeness filter ever regresses):
 
    ```
    2003  6 Observed daily flow < 0,   No tier-3 donor available — month marked missing
+   2003  6 Observed daily flow < 0,   Donor file 2 2001  6 missing day(s) 15 — month marked missing
    ```
 
-5. **Tier coverage summary** at the end:
+5. **Per-month tier breakdown table** — one row per iterated month
+   with the day-count split across the three tiers, plus the donor info
+   on tier-3 months or the missing-reason on dropped months:
+
+   ```
+   Per-month tier breakdown (days from each tier):
+   YYYY MM   T1  T2  T3   note
+   2003  6    0   0  30   donor: file 1 year 2004 (target p= 33.3%, donor p= 25.0%)
+   2003  7   31   0   0
+   ...
+   ```
+
+6. **Tier coverage summary** at the end:
 
    ```
    Tier coverage summary (days):

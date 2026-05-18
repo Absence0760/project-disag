@@ -218,10 +218,18 @@ factor cancels in the disag formula's `qD/qM` ratio.
   percentile);
 - per-month "no tier-3 donor available" failures, when the algorithm
   cannot find any eligible donor month;
-- pre-run warnings: calendar months too sparse for tier 3, all-zero
-  target months, and identically-valued calendar-month distributions;
+- per-month "donor file N YYYY MM missing day(s) D — month marked
+  missing" failures, when a percentile-matched donor turns out to lack
+  coverage on a day the target still needs (defence-in-depth in case
+  the upstream completeness filter ever changes);
+- pre-run warnings: calendar months too sparse for tier 3 in
+  `gen_monthly`, **per-file** calendar months too sparse in any daily
+  file's donor pool, all-zero target months, and identically-valued
+  calendar-month distributions;
 - the per-calendar-month tier-2 scale factors (when file 2 is supplied
   and the rescale factor is non-trivial);
+- a **per-month tier breakdown table** with one row per iterated month
+  showing T1 / T2 / T3 day counts plus the donor info or missing-reason;
 - a tier coverage summary at the end (Tier 1 / 2 / 3 day counts and
   month counts).
 
@@ -235,9 +243,14 @@ file is from a different river than the monthly target.
 ## Processing order
 
 1. Read all input files into memory.
-2. Determine the start date: the latest of:
-   - The hydro-year start implied by each daily file's first record.
-   - The first October in the monthly file.
-3. Determine the end date: the earliest last record across all files.
-4. Iterate month by month from start to end, applying the chosen method.
-5. Write the output `.day` file and the `.rep` report.
+2. Determine the run window — **always the full hydro-year span of
+   `gen_monthly`**, regardless of how short or long the daily files are.
+   This was tightened from the old "intersection of all inputs" rule so
+   the output `.day` file is self-describing: months outside the daily
+   record are emitted explicitly (with patching, donor backfill, or
+   `-99.99` sentinels per the per-method behaviour above) rather than
+   silently clipped.
+3. Iterate month by month from October of the first hydro year to the
+   last `(year, month)` key in `gen_monthly`, applying the chosen
+   method.
+4. Write the output `.day` file and the `.rep` report.
