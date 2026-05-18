@@ -131,9 +131,12 @@ $EDITOR web/infra/terraform.tfvars
 #    domain_name, hosted_zone_id, deploy_role_arn — all from the bootstrap output
 
 # 3. Uncomment the backend "s3" block in web/infra/versions.tf and fill in
-#    the tfstate bucket + lock table from bootstrap.
+#    the tfstate bucket name from bootstrap (locking uses S3 conditional
+#    writes — `use_lockfile = true` — no DynamoDB needed).
 
-# 4. Fill in .sops.yaml with the KMS alias from bootstrap (replaces REPLACE_ME).
+# 4. Rewrite .sops.yaml's REPLACE_ME placeholder with the project account
+#    ID. `pnpm sops:bootstrap` does this automatically by calling
+#    `aws sts get-caller-identity` against the active AWS profile.
 
 # 5. Apply this repo's Terraform (creates the us-east-1 ACM cert for the
 #    subdomain, CloudFront distribution with the alias, three S3 buckets,
