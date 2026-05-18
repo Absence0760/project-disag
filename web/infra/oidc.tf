@@ -20,7 +20,7 @@
 # can assume the role.
 
 data "aws_iam_role" "github_deploy" {
-  name = "${var.project}-deploy"
+  name = "${var.bootstrap_slug}-deploy"
 }
 
 data "aws_iam_policy_document" "github_deploy" {

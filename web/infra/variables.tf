@@ -1,7 +1,21 @@
 variable "project" {
   type        = string
-  description = "Short name used as a prefix for all named resources."
+  description = "Short name used as a prefix for all named resources (Lambda function, S3 buckets, CloudFront distribution, etc.)."
   default     = "disag-md"
+}
+
+variable "bootstrap_slug" {
+  type        = string
+  description = <<EOT
+Slug used by the cross-project AWS account bootstrap
+(~/repos/templates/scripts/new-project-account.sh). Distinct from
+`project` — the bootstrap slug names the AWS account itself, the
+deploy IAM role (`<slug>-deploy`), the KMS alias (`alias/<slug>-sops`),
+and the delegated subdomain (`<slug>.jaredhoward.com`). This repo
+looks up bootstrap-created resources by this slug, then names its
+*own* resources with `project` for brand consistency (`disag-md-dev-*`).
+EOT
+  default     = "disag"
 }
 
 variable "environment" {

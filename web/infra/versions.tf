@@ -23,30 +23,19 @@ terraform {
       source  = "carlpett/sops"
       version = "~> 1.2"
     }
-    # Used by oidc.tf to fetch GitHub's current cert chain and
-    # derive the OIDC provider's thumbprint dynamically, so a
-    # GitHub-side cert rotation doesn't silently break deploys.
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
   }
 
-  # Remote state. Uncomment AND set `bucket = ` to the name printed
-  # by `terraform output tfstate_bucket` (created by bootstrap.tf),
-  # then run `terraform init -migrate-state` to push local state into
-  # the bucket. `use_lockfile = true` uses S3 conditional writes for
-  # locking (TF 1.10+ — no DynamoDB table needed).
-  #
-  # Order on a fresh account:
-  #   1. `terraform init`                       (local state)
-  #   2. `terraform apply -target=aws_s3_bucket.tfstate`
-  #   3. Uncomment + edit `bucket =` below
-  #   4. `terraform init -migrate-state`        (move state to S3)
-  #   5. `terraform apply`                       (everything else)
+  # Remote state. The tfstate bucket + lock are created by the
+  # cross-project bootstrap (~/repos/templates/scripts/new-project-account.sh).
+  # After bootstrap runs, fill in `bucket = ` with the value printed in
+  # the script's summary (format: `<bootstrap_slug>-tfstate-<account-id>`,
+  # e.g. `disag-tfstate-123456789012`), uncomment the block, and run
+  # `terraform init -migrate-state` to move state into the bucket.
+  # `use_lockfile = true` uses S3 conditional writes for locking
+  # (TF 1.10+ — no DynamoDB table needed).
   #
   # backend "s3" {
-  #   bucket       = "disag-md-dev-tfstate-<account-id>"
+  #   bucket       = "disag-tfstate-<account-id>"
   #   key          = "web/terraform.tfstate"
   #   region       = "us-east-1"
   #   use_lockfile = true
