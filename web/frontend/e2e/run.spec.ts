@@ -7,20 +7,23 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 async function stubBackend(page: Page) {
 	let putsSeen = 0;
 
-	await page.route('**/upload', (route: Route) =>
+	await page.route('**/upload', (route: Route) => {
+		const key = `inputs/fake-client/fake-uuid/${++putsSeen}.bin`;
 		route.fulfill({
 			status: 200,
 			contentType: 'application/json',
 			body: JSON.stringify({
-				key: `inputs/fake-uuid/${++putsSeen}.bin`,
-				url: 'https://stub.s3.local/put-target',
-				expires_in: 3600
+				key,
+				url: 'https://stub.s3.local/post-target',
+				fields: { key, 'Content-Type': 'application/octet-stream' },
+				expires_in: 300,
+				max_bytes: 10 * 1024 * 1024
 			})
-		})
-	);
+		});
+	});
 
-	await page.route('https://stub.s3.local/put-target', (route: Route) =>
-		route.fulfill({ status: 200, body: '' })
+	await page.route('https://stub.s3.local/post-target', (route: Route) =>
+		route.fulfill({ status: 204, body: '' })
 	);
 
 	await page.route('**/disag', (route: Route) =>

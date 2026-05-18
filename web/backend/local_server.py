@@ -36,6 +36,13 @@ from urllib.parse import unquote
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+# Local dev usually means a Vite proxy on :5173 talking to us on :8000,
+# so same-origin from the browser's POV — but if anyone runs Vite on
+# a different host they need CORS. Default to '*' here since the local
+# server is only ever bound to 127.0.0.1; production sets this
+# explicitly via Lambda env. NEVER ship `*` from production.
+os.environ.setdefault('ALLOWED_ORIGIN', '*')
+
 
 # ── On-disk S3 stub ───────────────────────────────────────────────────
 #
@@ -53,17 +60,45 @@ LOCAL_S3_PORT = int(os.environ.get('PORT', '8000'))
 
 class _LocalS3:
     def __init__(self, root: Path) -> None:
-        self.root = root
+        self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, bucket: str, key: str) -> Path:
-        return self.root / bucket / key
+        """Resolve `bucket/key` to an absolute path AND ensure it stays
+        inside the configured root. Without this check a request like
+        `key=../../etc/passwd` (URL-decoded) would escape LOCAL_S3_ROOT
+        on a dev box. boto3 against real S3 treats the key as opaque
+        and the issue doesn't exist there; the local stub has to
+        re-introduce the guard.
+        """
+        target = (self.root / bucket / key).resolve()
+        if self.root not in target.parents and target != self.root:
+            raise ValueError(f'Refusing path outside LOCAL_S3_ROOT: {key!r}')
+        return target
 
     def generate_presigned_url(self, op: str, Params: dict, ExpiresIn: int = 3600) -> str:
         action = 'put' if op == 'put_object' else 'get'
         bucket = Params['Bucket']
         key = Params['Key']
         return f'http://127.0.0.1:{LOCAL_S3_PORT}/_local-s3/{action}/{bucket}/{key}'
+
+    def generate_presigned_post(
+        self,
+        Bucket: str,
+        Key: str,
+        Conditions: list | None = None,
+        ExpiresIn: int = 3600,
+    ) -> dict:
+        """Mimic boto3's presigned-POST shape. The stub doesn't enforce
+        the policy server-side; the production stack relies on S3's
+        enforcement. The frontend POSTs multipart/form-data with a
+        `key` field equal to Key, plus the file field — matches what
+        real S3 expects.
+        """
+        return {
+            'url': f'http://127.0.0.1:{LOCAL_S3_PORT}/_local-s3/post/{Bucket}/',
+            'fields': {'key': Key},
+        }
 
     def upload_file(self, src: str, bucket: str, key: str) -> None:
         dest = self._path(bucket, key)
@@ -141,6 +176,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._dispatch('PUT', body=self._read_body())
 
     def do_POST(self) -> None:  # noqa: N802
+        if self._maybe_serve_local_s3('post'):
+            return
         self._dispatch('POST', body=self._read_body())
 
     def do_OPTIONS(self) -> None:  # noqa: N802
@@ -156,7 +193,13 @@ class _Handler(BaseHTTPRequestHandler):
         return self.rfile.read(length) if length else b''
 
     def _maybe_serve_local_s3(self, expected_action: str) -> bool:
-        """Handle /_local-s3/{put,get}/{bucket}/{key} when LOCAL_S3=1."""
+        """Handle /_local-s3/{put,get,post}/{bucket}/{key?} when LOCAL_S3=1.
+
+        - GET  /_local-s3/get/<bucket>/<key>   → return bytes
+        - PUT  /_local-s3/put/<bucket>/<key>   → write raw body
+        - POST /_local-s3/post/<bucket>/       → multipart form, `key`
+                field carries the S3 key (matches real S3 POST semantics)
+        """
         if _local_s3 is None or not self.path.startswith('/_local-s3/'):
             return False
         try:
@@ -164,11 +207,37 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._reply(400, b'Malformed local-s3 path')
             return True
-        if action != expected_action or not rest:
+        if action != expected_action:
+            self._reply(404, b'Not found')
+            return True
+
+        if expected_action == 'post':
+            # POST has the key inside the multipart body, not the URL.
+            body = self._read_body()
+            try:
+                key, payload = _parse_multipart(self.headers.get('content-type', ''), body)
+            except ValueError as exc:
+                self._reply(400, f'Invalid multipart: {exc}'.encode())
+                return True
+            try:
+                target = _local_s3._path(bucket, key)
+            except ValueError as exc:
+                self._reply(400, str(exc).encode())
+                return True
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+            self._reply(204, b'')
+            return True
+
+        if not rest:
             self._reply(404, b'Not found')
             return True
         key = unquote(rest[0])
-        target = _local_s3._path(bucket, key)
+        try:
+            target = _local_s3._path(bucket, key)
+        except ValueError as exc:
+            self._reply(400, str(exc).encode())
+            return True
         if expected_action == 'put':
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(self._read_body())
@@ -192,9 +261,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _dispatch(self, method: str, *, body: bytes) -> None:
+        # API Gateway HTTP API v2 events lower-case all header names —
+        # mirror that here so handler code that reads `headers['x-...']`
+        # works identically in dev and prod.
+        headers = {k.lower(): v for k, v in self.headers.items()}
         event = {
             'requestContext': {'http': {'method': method}},
             'rawPath': self.path.split('?', 1)[0],
+            'headers': headers,
             'body': body.decode('utf-8') if body else '',
             'isBase64Encoded': False,
         }
@@ -208,6 +282,51 @@ class _Handler(BaseHTTPRequestHandler):
             payload = payload.encode('utf-8')
         if payload:
             self.wfile.write(payload)
+
+
+def _parse_multipart(content_type: str, body: bytes) -> tuple[str, bytes]:
+    """Pull out the `key` form field and the `file` part from a
+    multipart/form-data POST. Returns (key, file_bytes).
+
+    Stdlib-only mini-parser. Just covers the two fields the stub
+    needs — not a general-purpose multipart implementation.
+    """
+    if not content_type.startswith('multipart/form-data'):
+        raise ValueError('expected multipart/form-data')
+    bnd_idx = content_type.find('boundary=')
+    if bnd_idx == -1:
+        raise ValueError('missing boundary parameter')
+    boundary = content_type[bnd_idx + len('boundary='):].split(';', 1)[0].strip().strip('"')
+    if not boundary:
+        raise ValueError('empty boundary')
+    sep = b'--' + boundary.encode()
+    # Strip trailing boundary marker + any preamble/epilogue.
+    parts = body.split(sep)[1:-1]
+    key: str | None = None
+    file_bytes: bytes | None = None
+    for raw in parts:
+        # Each part starts with \r\n (after the boundary) and headers
+        # are CRLF-separated from the body by a blank line.
+        raw = raw.lstrip(b'\r\n')
+        try:
+            header_blob, payload = raw.split(b'\r\n\r\n', 1)
+        except ValueError:
+            continue
+        payload = payload.rstrip(b'\r\n')
+        cd = ''
+        for line in header_blob.split(b'\r\n'):
+            if line.lower().startswith(b'content-disposition:'):
+                cd = line.decode('utf-8', errors='replace').lower()
+                break
+        if 'name="key"' in cd:
+            key = payload.decode('utf-8', errors='replace').strip()
+        elif 'name="file"' in cd:
+            file_bytes = bytes(payload)
+    if key is None:
+        raise ValueError('missing `key` field')
+    if file_bytes is None:
+        raise ValueError('missing `file` field')
+    return key, file_bytes
 
 
 def main() -> None:

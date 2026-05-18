@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fetchText, runExceed, uploadFixture } from './_fixtures';
+import { fetchText, runExceed, uploadFixture, CLIENT_ID } from './_fixtures';
 
 test.describe('@integration exceed', () => {
 	test('monthly-only run produces a 12-month exceedance report', async ({ request }) => {
@@ -37,9 +37,32 @@ test.describe('@integration exceed', () => {
 	});
 
 	test('rejects an empty payload with 400', async ({ request }) => {
-		const res = await request.post('http://127.0.0.1:8765/exceed', { data: { intervals: 20 } });
+		const res = await request.post('http://127.0.0.1:8765/exceed', {
+			data: { intervals: 20 },
+			headers: { 'x-client-id': CLIENT_ID }
+		});
 		expect(res.status()).toBe(400);
 		const body = await res.json();
 		expect(body.error).toMatch(/monthly_key or daily_key/);
+	});
+
+	test('rejects requests missing the X-Client-Id header with 400', async ({ request }) => {
+		const res = await request.post('http://127.0.0.1:8765/exceed', {
+			data: { intervals: 20 }
+		});
+		expect(res.status()).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatch(/X-Client-Id/);
+	});
+
+	test('rejects out-of-range intervals with 400', async ({ request }) => {
+		const monthly = await uploadFixture(request, 'method4_demo', 'target.MON');
+		const res = await request.post('http://127.0.0.1:8765/exceed', {
+			data: { monthly_key: monthly, intervals: 0 },
+			headers: { 'x-client-id': CLIENT_ID }
+		});
+		expect(res.status()).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatch(/between 1 and 1000/);
 	});
 });

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { fetchText, runDisag, uploadFixture, API } from './_fixtures';
+import { fetchText, runDisag, uploadFixture, API, CLIENT_ID } from './_fixtures';
 
 /**
  * Round-trips every disag method against the deterministic fixtures
@@ -146,7 +146,7 @@ test.describe('@integration disag', () => {
 	});
 
 	test('/runs lists each completed run with its tool tag', async ({ request }) => {
-		const list = await request.get(`${API}/runs`);
+		const list = await request.get(`${API}/runs`, { headers: { 'x-client-id': CLIENT_ID } });
 		expect(list.ok()).toBeTruthy();
 		const runs: Array<{ tool: string; run_id: string }> = await list.json();
 		// At least the six prior tests should be present in this run.
@@ -155,5 +155,26 @@ test.describe('@integration disag', () => {
 		// `workers: 1`.)
 		expect(runs.length).toBeGreaterThanOrEqual(6);
 		expect(runs.every((r) => r.tool === 'disag')).toBeTruthy();
+	});
+
+	test('/runs is scoped to the calling client_id', async ({ request }) => {
+		// A different (random) client_id must see zero of this spec's runs.
+		const other = crypto.randomUUID();
+		const list = await request.get(`${API}/runs`, { headers: { 'x-client-id': other } });
+		expect(list.ok()).toBeTruthy();
+		const runs: Array<unknown> = await list.json();
+		expect(runs).toEqual([]);
+	});
+
+	test('rejects a foreign client_id submitting our key', async ({ request }) => {
+		const monthly = await uploadFixture(request, 'method4_demo', 'target.MON');
+		const other = crypto.randomUUID();
+		const res = await request.post(`${API}/disag`, {
+			data: { method: 4, monthly_key: monthly },
+			headers: { 'x-client-id': other }
+		});
+		expect(res.status()).toBe(403);
+		const body = await res.json();
+		expect(body.error).toMatch(/does not belong/);
 	});
 });

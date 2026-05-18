@@ -1,9 +1,17 @@
 export type DisagMethod = 0 | 1 | 2 | 3 | 4 | 5;
 
+/**
+ * Server-side enforced upload contract: a presigned S3 POST policy with
+ * content-length-range + content-type conditions. The client POSTs
+ * FormData to `url` with `fields` flattened first, then `file` last —
+ * S3 rejects the upload server-side if any condition is violated.
+ */
 export interface UploadTarget {
 	key: string;
 	url: string;
+	fields: Record<string, string>;
 	expires_in: number;
+	max_bytes: number;
 }
 
 export interface DisagRequest {

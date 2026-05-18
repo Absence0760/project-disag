@@ -7,14 +7,22 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import type { APIRequestContext } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 export const API = 'http://127.0.0.1:8765';
 
+// One client ID per Playwright module run so each spec gets its own
+// isolated runs/ prefix in the local S3 stub. Shared across helper
+// calls within a single test file.
+export const CLIENT_ID = randomUUID();
+
 // Repo root from web/frontend/e2e/integration/ is four up.
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, '..', '..', '..', '..');
+
+const HEADERS = { 'x-client-id': CLIENT_ID };
 
 export function fixturePath(demo: string, name: string): string {
 	return join(REPO_ROOT, 'examples', demo, 'data', name);
@@ -25,13 +33,24 @@ export async function uploadFixture(
 	demo: string,
 	filename: string
 ): Promise<string> {
-	const presign = await request.post(`${API}/upload`, { data: { filename } });
+	const presign = await request.post(`${API}/upload`, {
+		data: { filename },
+		headers: HEADERS
+	});
 	expect(presign.ok(), `presign /upload for ${filename}`).toBeTruthy();
-	const { key, url } = await presign.json();
+	const { key, url, fields } = await presign.json();
 
-	const body = readFileSync(fixturePath(demo, filename));
-	const put = await request.fetch(url, { method: 'PUT', data: body });
-	expect(put.ok(), `PUT ${url}`).toBeTruthy();
+	const fileBuf = readFileSync(fixturePath(demo, filename));
+	// presigned-POST: every signed field goes in first, the file
+	// goes in last. The local stub only requires `key` + `file`;
+	// real S3 requires all returned fields verbatim.
+	const post = await request.post(url, {
+		multipart: {
+			...fields,
+			file: { name: filename, mimeType: 'application/octet-stream', buffer: fileBuf }
+		}
+	});
+	expect(post.ok(), `POST ${url}`).toBeTruthy();
 
 	return key as string;
 }
@@ -55,7 +74,7 @@ export async function runDisag(
 	request: APIRequestContext,
 	body: Record<string, unknown>
 ): Promise<RunResult> {
-	const res = await request.post(`${API}/disag`, { data: body });
+	const res = await request.post(`${API}/disag`, { data: body, headers: HEADERS });
 	expect(res.ok(), `POST /disag (${JSON.stringify(body)})`).toBeTruthy();
 	return res.json();
 }
@@ -64,7 +83,7 @@ export async function runExceed(
 	request: APIRequestContext,
 	body: Record<string, unknown>
 ): Promise<RunResult> {
-	const res = await request.post(`${API}/exceed`, { data: body });
+	const res = await request.post(`${API}/exceed`, { data: body, headers: HEADERS });
 	expect(res.ok(), `POST /exceed (${JSON.stringify(body)})`).toBeTruthy();
 	return res.json();
 }
