@@ -40,11 +40,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-tk tk-dev
 
       - name: Install PyInstaller
-        # Versions pinned for Scorecard's PinnedDependencies rule. Bump
-        # when CVEs or new platform support land. pip itself is pinned
-        # too so a future pip release that changes resolution behaviour
-        # can't quietly break the build.
-        run: python -m pip install pip==26.1.1 pyinstaller==6.20.0
+        # Hash-pinned via packaging/build-requirements.txt for Scorecard's
+        # PinnedDependencies rule (the lower-tier version-pin form left
+        # us at score 9/10; --require-hashes is the 10/10 form). The
+        # .in source has the human-readable version constraints; the
+        # .txt is the pip-compile output and is the one pip consumes.
+        # Regenerate with: pip-compile --generate-hashes --allow-unsafe
+        #   --strip-extras packaging/build-requirements.in
+        run: python -m pip install --require-hashes -r packaging/build-requirements.txt
 
       - name: Build executables
         run: python packaging/build.py --clean
