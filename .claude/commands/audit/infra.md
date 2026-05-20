@@ -14,14 +14,14 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
 
 - `versions.tf` — terraform + provider pins
 - `providers.tf` — AWS provider + default_tags, alias for us_east_1
-- `variables.tf` — inputs + the `github_repository` / `github_deploy_environment` knobs
+- `variables.tf` — inputs (`project`, `bootstrap_slug`, sizing, TTLs, budget, WAF rate). The deploy-role trust policy is set at bootstrap time, not here.
 - `outputs.tf` — exported values (the source of the GitHub repo vars via `pnpm tf:export-vars`)
 - `s3.tf` — three buckets (inputs / outputs / frontend), encryption, PAB, lifecycle, CORS, versioning
 - `lambda.tf` — function + log group + null_resource that rebuilds the zip
 - `apigw.tf` — HTTP API v2 + catch-all route + access logs
 - `cloudfront.tf` — distribution + OAC + S3 origin + API Gateway origin + SPA fallback + WAF attachment
 - `iam.tf` — Lambda execution role + S3 access policy
-- `oidc.tf` — GitHub Actions OIDC provider + deploy role + per-resource policy
+- `oidc.tf` — looks up the bootstrap-created deploy role (`data "aws_iam_role" "github_deploy"`) and attaches this repo's per-resource deploy policy to it. The OIDC provider itself and the role's trust policy are created by the cross-project bootstrap, not here.
 - `waf.tf` — WAFv2 Web ACL (CloudFront scope, us-east-1 aliased provider) — per-IP rate limit
 - `alarms.tf` — SNS topic + AWS Budget + per-resource CloudWatch alarms (Lambda errors/throttles/duration, CloudFront 5xx, API Gateway 5xx)
 - `.sops.yaml` (repo root) — KMS creation rules
@@ -34,14 +34,11 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
    - If the backend block is active, `use_lockfile = true` is preferred over the legacy DynamoDB lock table — saves a few cents/month and removes a moving part. Surface as a Low if you see a DynamoDB lock when `use_lockfile` would do.
    - The state bucket itself must have versioning + Public Access Block (bootstrap concern, not Terraform-managed). Flag if the README's bootstrap section doesn't mention it.
 
-2. **OIDC trust policy (`oidc.tf`).** This is the highest-blast-radius file in the repo.
-   - `aws_iam_role.github_deploy.assume_role_policy` has TWO `StringEquals` conditions:
-     - `token.actions.githubusercontent.com:aud = "sts.amazonaws.com"`
-     - `token.actions.githubusercontent.com:sub = "repo:${var.github_repository}:environment:${var.github_deploy_environment}"`
-   - This is **environment-scoped**, not ref-scoped. Deploys must declare `environment: production` (see `.github/workflows/deploy.yml`) to assume the role. If the `:sub` condition gets weakened to a wildcard (`StringLike` with `*`) or removed entirely, that's the canonical "any workflow in the repo can assume the deploy role" footgun — **Critical**.
-   - `aws_iam_openid_connect_provider.github` has `client_id_list = ["sts.amazonaws.com"]` and a non-empty `thumbprint_list`. The provider is one-per-account; if another project in the same AWS account already created it, this file would need to import it rather than create it — flag as a Critical if you see a duplicate `apply` error referenced anywhere in `web/README.md`.
-   - `var.github_repository` matches the real GitHub repo (e.g. `Absence0760/project-disag`). A stale default — like `jaredhoward/project-disag` — means the trust policy doesn't match any real workflow. **Critical** if it doesn't match the `git remote -v` URL.
-   - The attached policy in `aws_iam_policy.github_deploy` scopes every action to a specific ARN:
+2. **OIDC role + deploy permissions (`oidc.tf`).** This is the highest-blast-radius file in the repo.
+   - The deploy role + OIDC provider are owned by the cross-project bootstrap (`~/repos/templates/scripts/new-project-account.sh`). This file looks the role up by name via `data "aws_iam_role" "github_deploy"` (name pattern: `${var.bootstrap_slug}-deploy`). Verify the lookup name matches what the bootstrap actually created — a mismatch shows up as a plan-time error.
+   - The role's **trust policy is set at bootstrap time** and pins `:sub` to `repo:<owner>/<repo>:environment:production`. The trust policy is not visible from this repo's plan output; audit it via `aws iam get-role --role-name <bootstrap_slug>-deploy` against the project account. If the `:sub` condition gets weakened to a wildcard (`StringLike` with `*`) or removed, that's the canonical "any workflow in the repo can assume the deploy role" footgun — **Critical**.
+   - `var.bootstrap_slug` must match the slug the bootstrap was run with (currently `disag`). A stale default means the `data` lookup fails at plan time — surface as a Critical because the deploy role is then unreachable.
+   - The attached policy in `aws_iam_policy.github_deploy` (created here and attached to the bootstrap role via `aws_iam_role_policy_attachment.github_deploy`) scopes every action to a specific ARN:
      - `lambda:UpdateFunctionCode` + `lambda:GetFunction*` → `aws_lambda_function.api.arn`
      - `s3:PutObject/DeleteObject/GetObject` → `aws_s3_bucket.frontend.arn/*` only
      - `s3:ListBucket` → `aws_s3_bucket.frontend.arn` only
@@ -104,8 +101,8 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
    - If `aws_wafv2_web_acl_logging_configuration` is wired, the destination log group has finite `retention_in_days` (Same cost trap as Lambda).
 
 9. **Alarms + Budget (`alarms.tf`).**
-   - `aws_budgets_budget.monthly` declared with `limit_amount = var.monthly_budget_limit_usd` (single-digit dollars is reasonable for this scale).
-   - **Three notifications minimum**: `ACTUAL > 50%`, `ACTUAL > 100%`, `FORECASTED > 100%`. Forecasted is the only one that catches a runaway *during* the month. Missing forecasted → High.
+   - `aws_budgets_budget.monthly` declared with `limit_amount = tostring(var.budget_monthly_usd)` (default 50; low-tens-of-dollars is reasonable for this scale). The budget is gated by `count = var.budget_monthly_usd > 0 ? 1 : 0`, so a 0 value silently disables it — flag if 0 ships to prod.
+   - **At minimum a `FORECASTED` notification and an `ACTUAL > 100%` notification.** Forecasted is the only one that catches a runaway *during* the month. Missing forecasted → High. An additional `ACTUAL > 50%` notification is nice-to-have for early warning — surface as Low if absent.
    - `aws_sns_topic.alerts` + `aws_sns_topic_subscription.alerts_email` (gated on `var.budget_alert_email != ""`). A topic with zero subscribers is a silent failure in prod — Medium.
    - Per-resource `aws_cloudwatch_metric_alarm` for Lambda errors / throttles / duration, CloudFront 5xx rate, API Gateway 5xx rate — all publishing to the same SNS topic. Missing any of these is Medium.
    - SNS topic policy permits both `cloudwatch.amazonaws.com` and `budgets.amazonaws.com` to publish. Flag if either is dropped.

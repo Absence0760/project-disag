@@ -31,7 +31,7 @@ WAF costs ~$6/month ($5 base + $1/rule); if the project ever decides that's too 
 
 The cost-defence file is `web/infra/alarms.tf` (single file carrying SNS topic + Budget + per-resource CloudWatch alarms). Verify:
 
-- **`aws_budgets_budget`** declared with a monthly limit in the single-digit-dollar range (current default ~$10 — confirm against `var.monthly_budget_limit_usd`).
+- **`aws_budgets_budget`** declared with a monthly limit (currently `var.budget_monthly_usd`, default $50). Confirm the limit is in the low-tens-of-dollars range for a hobby-scale deployment — anything materially higher should have a documented reason.
 - **Three notifications minimum**: `ACTUAL > 50 %`, `ACTUAL > 100 %`, `FORECASTED > 100 %`. Forecasted is the only one that catches a runaway *during* the month — actual lags by up to 24h. Missing forecasted → High.
 - **`aws_sns_topic` + `aws_sns_topic_subscription`** wired to `var.budget_alert_email`. The subscription is `count = 0` when the var is empty (alarms still fire visibly but no one gets paged) — that's tolerable in dev, flag as Medium if it ships to prod without a real email.
 - **Per-resource CloudWatch alarms** (Lambda errors / throttles / duration, CloudFront 5xx rate, API Gateway 5xx rate) all publish to the same SNS topic. Missing any of these is Medium — they catch a problem before the budget alarm does.
