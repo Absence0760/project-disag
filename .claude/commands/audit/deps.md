@@ -53,9 +53,10 @@ Plus:
    - Confirm the override range is tight (e.g. `>=0.7.0` is what the `cookie` override uses; tighter is better if upstream is stable).
    - Confirm there's a comment naming the GHSA / CVE — that's the only way a future reader knows whether the pin is still load-bearing.
 
-6. **Node engines.** Root `package.json` declares an `engines.node` constraint. Confirm:
-   - CI workflows use a matching `node-version:` (not `18`, not `20`, not unspecified).
-   - The version is one that's still in maintenance — Node 22 LTS is the current floor as of mid-2026.
+6. **Node engines.** Root `package.json` declares an `engines.node` constraint (currently `>=24`). Confirm:
+   - CI workflows use a matching `node-version:` (not `18`, not `20`, not `22` — not unspecified).
+   - `.tool-versions` (`nodejs <N>`) lines up with `engines.node` so `asdf install` / `mise install` shims a compatible version.
+   - The pinned version is one that's still in maintenance — Node 24 is the active LTS as of mid-2026.
 
 7. **Python deps in the Lambda zip.** `web/backend/build.sh` should NOT include `requirements-dev.txt` in the zip — only `handler.py` + the `disag/` and `exceed/` packages (minus `gui.py`). Flag if the build script pip-installs anything into the zip directory.
 
