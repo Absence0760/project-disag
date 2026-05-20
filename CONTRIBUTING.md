@@ -61,7 +61,7 @@ Or, if Claude Code is available: `/check` runs the equivalent across the workspa
 ## Opening a PR
 
 - Title: same conventional-commit format as commits.
-- Description: fill in the `pull_request_template.md`. The "Money / data safety checklist" is there for a reason — even ticking the boxes is a useful prompt to think through each item.
+- Description: fill in the `pull_request_template.md`. The "Correctness checklist" and "Web-app safety" sections are there for a reason — even ticking the boxes is a useful prompt to think through each item.
 - Mark as **Draft** while CI is still running; flip to ready when checks are green.
 - Don't squash on merge unless you're cleaning up a noisy WIP series — preserving meaningful commits in `main` makes `git blame` more useful.
 
