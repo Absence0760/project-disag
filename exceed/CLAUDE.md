@@ -67,5 +67,5 @@ balloons to 1985, the daily parser is broken — see "Why we delegate" above.
 
 `exceed/gui.py` (the 3-tab Tk window) is **not** automatically tested
 — the same headless-Tk reason as `disag/gui.py`. Exercise the
-seasonal and matching tabs manually under Homebrew Python 3.13 (stock
+seasonal and matching tabs manually under Homebrew Python 3.14 (stock
 macOS Python has a broken `_tkinter`).

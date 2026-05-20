@@ -60,7 +60,7 @@ is no `--target-arch` flag in PyInstaller for these.
 ### Prerequisites
 
 ```bash
-brew install python@3.13 python-tk@3.13
+brew install python@3.14 python-tk@3.14
 ```
 
 Apple's stock Python and Xcode Command Line Tools Python both ship without
@@ -70,7 +70,7 @@ a binary that crashes on GUI launch.
 ### Build
 
 ```bash
-python3.13 -m venv /tmp/disag-build
+python3.14 -m venv /tmp/disag-build
 /tmp/disag-build/bin/pip install pyinstaller
 /tmp/disag-build/bin/python packaging/build.py --clean
 ```
@@ -127,14 +127,14 @@ job once you have a Developer ID.
 
 ### Prerequisites
 
-Install [Python 3.13 from python.org](https://www.python.org/downloads/windows/)
+Install [Python 3.14 from python.org](https://www.python.org/downloads/windows/)
 (*not* the Microsoft Store version — it sandboxes file access). Tk is
 included.
 
 ### Build (PowerShell or `cmd`)
 
 ```powershell
-py -3.13 -m venv .venv
+py -3.14 -m venv .venv
 .venv\Scripts\python -m pip install pyinstaller
 .venv\Scripts\python packaging\build.py --clean
 ```
@@ -170,7 +170,7 @@ source — see the
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3.13 python3.13-venv python3-tk tk-dev
+sudo apt-get install -y python3.14 python3.14-venv python3-tk tk-dev
 ```
 
 (Or the equivalent on Fedora/RHEL: `python3-tkinter tk-devel`.)
@@ -178,7 +178,7 @@ sudo apt-get install -y python3.13 python3.13-venv python3-tk tk-dev
 ### Build
 
 ```bash
-python3.13 -m venv .venv
+python3.14 -m venv .venv
 .venv/bin/pip install pyinstaller
 .venv/bin/python packaging/build.py --clean
 ```
@@ -204,7 +204,7 @@ Silicon, thanks to Rosetta-aware Docker.
 
 ```bash
 docker run --rm -v "$PWD":/src -w /src --platform linux/amd64 \
-    python:3.13-slim bash -c '
+    python:3.14-slim bash -c '
         apt-get update -qq &&
         apt-get install -y -qq python3-tk tk-dev &&
         pip install -q pyinstaller &&
@@ -214,7 +214,7 @@ docker run --rm -v "$PWD":/src -w /src --platform linux/amd64 \
 
 The resulting `dist/disag` and `dist/exceed` are Linux x86-64 ELF
 binaries built against Debian's glibc 2.36 — broadly compatible with
-modern distros. Replace `python:3.13-slim` with `python:3.13-bullseye`
+modern distros. Replace `python:3.14-slim` with `python:3.14-bookworm`
 for older glibc (2.31, Ubuntu 20.04 era).
 
 **Note:** the host's `dist/` directory will be overwritten. If you

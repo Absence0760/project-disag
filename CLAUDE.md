@@ -24,9 +24,11 @@ problem this project actually solves, with worked examples — see
 
 ## Dependencies
 
-Python ≥ 3.8, **standard library only** (`tkinter`, `calendar`, `argparse`,
-`re`, `dataclasses`, `datetime`, `enum`, `typing`). Do not add third-party
-packages — the original tool is meant to run anywhere with a stock Python.
+Python ≥ 3.14 (matches the deployed Lambda runtime and the only line still
+in active maintenance; 3.8 went EOL Oct 2024). **Standard library only**
+(`tkinter`, `calendar`, `argparse`, `re`, `dataclasses`, `datetime`,
+`enum`, `typing`). Do not add third-party packages — the tool is meant to
+run anywhere with a stock Python.
 
 ## Running things
 
@@ -99,7 +101,7 @@ python3 -m disag
 python3 -m exceed
 ```
 
-On macOS use Homebrew Python 3.13 (stock macOS Python's `_tkinter`
+On macOS use Homebrew Python 3.14 (stock macOS Python's `_tkinter`
 is broken — see the "macOS tkinter" gotcha below).
 
 ## Gotchas
@@ -110,8 +112,8 @@ Apple's stock Python on macOS 15 (Sequoia) has a broken `_tkinter`. The GUI
 will fail to import. Use Homebrew Python instead:
 
 ```bash
-brew install python@3.13 python-tk@3.13
-python3.13 -m disag
+brew install python@3.14 python-tk@3.14
+python3.14 -m disag
 ```
 
 The `__main__.py` for both packages does an `import tkinter` check before
