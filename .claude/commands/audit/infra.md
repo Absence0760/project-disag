@@ -127,7 +127,7 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
 
 ## Report
 
-- **Critical** — OIDC `:sub` wildcarded or `var.github_repository` wrong, IAM policy with `*` resources or `iam:*`/`sts:*` actions, S3 bucket policy with `Principal: "*"`, public-access-block disabled, `/api/*` cache policy not `CachingDisabled`, `aws_budgets_budget` missing entirely, WAF not attached to CloudFront.
+- **Critical** — OIDC `:sub` wildcarded on the bootstrap-owned role, `var.bootstrap_slug` doesn't match what the bootstrap was run with (data lookup fails), IAM policy with `*` resources or `iam:*`/`sts:*` actions, S3 bucket policy with `Principal: "*"`, public-access-block disabled, `/api/*` cache policy not `CachingDisabled`, `aws_budgets_budget` missing entirely, WAF not attached to CloudFront.
 - **High** — bucket versioning off on `outputs`, missing PAB on any bucket, `allowed_origin = "*"` in prod, new sensitive key shape not covered by `.sops.yaml` `encrypted_regex`, log retention infinite on Lambda / API Gateway / WAF, AWS budget exists but no `FORECASTED` notification.
 - **Medium** — `.sops.yaml` still has `REPLACE_ME` ARN, plaintext sensitive value in `terraform.tfvars`, missing `lifecycle.ignore_changes` on a CI-mutated field, `PriceClass_All` without justification, provider pins too loose (`~> X` alone), missing `default_tags` entry, WAF declared but not attached to CloudFront, `aws_sns_topic_subscription` skipped because `budget_alert_email` empty in prod, `reserved_concurrent_executions` unset on the Lambda, API Gateway throttling unbounded on `$default`.
 - **Low** — suggesting `use_lockfile = true` over legacy DynamoDB locking, undocumented `lifecycle` choice, missing per-resource CloudWatch alarm in `alarms.tf`.
