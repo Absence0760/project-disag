@@ -62,4 +62,4 @@ Run the project's audit sweep. By default, runs every audit; with an argument, r
 - This is read-only. Each sub-audit is read-only by default.
 - The report is the deliverable; do not edit code based on findings without asking the user first.
 - If an audit finds no issues, list it under the `## Clean` section — easier to spot regression on the next run.
-- For changes to **just** dependencies or **just** the frontend / studio, the relevant subset is usually enough — full sweep is for release prep and periodic drift checks.
+- For changes to **just** dependencies or **just** the frontend, the relevant subset is usually enough — full sweep is for release prep and periodic drift checks.
