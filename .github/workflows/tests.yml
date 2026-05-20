@@ -28,10 +28,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Project policy: Python ≥ 3.8 (CLAUDE.md). Test the bottom
-        # supported version, the active LTS-ish releases, and the
-        # latest stable.
-        python-version: ["3.8", "3.10", "3.12", "3.13"]
+        # Project policy: Python ≥ 3.14 (CLAUDE.md). 3.14 matches the
+        # deployed Lambda runtime; 3.13 is kept as the only older line
+        # still on python.org's security-fix list, which catches the
+        # occasional 3.14-only-feature regression before users hit it.
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
