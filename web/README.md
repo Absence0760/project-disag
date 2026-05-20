@@ -128,7 +128,9 @@ aws configure sso --profile disag
 # 2. Fill in the project's bootstrap-derived values.
 cp web/infra/terraform.tfvars.example web/infra/terraform.tfvars
 $EDITOR web/infra/terraform.tfvars
-#    domain_name, hosted_zone_id, deploy_role_arn — all from the bootstrap output
+#    bootstrap_slug must match the slug new-project-account.sh was run
+#    with (so this repo finds the bootstrap-owned deploy role + KMS key);
+#    allowed_origin gets a real CloudFront URL after the first apply.
 
 # 3. Uncomment the backend "s3" block in web/infra/versions.tf and fill in
 #    the tfstate bucket name from bootstrap (locking uses S3 conditional
@@ -138,18 +140,21 @@ $EDITOR web/infra/terraform.tfvars
 #    ID. `pnpm sops:bootstrap` does this automatically by calling
 #    `aws sts get-caller-identity` against the active AWS profile.
 
-# 5. Apply this repo's Terraform (creates the us-east-1 ACM cert for the
-#    subdomain, CloudFront distribution with the alias, three S3 buckets,
-#    Lambda + API Gateway, and attaches deploy policies to the OIDC role).
+# 5. Apply this repo's Terraform (creates the CloudFront distribution on
+#    its default cloudfront.net domain, three S3 buckets, Lambda + API
+#    Gateway, WAF + alarms, and attaches this repo's deploy policy to the
+#    bootstrap-owned OIDC role).
 export AWS_PROFILE=disag
 pnpm tf:login
 pnpm tf:init
 pnpm tf:apply
 ```
 
-The ACM cert is created here (not in the bootstrap baseline) because
-its DNS validation requires the parent zone's NS delegation to be live,
-which only happens after the bootstrap's final stage.
+A custom domain + ACM cert isn't in the Terraform yet — the
+distribution serves from its `*.cloudfront.net` default. When a real
+domain lands, the ACM cert + CloudFront alias belong here (not in the
+bootstrap), because DNS validation needs the bootstrap's delegated zone
+to be live first.
 
 ### Editing sensitive infra config
 
@@ -217,7 +222,8 @@ two jobs both targeting the `production` environment:
 
 Backend deploys first so the static site never points at a stale
 API contract. Both jobs use OIDC (`id-token: write`) to assume
-the deploy role created in `oidc.tf`. No long-lived access keys
+the bootstrap-owned deploy role that `oidc.tf` looks up and
+attaches this repo's deploy policy to. No long-lived access keys
 exist in the repo.
 
 To deploy out-of-band (no release) or replay a specific tag:
