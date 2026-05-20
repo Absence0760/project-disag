@@ -176,11 +176,22 @@ exceed/             Python package — flow frequency
   gui.py            Tkinter GUI (Basic / Seasonal / Matching tabs)
   __main__.py       Entry point (GUI + CLI)
 
+web/                SvelteKit frontend + AWS Lambda backend + Terraform (see web/README.md)
+  frontend/         SvelteKit static site (TypeScript, adapter-static)
+  backend/          Python Lambda wrapping disag/ + exceed/; local-dev shim
+  infra/            Terraform: S3, Lambda, API Gateway, CloudFront, WAF, OIDC
+
+tests/              Stdlib unittest suite (no third-party deps)
+examples/           Per-method runnable demos with deterministic mock data
+packaging/          PyInstaller build script for the standalone CLI binaries
 delphi_files/       Original Pascal source — reference only, do not modify
 docs/               Detailed technical documentation
   algorithm.md      Disag formula and per-method behaviour
+  method5.md        PATCH_EXCEED deep-dive — what it solves + how
   file-formats.md   .day / .mon / .rep on-disk layout
   exceed.md         Exceedance algorithm and matching logic
+  problem.md        Domain context — what this tool actually solves
+  building.md       PyInstaller per-OS build guide (Linux / macOS / Windows)
 testfiles/          Sample input files (gitignored)
 ```
 
