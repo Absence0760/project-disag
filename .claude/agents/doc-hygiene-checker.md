@@ -9,7 +9,7 @@ You make "did the docs keep up with the diff?" a mechanical check. Every change 
 
 This repo's doc set lives in three places:
 
-- `docs/` — domain documentation: `algorithm.md`, `exceed.md`, `file-formats.md`, `problem.md`.
+- `docs/` — domain documentation: `algorithm.md`, `method5.md` (the PATCH_EXCEED deep-dive), `exceed.md`, `file-formats.md`, `problem.md`, `building.md` (the PyInstaller / per-OS build guide).
 - `CLAUDE.md` files — operator notes at the repo root, in `disag/`, in `exceed/`, and in `web/` (as `web/README.md`).
 - E2E and infra READMEs — `web/frontend/e2e/README.md`, `web/infra/`'s tfvars example, `.sops.yaml`.
 
@@ -55,7 +55,7 @@ For each classification, list the docs that the rule says to touch:
 
 | Classification | Doc(s) to consider |
 |---|---|
-| Algorithm / domain | `docs/algorithm.md` (disag), `docs/exceed.md` (exceed), `docs/problem.md` if the user-facing framing changed |
+| Algorithm / domain | `docs/algorithm.md` (disag), `docs/method5.md` if `PATCH_EXCEED` semantics changed, `docs/exceed.md` (exceed), `docs/problem.md` if the user-facing framing changed |
 | File-format | `docs/file-formats.md`, and the warning blocks in `disag/CLAUDE.md` / `exceed/CLAUDE.md` if parser gotchas changed |
 | Web / API contract | `web/README.md` (the routes table + flow diagram), `web/frontend/e2e/README.md` if the test contract changed |
 | Frontend behaviour | `web/README.md` "What's wired" section if a route added; `web/frontend/e2e/README.md` if a spec was renamed |
