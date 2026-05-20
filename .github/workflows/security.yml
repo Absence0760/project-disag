@@ -56,6 +56,8 @@ jobs:
       - uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           languages: python
+          build-mode: none
+          queries: security-and-quality
       - uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           category: '/language:python'
@@ -76,6 +78,8 @@ jobs:
       - uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           languages: javascript-typescript
+          build-mode: none
+          queries: security-and-quality
       - uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           category: '/language:javascript-typescript'
@@ -93,6 +97,9 @@ jobs:
       - uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           languages: actions
+          # `actions` only ships a security-extended ceiling; CodeQL
+          # falls back to that automatically — no per-language branching.
+          queries: security-and-quality
       - uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           category: '/language:actions'
