@@ -11,14 +11,33 @@ test.describe('Landing page', () => {
 		await expect(page.getByTestId('hero-secondary')).toHaveAttribute('href', '/history');
 	});
 
-	test('feature cards link to /run and /history', async ({ page }) => {
+	test('shows a card for each of the three tools', async ({ page }) => {
 		await page.goto('/');
 
-		await expect(page.getByTestId('feature-run')).toBeVisible();
-		await expect(page.getByTestId('feature-history')).toBeVisible();
+		await expect(page.getByTestId('feature-disag')).toBeVisible();
+		await expect(page.getByTestId('feature-exceed')).toBeVisible();
+		await expect(page.getByTestId('feature-converter')).toBeVisible();
 
-		await page.getByTestId('feature-run').click();
-		await expect(page).toHaveURL(/\/run$/);
+		await expect(page.getByTestId('feature-disag-cta')).toHaveAttribute(
+			'href',
+			'/run?tool=disag'
+		);
+		await expect(page.getByTestId('feature-exceed-cta')).toHaveAttribute(
+			'href',
+			'/run?tool=exceed'
+		);
+		// Converter is CLI-only — its CTA points at the source on GitHub.
+		await expect(page.getByTestId('feature-converter-cta')).toHaveAttribute(
+			'href',
+			/github\.com.*disag\/convert\.py/
+		);
+	});
+
+	test('Exceed tool card deep-links into /run with the right tool preselected', async ({ page }) => {
+		await page.goto('/');
+		await page.getByTestId('feature-exceed-cta').click();
+		await expect(page).toHaveURL(/\/run\?tool=exceed$/);
+		await expect(page.getByTestId('tool-exceed')).toBeChecked();
 	});
 
 	test('primary nav highlights the current route', async ({ page }) => {

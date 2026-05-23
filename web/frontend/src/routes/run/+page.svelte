@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { requestUpload, putToS3, runDisag, runExceed } from '$lib/api';
 	import type { DisagMethod, RunResult } from '$lib/types';
 	import FileDrop from '$lib/FileDrop.svelte';
 
 	type Tool = 'disag' | 'exceed';
 
-	let tool = $state<Tool>('disag');
+	let tool = $state<Tool>(page.url.searchParams.get('tool') === 'exceed' ? 'exceed' : 'disag');
 	let method = $state<DisagMethod>(0);
 	let intervals = $state(20);
 	let monthlyFile = $state<File | null>(null);
