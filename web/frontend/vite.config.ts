@@ -9,6 +9,11 @@ import { defineConfig } from 'vite';
 // `rewrite` is intentionally a no-op (`path => path`) — we forward the
 // `/api` prefix and let the backend handler do the strip, so dev and
 // prod request shapes are identical.
+//
+// Preview proxy: `pnpm preview` serves the production build, which the
+// integration Playwright project uses alongside local_server.py on
+// port 8765 (see web/frontend/playwright.config.ts). Same proxy shape
+// as the dev server, just pointed at the integration backend.
 export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
@@ -16,6 +21,15 @@ export default defineConfig({
 		proxy: {
 			'/api': {
 				target: 'http://127.0.0.1:8000',
+				changeOrigin: true
+			}
+		}
+	},
+	preview: {
+		port: 4173,
+		proxy: {
+			'/api': {
+				target: 'http://127.0.0.1:8765',
 				changeOrigin: true
 			}
 		}
