@@ -12,9 +12,6 @@ test_output*
 *.pem
 *.key
 .aws/
-.env
-.env.*
-!*.env.example
 
 # PyInstaller build artifacts
 build/
