@@ -68,27 +68,39 @@ for the local dev shim — production Lambda uses the runtime's boto3.)
 ### Dev loop (frontend + backend together)
 
 ```bash
-INPUTS_BUCKET=<dev-bucket> OUTPUTS_BUCKET=<dev-bucket> AWS_PROFILE=<profile> \
+pnpm dev
+```
+
+That's it — no AWS creds, no env vars. `dev:api` defaults to
+`LOCAL_S3=1`, so the backend uses an in-process S3 stub rooted at
+`/tmp/disag-local-s3/`. SvelteKit runs on `http://localhost:5173` and
+the Lambda shim on `http://localhost:8000`; concurrently labels them
+`web` / `api`. Kill one, both go down.
+
+The frontend talks to the backend via Vite's `/api/*` proxy
+(see `web/frontend/vite.config.ts`) — no `VITE_API_BASE` needed.
+
+### Pointing at real AWS instead
+
+If you want pre-signed URLs to hit actual S3 buckets (e.g. to
+reproduce a prod-shaped run):
+
+```bash
+LOCAL_S3=0 \
+  INPUTS_BUCKET=<dev-bucket> OUTPUTS_BUCKET=<dev-bucket> \
+  AWS_PROFILE=<profile> \
   pnpm dev
 ```
 
-`pnpm dev` runs SvelteKit on `http://localhost:5173` and the local
-Lambda shim on `http://localhost:8000` side-by-side (concurrently
-labels them `web` / `api`). Kill one, both go down.
-
-Point the frontend at the local backend by setting
-`VITE_API_BASE=http://localhost:8000` in `web/frontend/.env`.
+`LOCAL_S3=0` opts out of the stub; the named buckets need read/write
+under the chosen AWS profile.
 
 ### Frontend only / backend only
 
 ```bash
 pnpm dev:web                   # SvelteKit only — http://localhost:5173
-pnpm dev:api                   # local Lambda shim only — http://localhost:8000
+pnpm dev:api                   # local Lambda shim only — http://localhost:8000 (LOCAL_S3=1 by default)
 ```
-
-You need real S3 buckets (or LocalStack) for pre-signed URLs to work
-end-to-end; the rest of the routes work against any S3-compatible
-endpoint your AWS profile resolves to.
 
 ## Provisioning infrastructure (local, with AWS SSO)
 

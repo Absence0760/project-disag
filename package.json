@@ -15,7 +15,7 @@
     "//-- dev --": "Two-process dev loop: SvelteKit on :5173, local Lambda shim on :8000.",
     "dev": "concurrently -n web,api -c blue,green -k --kill-others-on-fail \"pnpm dev:web\" \"pnpm dev:api\"",
     "dev:web": "pnpm --filter disag-md-web dev",
-    "dev:api": "test -x web/backend/.venv/bin/python || pnpm setup:py; web/backend/.venv/bin/python web/backend/local_server.py",
+    "dev:api": "test -x web/backend/.venv/bin/python || pnpm setup:py; LOCAL_S3=${LOCAL_S3:-1} web/backend/.venv/bin/python web/backend/local_server.py",
     "start": "pnpm dev",
     "//-- build --": "Build the SvelteKit static site and the Lambda zip.",
     "build": "pnpm build:web && pnpm build:api",
