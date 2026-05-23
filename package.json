@@ -24,7 +24,7 @@
     "preview:web": "pnpm --filter disag-md-web preview",
     "//-- check --": "Static checks across the repo.",
     "check": "pnpm check:web && pnpm check:py && pnpm check:tf",
-    "check:web": "pnpm --filter disag-md-web check && pnpm --filter disag-md-web lint",
+    "check:web": "pnpm --filter disag-md-web check && pnpm --filter disag-md-web lint && pnpm --filter disag-md-web test:unit",
     "check:py": "python3 -m unittest discover tests",
     "check:tf": "cd web/infra && terraform fmt -check -recursive && terraform init -backend=false && terraform validate",
     "format": "pnpm --filter disag-md-web format && cd web/infra && terraform fmt -recursive",
