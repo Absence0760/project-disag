@@ -18,10 +18,7 @@ test.describe('Landing page', () => {
 		await expect(page.getByTestId('feature-exceed')).toBeVisible();
 		await expect(page.getByTestId('feature-converter')).toBeVisible();
 
-		await expect(page.getByTestId('feature-disag-cta')).toHaveAttribute(
-			'href',
-			'/run?tool=disag'
-		);
+		await expect(page.getByTestId('feature-disag-cta')).toHaveAttribute('href', '/run?tool=disag');
 		await expect(page.getByTestId('feature-exceed-cta')).toHaveAttribute(
 			'href',
 			'/run?tool=exceed'
@@ -33,7 +30,9 @@ test.describe('Landing page', () => {
 		);
 	});
 
-	test('Exceed tool card deep-links into /run with the right tool preselected', async ({ page }) => {
+	test('Exceed tool card deep-links into /run with the right tool preselected', async ({
+		page
+	}) => {
 		await page.goto('/');
 		await page.getByTestId('feature-exceed-cta').click();
 		await expect(page).toHaveURL(/\/run\?tool=exceed$/);
