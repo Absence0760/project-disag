@@ -246,7 +246,7 @@ class AnsToMonCliTests(unittest.TestCase):
         msg = buf.getvalue()
         self.assertIn('1990', msg)
         self.assertIn('1993', msg)
-        self.assertTrue(os.path.getsize(self.dst) > 0)
+        self.assertGreater(os.path.getsize(self.dst), 0)
 
     def test_cli_quiet_suppresses_summary(self):
         buf = io.StringIO()
