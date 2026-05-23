@@ -23,10 +23,9 @@ test.describe('Landing page', () => {
 			'href',
 			'/run?tool=exceed'
 		);
-		// Converter is CLI-only — its CTA points at the source on GitHub.
 		await expect(page.getByTestId('feature-converter-cta')).toHaveAttribute(
 			'href',
-			/github\.com.*disag\/convert\.py/
+			'/run?tool=convert'
 		);
 	});
 
@@ -37,6 +36,15 @@ test.describe('Landing page', () => {
 		await page.getByTestId('feature-exceed-cta').click();
 		await expect(page).toHaveURL(/\/run\?tool=exceed$/);
 		await expect(page.getByTestId('tool-exceed')).toBeChecked();
+	});
+
+	test('Converter tool card deep-links into /run with the convert tool preselected', async ({
+		page
+	}) => {
+		await page.goto('/');
+		await page.getByTestId('feature-converter-cta').click();
+		await expect(page).toHaveURL(/\/run\?tool=convert$/);
+		await expect(page.getByTestId('tool-convert')).toBeChecked();
 	});
 
 	test('primary nav highlights the current route', async ({ page }) => {

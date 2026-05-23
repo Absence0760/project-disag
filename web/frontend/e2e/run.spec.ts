@@ -55,6 +55,22 @@ async function stubBackend(page: Page) {
 			})
 		})
 	);
+
+	await page.route('**/convert', (route: Route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({
+				run_id: 'conv-42',
+				tool: 'convert',
+				created_at: '2026-05-17T12:02:00Z',
+				output_key: 'runs/convert/conv-42/output.mon',
+				report_key: 'runs/convert/conv-42/output.rep',
+				output_url: 'https://stub.s3.local/output.mon',
+				report_url: 'https://stub.s3.local/convert.rep'
+			})
+		})
+	);
 }
 
 async function attachFile(page: Page, testid: string, name: string) {
@@ -139,5 +155,44 @@ test.describe('Run page', () => {
 		await expect(success).toBeVisible();
 		await expect(page.getByTestId('download-report')).toBeVisible();
 		await expect(page.getByTestId('download-output')).toHaveCount(0);
+	});
+
+	test('switching to convert swaps the file pickers for a single .ans dropzone', async ({
+		page
+	}) => {
+		await page.goto('/run');
+		await page.getByTestId('tool-convert').check();
+		await expect(page.getByTestId('drop-ans')).toBeVisible();
+		await expect(page.getByTestId('drop-monthly')).toHaveCount(0);
+		await expect(page.getByTestId('drop-daily1')).toHaveCount(0);
+		// No method or intervals UI in convert mode.
+		await expect(page.getByTestId('method-0')).toHaveCount(0);
+		await expect(page.getByTestId('intervals-input')).toHaveCount(0);
+	});
+
+	test('convert flow: upload .ans → render .mon download link', async ({ page }) => {
+		await stubBackend(page);
+		await page.goto('/run?tool=convert');
+
+		await expect(page.getByTestId('tool-convert')).toBeChecked();
+		await attachFile(page, 'drop-ans', 'SAMPLE.ANS');
+		await page.getByTestId('submit').click();
+
+		const success = page.getByTestId('run-success');
+		await expect(success).toBeVisible();
+		await expect(success).toContainText(/conv-42/);
+		await expect(page.getByTestId('download-output')).toHaveAttribute(
+			'href',
+			'https://stub.s3.local/output.mon'
+		);
+		await expect(page.getByTestId('download-output')).toContainText(/\.mon output/);
+	});
+
+	test('convert flow: submitting with no .ans file shows a friendly error', async ({ page }) => {
+		await stubBackend(page);
+		await page.goto('/run?tool=convert');
+
+		await page.getByTestId('submit').click();
+		await expect(page.getByTestId('run-error')).toContainText(/Source monthly file is required/);
 	});
 });

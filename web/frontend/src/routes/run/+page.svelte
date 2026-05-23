@@ -1,17 +1,18 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { requestUpload, putToS3, runDisag, runExceed } from '$lib/api';
-	import type { DisagMethod, RunResult } from '$lib/types';
+	import { requestUpload, putToS3, runConvert, runDisag, runExceed } from '$lib/api';
+	import type { DisagMethod, RunResult, Tool } from '$lib/types';
 	import FileDrop from '$lib/FileDrop.svelte';
 
-	type Tool = 'disag' | 'exceed';
-
-	let tool = $state<Tool>(page.url.searchParams.get('tool') === 'exceed' ? 'exceed' : 'disag');
+	const VALID_TOOLS: Tool[] = ['disag', 'exceed', 'convert'];
+	const queryTool = page.url.searchParams.get('tool');
+	let tool = $state<Tool>(VALID_TOOLS.includes(queryTool as Tool) ? (queryTool as Tool) : 'disag');
 	let method = $state<DisagMethod>(0);
 	let intervals = $state(20);
 	let monthlyFile = $state<File | null>(null);
 	let daily1File = $state<File | null>(null);
 	let daily2File = $state<File | null>(null);
+	let ansFile = $state<File | null>(null);
 	let running = $state(false);
 	let result = $state<RunResult | null>(null);
 	let error = $state<string | null>(null);
@@ -94,7 +95,7 @@
 				const daily2_key = await uploadIfPresent(daily2File);
 				stage = 'computing';
 				result = await runDisag({ method, monthly_key, daily1_key, daily2_key });
-			} else {
+			} else if (tool === 'exceed') {
 				if (!monthlyFile && !daily1File) {
 					throw new Error('Exceed needs at least one of a monthly or daily file.');
 				}
@@ -102,6 +103,11 @@
 				const daily_key = await uploadIfPresent(daily1File);
 				stage = 'computing';
 				result = await runExceed({ monthly_key, daily_key, intervals });
+			} else {
+				if (!ansFile) throw new Error('Source monthly file is required.');
+				const ans_key = (await uploadIfPresent(ansFile))!;
+				stage = 'computing';
+				result = await runConvert({ ans_key });
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -115,8 +121,15 @@
 		monthlyFile = null;
 		daily1File = null;
 		daily2File = null;
+		ansFile = null;
 		result = null;
 		error = null;
+	}
+
+	function outputLabel(key: string | undefined): string {
+		if (!key) return 'output';
+		const m = key.match(/\.([a-z0-9]+)$/i);
+		return m ? `.${m[1].toLowerCase()} output` : 'output';
 	}
 </script>
 
@@ -144,6 +157,10 @@
 				<input type="radio" bind:group={tool} value="exceed" data-testid="tool-exceed" />
 				<span>Exceed <small>flow frequency</small></span>
 			</label>
+			<label class:active={tool === 'convert'}>
+				<input type="radio" bind:group={tool} value="convert" data-testid="tool-convert" />
+				<span>Convert <small>monthly format</small></span>
+			</label>
 		</div>
 	</section>
 
@@ -169,7 +186,7 @@
 				{/each}
 			</div>
 		</section>
-	{:else}
+	{:else if tool === 'exceed'}
 		<section class="card group" aria-label="Histogram intervals">
 			<h3>Histogram intervals</h3>
 			<p class="muted">More intervals = finer resolution; fewer = smoother curve.</p>
@@ -187,36 +204,48 @@
 	<section class="card group" aria-label="Files">
 		<h3>Files</h3>
 		<div class="files">
-			<FileDrop
-				label="Monthly file (.mon / .nat / .cur)"
-				accept=".mon,.MON,.nat,.NAT,.cur,.CUR"
-				file={monthlyFile}
-				required={tool === 'disag'}
-				hint="Hydro-year monthly volumes in Mm3."
-				testid="drop-monthly"
-				onchange={(f) => (monthlyFile = f)}
-			/>
-			<FileDrop
-				label="Daily reference (.day)"
-				accept=".day,.DAY"
-				file={daily1File}
-				required={daily1Required}
-				hint={daily1Required
-					? 'Required for this method.'
-					: 'Optional for exceed and methods that don’t need a reference.'}
-				testid="drop-daily1"
-				onchange={(f) => (daily1File = f)}
-			/>
-			{#if daily2Visible}
+			{#if tool === 'convert'}
 				<FileDrop
-					label="Second daily reference (.day)"
-					accept=".day,.DAY"
-					file={daily2File}
-					required={daily2Required}
-					hint={daily2Required ? 'Required for this method.' : 'Optional fallback for method 5.'}
-					testid="drop-daily2"
-					onchange={(f) => (daily2File = f)}
+					label="Source monthly file (.ans)"
+					accept=".ans,.ANS"
+					file={ansFile}
+					required={true}
+					hint="Monthly file in the source modelling layout — converted to the format Disag accepts."
+					testid="drop-ans"
+					onchange={(f) => (ansFile = f)}
 				/>
+			{:else}
+				<FileDrop
+					label="Monthly file (.mon / .nat / .cur)"
+					accept=".mon,.MON,.nat,.NAT,.cur,.CUR"
+					file={monthlyFile}
+					required={tool === 'disag'}
+					hint="Hydro-year monthly volumes in Mm3."
+					testid="drop-monthly"
+					onchange={(f) => (monthlyFile = f)}
+				/>
+				<FileDrop
+					label="Daily reference (.day)"
+					accept=".day,.DAY"
+					file={daily1File}
+					required={daily1Required}
+					hint={daily1Required
+						? 'Required for this method.'
+						: 'Optional for exceed and methods that don’t need a reference.'}
+					testid="drop-daily1"
+					onchange={(f) => (daily1File = f)}
+				/>
+				{#if daily2Visible}
+					<FileDrop
+						label="Second daily reference (.day)"
+						accept=".day,.DAY"
+						file={daily2File}
+						required={daily2Required}
+						hint={daily2Required ? 'Required for this method.' : 'Optional fallback for method 5.'}
+						testid="drop-daily2"
+						onchange={(f) => (daily2File = f)}
+					/>
+				{/if}
 			{/if}
 		</div>
 	</section>
@@ -252,7 +281,7 @@
 		<div class="actions">
 			{#if result.output_url}
 				<a class="btn" href={result.output_url} data-testid="download-output">
-					Download .day output
+					Download {outputLabel(result.output_key)}
 				</a>
 			{/if}
 			<a class="btn secondary" href={result.report_url} data-testid="download-report">

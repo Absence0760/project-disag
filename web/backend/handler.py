@@ -22,6 +22,7 @@ Routes
 POST /upload         → { filename }                → presigned POST (form-fields)
 POST /disag          → DisagRequest                → RunResult
 POST /exceed         → ExceedRequest               → RunResult
+POST /convert        → ConvertRequest              → RunResult
 GET  /runs                                         → [RunSummary]   (scoped to caller)
 GET  /runs/{run_id}                                → RunResult      (must match caller)
 
@@ -63,6 +64,7 @@ from disag.algorithm import (  # noqa: E402
     DisagMethod,
     disaggregate,
 )
+from disag.convert import ans_to_mon  # noqa: E402
 from disag.files import read_daily_file, read_monthly_file, write_daily_file  # noqa: E402
 from disag.report import write_report  # noqa: E402
 from exceed.algorithm import calculate_monthly_exceedance  # noqa: E402
@@ -71,6 +73,10 @@ from exceed.files import (  # noqa: E402
     read_monthly_file as exceed_read_monthly,
     write_exceedance_report,
 )
+
+# Tools that publish runs under runs/<tool>/<client_id>/<run_id>/. Adding a
+# new tool means adding it here so /runs and /runs/{id} can find it.
+TOOLS = ('disag', 'exceed', 'convert')
 
 # Bucket names are not required at import time so the local dev shim
 # can boot without AWS config — the page loads and the user gets a
@@ -148,6 +154,8 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             return _respond(200, _handle_disag(client_id, _body(event)))
         if method == 'POST' and path == '/exceed':
             return _respond(200, _handle_exceed(client_id, _body(event)))
+        if method == 'POST' and path == '/convert':
+            return _respond(200, _handle_convert(client_id, _body(event)))
         if method == 'GET' and path == '/runs':
             return _respond(200, _handle_list_runs(client_id))
         if method == 'GET' and path.startswith('/runs/'):
@@ -446,6 +454,73 @@ def _result_to_dict(r: Any) -> dict[str, Any]:
     }
 
 
+# ── /convert ─────────────────────────────────────────────────────────
+
+
+def _handle_convert(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    _require_buckets()
+    if not body.get('ans_key'):
+        raise _ClientError(400, 'ans_key is required')
+    ans_key = _validate_input_key(client_id, body.get('ans_key'))
+
+    run_id = _new_run_id()
+    workdir = Path(f'/tmp/{run_id}')
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    src_path = _download(ans_key, workdir)
+    out_path = workdir / 'output.mon'
+    report_path = workdir / 'output.rep'
+
+    try:
+        result = ans_to_mon(str(src_path), str(out_path))
+    except (OSError, ValueError) as exc:
+        # ValueError from ans_to_mon means the file isn't valid — that's
+        # caller-supplied input, so a 400 is the right shape. OSError on
+        # read/write of our own /tmp dir is also surfaced as 400 because
+        # the practical cause is a malformed upload that the tool can't
+        # open (e.g. binary blob with no parseable rows).
+        raise _ClientError(400, f'Conversion failed: {exc}') from exc
+
+    _write_convert_report(
+        report_path,
+        src_name=src_path.name,
+        out_name=out_path.name,
+        result=result,
+    )
+
+    return _publish_run(
+        client_id, run_id, 'convert', output=out_path, report=report_path,
+    )
+
+
+def _write_convert_report(
+    report_path: Path,
+    *,
+    src_name: str,
+    out_name: str,
+    result: Any,
+) -> None:
+    """Mirror the disag/exceed .rep style — a small text log of the run."""
+    lines = [
+        'Monthly file format conversion',
+        '',
+        f'Source file : {src_name}',
+        f'Output file : {out_name}',
+        f'Rows written: {result.rows_written}',
+        f'First year  : {result.first_year}',
+        f'Last year   : {result.last_year}',
+        f'Skipped     : {len(result.skipped)} non-data line(s)',
+    ]
+    if result.skipped:
+        lines.append('')
+        lines.append('Skipped lines (line number : text):')
+        for lineno, text in result.skipped:
+            # Truncate so a pathological input can't blow up the report.
+            shown = text[:120] + ('…' if len(text) > 120 else '')
+            lines.append(f'  {lineno:5d} : {shown}')
+    report_path.write_text('\n'.join(lines) + '\n')
+
+
 # ── /runs ────────────────────────────────────────────────────────────
 
 
@@ -457,7 +532,7 @@ def _handle_list_runs(client_id: str) -> list[dict[str, Any]]:
     # ever see entries for the calling browser. Listing the global
     # runs/ prefix and filtering in-process would leak run_id values
     # via S3 access logs and burn unnecessary list throughput.
-    for tool in ('disag', 'exceed'):
+    for tool in TOOLS:
         prefix = f'runs/{tool}/{client_id}/'
         for page in paginator.paginate(Bucket=OUTPUTS_BUCKET, Prefix=prefix):
             for obj in page.get('Contents', []):
@@ -490,14 +565,19 @@ def _handle_get_run(client_id: str, run_id: str) -> dict[str, Any]:
     # belong to this client never matches, which produces a 404 — same
     # response shape as a never-existed ID, so an attacker can't
     # distinguish "wrong owner" from "no such run".
-    for tool in ('disag', 'exceed'):
+    for tool in TOOLS:
         prefix = f'runs/{tool}/{client_id}/{run_id}/'
         resp = s3().list_objects_v2(Bucket=OUTPUTS_BUCKET, Prefix=prefix)
         contents = resp.get('Contents', [])
         if not contents:
             continue
-        output_key = next((c['Key'] for c in contents if c['Key'].endswith('.day')), None)
+        # Output is anything that isn't the .rep — covers .day for disag
+        # and .mon for convert. Exceed has no output file at all.
         report_key = next((c['Key'] for c in contents if c['Key'].endswith('.rep')), None)
+        output_key = next(
+            (c['Key'] for c in contents if not c['Key'].endswith('.rep')),
+            None,
+        )
         if not report_key:
             raise _ClientError(500, f'Run {run_id} is missing its report')
         created = min(c['LastModified'] for c in contents).astimezone(timezone.utc).isoformat()
@@ -540,7 +620,10 @@ def _publish_run(
     base = f'runs/{tool}/{client_id}/{run_id}'
     output_key = None
     if output:
-        output_key = f'{base}/output.day'
+        # Preserve the output filename so the suffix (.day, .mon) survives
+        # the trip to S3. _handle_get_run / the frontend differentiate by
+        # extension when surfacing download links.
+        output_key = f'{base}/{output.name}'
         s3().upload_file(str(output), OUTPUTS_BUCKET, output_key)
     report_key = f'{base}/output.rep'
     s3().upload_file(str(report), OUTPUTS_BUCKET, report_key)

@@ -5,9 +5,8 @@
 		tagline: string;
 		body: string;
 		bullets: string[];
-		href: string | null;
+		href: string;
 		cta: string;
-		cli?: string;
 	};
 
 	const tools: ToolCard[] = [
@@ -47,9 +46,8 @@
 				'Outputs: a monthly file in the format Disag reads',
 				'Best for: bringing in a monthly record produced by another tool without retyping it'
 			],
-			href: null,
-			cta: 'See on GitHub',
-			cli: 'python3 -m disag.convert path/to/input.ans path/to/output.mon'
+			href: '/run?tool=convert',
+			cta: 'Open Converter'
 		}
 	];
 
@@ -104,20 +102,8 @@
 						<li>{b}</li>
 					{/each}
 				</ul>
-				{#if t.cli}
-					<pre class="cli" aria-label="CLI command"><code>{t.cli}</code></pre>
-				{/if}
 				<div class="tool-cta">
-					{#if t.href}
-						<a class="btn" href={t.href} data-testid={`feature-${t.id}-cta`}>{t.cta} →</a>
-					{:else}
-						<a
-							class="btn ghost"
-							href="https://github.com/Absence0760/project-disag/blob/main/disag/convert.py"
-							rel="noopener"
-							data-testid={`feature-${t.id}-cta`}>{t.cta} →</a
-						>
-					{/if}
+					<a class="btn" href={t.href} data-testid={`feature-${t.id}-cta`}>{t.cta} →</a>
 				</div>
 			</article>
 		{/each}
@@ -246,22 +232,6 @@
 
 	.tool-card ul li + li {
 		margin-top: 0.3rem;
-	}
-
-	.cli {
-		background: var(--surface-2);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 0.55rem 0.75rem;
-		margin: 0;
-		font-size: 0.84rem;
-		overflow-x: auto;
-		white-space: pre;
-	}
-
-	.cli code {
-		background: transparent;
-		padding: 0;
 	}
 
 	.tool-cta {

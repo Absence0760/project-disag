@@ -27,9 +27,15 @@ export interface ExceedRequest {
 	intervals?: number;
 }
 
+export interface ConvertRequest {
+	ans_key: string;
+}
+
+export type Tool = 'disag' | 'exceed' | 'convert';
+
 export interface RunResult {
 	run_id: string;
-	tool: 'disag' | 'exceed';
+	tool: Tool;
 	created_at: string;
 	output_key?: string;
 	report_key: string;
@@ -39,7 +45,7 @@ export interface RunResult {
 
 export interface RunSummary {
 	run_id: string;
-	tool: 'disag' | 'exceed';
+	tool: Tool;
 	created_at: string;
 	size_bytes: number;
 }

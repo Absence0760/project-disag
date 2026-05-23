@@ -1,4 +1,11 @@
-import type { DisagRequest, ExceedRequest, RunResult, RunSummary, UploadTarget } from './types';
+import type {
+	ConvertRequest,
+	DisagRequest,
+	ExceedRequest,
+	RunResult,
+	RunSummary,
+	UploadTarget
+} from './types';
 import { getClientId } from './clientId';
 
 // Default to `/api` so production hits CloudFront's `/api/*` behaviour
@@ -61,6 +68,10 @@ export async function runDisag(req: DisagRequest): Promise<RunResult> {
 
 export async function runExceed(req: ExceedRequest): Promise<RunResult> {
 	return jsonFetch<RunResult>('/exceed', { method: 'POST', body: JSON.stringify(req) });
+}
+
+export async function runConvert(req: ConvertRequest): Promise<RunResult> {
+	return jsonFetch<RunResult>('/convert', { method: 'POST', body: JSON.stringify(req) });
 }
 
 export async function listRuns(): Promise<RunSummary[]> {
