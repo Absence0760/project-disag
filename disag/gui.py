@@ -1,12 +1,11 @@
 """Tkinter GUI for the Disag tool."""
 
 # Lazy annotation evaluation (PEP 563) so PEP 585 generic-builtin
-# annotations like dict[str, tk.StringVar] work on Python 3.8.
+# annotations like dict[str, StringVar] work on Python 3.8.
 from __future__ import annotations
 
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import IntVar, StringVar, Tk, filedialog, messagebox, ttk
 
 from .algorithm import (
     METHOD_LABELS,
@@ -21,7 +20,7 @@ from .files import read_daily_file, read_monthly_file, write_daily_file
 from .report import write_report
 
 
-class DisagApp(tk.Tk):
+class DisagApp(Tk):
     def __init__(self):
         super().__init__()
         self.title('Disaggregate NS Monthly Flows to Daily Flows')
@@ -45,14 +44,14 @@ class DisagApp(tk.Tk):
             ('Report File (output)',                  'rep',    'save',  True),
         ]
 
-        self._vars: dict[str, tk.StringVar] = {}
+        self._vars: dict[str, StringVar] = {}
         self._entries: dict[str, ttk.Entry] = {}
         self._btns: dict[str, ttk.Button] = {}
 
         for row, (label, key, mode, _) in enumerate(file_rows):
             ttk.Label(files_frame, text=label, anchor='w').grid(
                 row=row, column=0, sticky='w', padx=(8, 4), pady=3)
-            var = tk.StringVar()
+            var = StringVar()
             self._vars[key] = var
             var.trace_add('write', lambda *_: self._validate())
 
@@ -78,7 +77,7 @@ class DisagApp(tk.Tk):
         method_frame = ttk.LabelFrame(self, text='Disaggregation Method')
         method_frame.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
 
-        self._method_var = tk.IntVar(value=0)
+        self._method_var = IntVar(value=0)
         for i, label in enumerate(METHOD_LABELS.values()):
             rb = ttk.Radiobutton(
                 method_frame, text=label,
@@ -88,7 +87,7 @@ class DisagApp(tk.Tk):
             rb.grid(row=i, column=0, sticky='w', padx=8, pady=2)
 
         # ── Status bar ────────────────────────────────────────────────
-        self._status_var = tk.StringVar(value='Select files to begin.')
+        self._status_var = StringVar(value='Select files to begin.')
         ttk.Label(self, textvariable=self._status_var,
                   foreground='#555', anchor='w').grid(
             row=2, column=0, sticky='ew', padx=10)
@@ -114,7 +113,7 @@ class DisagApp(tk.Tk):
     def _browse(self, key: str, mode: str):
         initial = (
             os.path.dirname(self._vars['mon'].get())
-            or os.path.dirname(self._vars.get('day1', tk.StringVar()).get())
+            or os.path.dirname(self._vars.get('day1', StringVar()).get())
             or os.getcwd()
         )
 
@@ -157,7 +156,7 @@ class DisagApp(tk.Tk):
     def _convert_ans(self):
         initial = (
             os.path.dirname(self._vars['mon'].get())
-            or os.path.dirname(self._vars.get('day1', tk.StringVar()).get())
+            or os.path.dirname(self._vars.get('day1', StringVar()).get())
             or os.getcwd()
         )
 
