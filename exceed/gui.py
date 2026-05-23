@@ -1,8 +1,16 @@
 """Tkinter GUI for the Exceed tool with seasonal grouping and matching."""
 
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import (
+    BooleanVar,
+    DoubleVar,
+    IntVar,
+    StringVar,
+    Tk,
+    filedialog,
+    messagebox,
+    ttk,
+)
 
 from .algorithm import (
     calculate_monthly_exceedance,
@@ -18,7 +26,7 @@ from .files import (
 )
 
 
-class ExceedApp(tk.Tk):
+class ExceedApp(Tk):
     """Tkinter GUI for flow frequency analysis with seasonal and matching support."""
     
     def __init__(self):
@@ -68,7 +76,7 @@ class ExceedApp(tk.Tk):
         for row, (label, key, mode) in enumerate(file_rows):
             ttk.Label(files_frame, text=label, anchor='w').grid(
                 row=row, column=0, sticky='w', padx=(8, 4), pady=3)
-            var = tk.StringVar()
+            var = StringVar()
             self._vars[key] = var
             var.trace_add('write', lambda *_: self._validate_basic())
             
@@ -90,14 +98,14 @@ class ExceedApp(tk.Tk):
         ttk.Label(intervals_frame, text='Number of intervals:').grid(
             row=0, column=0, sticky='w', padx=8, pady=5)
         
-        self._intervals_var = tk.IntVar(value=20)
+        self._intervals_var = IntVar(value=20)
         intervals_spin = ttk.Spinbox(
             intervals_frame, from_=5, to=100, textvariable=self._intervals_var,
             width=10)
         intervals_spin.grid(row=0, column=1, sticky='w', padx=8, pady=5)
         
         # ── Status bar ────────────────────────────────────────────────
-        self._status_var = tk.StringVar(value='Select files to begin.')
+        self._status_var = StringVar(value='Select files to begin.')
         ttk.Label(parent, textvariable=self._status_var,
                   foreground='#555', anchor='w').grid(
             row=2, column=0, sticky='ew', padx=10)
@@ -122,7 +130,7 @@ class ExceedApp(tk.Tk):
         
         ttk.Label(files_frame, text='Monthly File:', anchor='w').grid(
             row=0, column=0, sticky='w', padx=(8, 4), pady=3)
-        self._seasonal_mon_var = tk.StringVar()
+        self._seasonal_mon_var = StringVar()
         self._seasonal_mon_var.trace_add('write', lambda *_: self._validate_seasonal())
         entry = ttk.Entry(files_frame, textvariable=self._seasonal_mon_var, width=50, state='readonly')
         entry.grid(row=0, column=1, padx=4, pady=3)
@@ -133,7 +141,7 @@ class ExceedApp(tk.Tk):
         
         ttk.Label(files_frame, text='Report File:', anchor='w').grid(
             row=1, column=0, sticky='w', padx=(8, 4), pady=3)
-        self._seasonal_rep_var = tk.StringVar()
+        self._seasonal_rep_var = StringVar()
         self._seasonal_rep_var.trace_add('write', lambda *_: self._validate_seasonal())
         entry = ttk.Entry(files_frame, textvariable=self._seasonal_rep_var, width=50, state='readonly')
         entry.grid(row=1, column=1, padx=4, pady=3)
@@ -148,7 +156,7 @@ class ExceedApp(tk.Tk):
         
         ttk.Label(config_frame, text='Preset:').grid(row=0, column=0, sticky='w', padx=8, pady=5)
         
-        self._season_preset_var = tk.StringVar(value='2')
+        self._season_preset_var = StringVar(value='2')
         preset_menu = ttk.Combobox(
             config_frame, textvariable=self._season_preset_var,
             values=['2', '3', '4'], state='readonly', width=5)
@@ -175,14 +183,14 @@ class ExceedApp(tk.Tk):
         ttk.Label(intervals_frame, text='Number of intervals:').grid(
             row=0, column=0, sticky='w', padx=8, pady=5)
 
-        self._seasonal_intervals_var = tk.IntVar(value=20)
+        self._seasonal_intervals_var = IntVar(value=20)
         ttk.Spinbox(
             intervals_frame, from_=5, to=100,
             textvariable=self._seasonal_intervals_var, width=10,
         ).grid(row=0, column=1, sticky='w', padx=8, pady=5)
 
         # ── Status and button ───────────────────────────────────────────
-        self._seasonal_status_var = tk.StringVar(value='Configure seasons and select files.')
+        self._seasonal_status_var = StringVar(value='Configure seasons and select files.')
         ttk.Label(parent, textvariable=self._seasonal_status_var,
                   foreground='#555', anchor='w').grid(
             row=3, column=0, columnspan=2, sticky='ew', padx=10)
@@ -216,7 +224,7 @@ class ExceedApp(tk.Tk):
         for row, (label, key, mode) in enumerate(file_rows):
             ttk.Label(files_frame, text=label, anchor='w').grid(
                 row=row, column=0, sticky='w', padx=(8, 4), pady=3)
-            var = tk.StringVar()
+            var = StringVar()
             self._match_vars[key] = var
             var.trace_add('write', lambda *_: self._validate_matching())
             
@@ -236,17 +244,17 @@ class ExceedApp(tk.Tk):
         
         ttk.Label(options_frame, text='Tolerance (% exceedance):').grid(
             row=0, column=0, sticky='w', padx=8, pady=5)
-        self._tolerance_var = tk.DoubleVar(value=5.0)
+        self._tolerance_var = DoubleVar(value=5.0)
         ttk.Spinbox(options_frame, from_=0.1, to=50, textvariable=self._tolerance_var,
                    width=10).grid(row=0, column=1, sticky='w', padx=8, pady=5)
         
         ttk.Label(options_frame, text='Intervals:').grid(row=0, column=2, sticky='w', padx=8, pady=5)
-        self._match_intervals_var = tk.IntVar(value=20)
+        self._match_intervals_var = IntVar(value=20)
         ttk.Spinbox(options_frame, from_=5, to=100, textvariable=self._match_intervals_var,
                    width=10).grid(row=0, column=3, sticky='w', padx=8, pady=5)
         
         # ── Status bar ────────────────────────────────────────────────
-        self._match_status_var = tk.StringVar(value='Select files to begin.')
+        self._match_status_var = StringVar(value='Select files to begin.')
         ttk.Label(parent, textvariable=self._match_status_var,
                   foreground='#555', anchor='w').grid(
             row=2, column=0, sticky='ew', padx=10)
@@ -358,7 +366,7 @@ class ExceedApp(tk.Tk):
             season_vars = {}
             for month_num in range(1, 13):
                 is_in_season = month_num in season_months
-                var = tk.BooleanVar(value=is_in_season)
+                var = BooleanVar(value=is_in_season)
                 season_vars[month_num] = var
                 
                 cb = ttk.Checkbutton(month_frame, text=months[month_num-1], variable=var)
