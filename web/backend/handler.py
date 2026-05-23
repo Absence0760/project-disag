@@ -474,12 +474,18 @@ def _handle_convert(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     try:
         result = ans_to_mon(str(src_path), str(out_path))
     except (OSError, ValueError) as exc:
-        # ValueError from ans_to_mon means the file isn't valid — that's
-        # caller-supplied input, so a 400 is the right shape. OSError on
-        # read/write of our own /tmp dir is also surfaced as 400 because
-        # the practical cause is a malformed upload that the tool can't
-        # open (e.g. binary blob with no parseable rows).
-        raise _ClientError(400, f'Conversion failed: {exc}') from exc
+        # ValueError from ans_to_mon → caller-supplied bad input → 400.
+        # OSError on /tmp read/write → almost always a malformed upload
+        # the tool can't open → also 400. In either case the underlying
+        # exception message embeds the Lambda's /tmp/<run_id>/ path
+        # (audit A09 — info disclosure), so we keep the wire response
+        # generic and log the detail server-side for triage.
+        print(f'convert failed for {ans_key}: {exc}')
+        raise _ClientError(
+            400,
+            'Conversion failed: the file could not be read as a monthly '
+            'streamflow file in the source layout.',
+        ) from exc
 
     _write_convert_report(
         report_path,
@@ -509,7 +515,7 @@ def _write_convert_report(
         f'Rows written: {result.rows_written}',
         f'First year  : {result.first_year}',
         f'Last year   : {result.last_year}',
-        f'Skipped     : {len(result.skipped)} non-data line(s)',
+        f'Skipped     : {result.skipped_total} non-data line(s)',
     ]
     if result.skipped:
         lines.append('')
@@ -518,6 +524,11 @@ def _write_convert_report(
             # Truncate so a pathological input can't blow up the report.
             shown = text[:120] + ('…' if len(text) > 120 else '')
             lines.append(f'  {lineno:5d} : {shown}')
+        if result.skipped_total > len(result.skipped):
+            lines.append(
+                f'  … ({result.skipped_total - len(result.skipped)} more skipped '
+                f'lines not shown)'
+            )
     report_path.write_text('\n'.join(lines) + '\n')
 
 

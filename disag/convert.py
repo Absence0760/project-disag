@@ -21,12 +21,19 @@ from typing import NamedTuple
 ANS_COL_WIDTH = 8
 ANS_DATA_COLS = 13  # year + 12 monthly values
 
+# Defence against an adversarial .ANS that's all garbage: keep at most
+# this many skipped lines so the in-memory list (and the .rep report
+# we write from it) can't grow proportional to file size. Real files
+# usually have 0–2 skipped lines (AVERAGE trailer + blanks).
+SKIPPED_RETAIN_MAX = 100
+
 
 class ConversionResult(NamedTuple):
     rows_written: int
     first_year: int
     last_year: int
-    skipped: list  # list of (lineno, text) for the AVERAGE/blank trailer rows
+    skipped: list  # list of (lineno, text); first SKIPPED_RETAIN_MAX entries only
+    skipped_total: int  # actual count, even when truncated
 
 
 def ans_to_mon(src: str, dst: str) -> ConversionResult:
@@ -36,18 +43,25 @@ def ans_to_mon(src: str, dst: str) -> ConversionResult:
     """
     rows: list = []
     skipped: list = []
+    skipped_total = 0
+
+    def _skip(lineno: int, text: str) -> None:
+        nonlocal skipped_total
+        skipped_total += 1
+        if len(skipped) < SKIPPED_RETAIN_MAX:
+            skipped.append((lineno, text))
 
     with open(src) as fh:
         for lineno, line in enumerate(fh, 1):
             line = line.rstrip('\n')
             if len(line) < ANS_COL_WIDTH * ANS_DATA_COLS:
-                skipped.append((lineno, line))
+                _skip(lineno, line)
                 continue
             year_field = line[0:ANS_COL_WIDTH].strip()
             try:
                 year = int(year_field)
             except ValueError:
-                skipped.append((lineno, line))
+                _skip(lineno, line)
                 continue
             try:
                 vals = [
@@ -87,6 +101,7 @@ def ans_to_mon(src: str, dst: str) -> ConversionResult:
         first_year=rows[0][0],
         last_year=rows[-1][0],
         skipped=skipped,
+        skipped_total=skipped_total,
     )
 
 
@@ -118,9 +133,9 @@ def _cli(argv: list | None = None) -> int:
             f'({result.first_year}–{result.last_year}) to {args.dst}',
             file=sys.stderr,
         )
-        if result.skipped:
+        if result.skipped_total:
             print(
-                f'skipped {len(result.skipped)} non-data line(s) '
+                f'skipped {result.skipped_total} non-data line(s) '
                 f'(AVERAGE trailer / blanks)',
                 file=sys.stderr,
             )

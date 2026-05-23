@@ -16,7 +16,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from disag.convert import _cli, ans_to_mon
+from disag.convert import SKIPPED_RETAIN_MAX, _cli, ans_to_mon
 from disag.files import read_monthly_file
 
 
@@ -105,6 +105,24 @@ class AnsToMonTests(unittest.TestCase):
         self.assertEqual(len(result.skipped), 2)
         skipped_linenos = [ln for ln, _ in result.skipped]
         self.assertEqual(skipped_linenos, [2, 3])
+
+    def test_skipped_list_is_capped_to_defend_against_adversarial_input(self):
+        # A pathological .ANS that's all garbage shouldn't be able to
+        # grow `skipped` to one entry per line — the list (and the .rep
+        # report we write from it) is bounded so attacker-controlled
+        # input can't drive Lambda memory.
+        nlines = SKIPPED_RETAIN_MAX + 50
+        body = ''.join('not a data line\n' for _ in range(nlines))
+        # Add one valid row so ans_to_mon doesn't raise "no parseable
+        # data rows found".
+        body += _ans_line(1990, [1.0] * 12, total=12, avg=1.0)
+        _write_ans(self.src, body)
+
+        result = ans_to_mon(self.src, self.dst)
+
+        self.assertEqual(result.rows_written, 1)
+        self.assertEqual(len(result.skipped), SKIPPED_RETAIN_MAX)
+        self.assertEqual(result.skipped_total, nlines)
 
     # ------------------------------------------------------------------
     # The fixed-width column collision case
