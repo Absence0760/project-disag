@@ -171,12 +171,12 @@ class ReportObservabilityTests(unittest.TestCase):
         )
 
         # Section header + column header are present
-        try:
-            header_idx = next(
-                i for i, l in enumerate(log)
-                if l.startswith('Per-month tier breakdown')
-            )
-        except StopIteration:
+        header_idx = next(
+            (i for i, l in enumerate(log)
+             if l.startswith('Per-month tier breakdown')),
+            -1,
+        )
+        if header_idx == -1:
             self.fail('per-month breakdown section missing from report')
         self.assertTrue(log[header_idx + 1].startswith('YYYY MM'))
 
