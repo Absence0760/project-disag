@@ -414,9 +414,7 @@ class ExceedApp(Tk):
         
         try:
             monthly_exceedance = {}
-            month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                          'July', 'August', 'September', 'October', 'November', 'December']
-            
+
             # Process monthly data
             if self._vars['mon'].get():
                 self._status_var.set('Reading monthly file…')
