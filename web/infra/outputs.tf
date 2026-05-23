@@ -1,6 +1,12 @@
 output "api_endpoint" {
   description = "Direct API Gateway invoke URL (useful for local dev)."
   value       = aws_apigatewayv2_api.http.api_endpoint
+  # The URL is the only thing standing between an attacker and a
+  # direct hit on the API Gateway that bypasses CloudFront + WAF.
+  # The CLOUDFRONT_SHARED_SECRET header check still blocks the
+  # request, but redacting the URL from Terraform plan/output keeps
+  # casual leakage out of CI logs.
+  sensitive = true
 }
 
 output "cloudfront_url" {

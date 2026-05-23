@@ -5,7 +5,11 @@ resource "aws_apigatewayv2_api" "http" {
   cors_configuration {
     allow_origins = [var.allowed_origin]
     allow_methods = ["GET", "POST", "OPTIONS"]
-    allow_headers = ["content-type"]
+    # x-client-id is the per-browser scoping header the Lambda
+    # requires on every non-OPTIONS request. Browsers enforce CORS
+    # preflight, so it has to be advertised here even though only the
+    # backend ultimately validates it.
+    allow_headers = ["content-type", "x-client-id"]
     max_age       = 3000
   }
 }
@@ -16,6 +20,10 @@ resource "aws_apigatewayv2_integration" "lambda" {
   integration_uri        = aws_lambda_function.api.invoke_arn
   integration_method     = "POST"
   payload_format_version = "2.0"
+  # Match the Lambda timeout so neither side can stay alive after the
+  # other gives up. API GW HTTP API caps this at 30s — see the
+  # variable docstring on lambda_timeout_seconds.
+  timeout_milliseconds = var.lambda_timeout_seconds * 1000
 }
 
 # Catch-all — the Lambda handler does its own routing on rawPath +

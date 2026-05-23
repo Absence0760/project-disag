@@ -24,15 +24,16 @@ data "local_file" "lambda_zip" {
 }
 
 resource "aws_lambda_function" "api" {
-  function_name    = "${local.name_prefix}-api"
-  role             = aws_iam_role.lambda.arn
-  filename         = data.local_file.lambda_zip.filename
-  source_code_hash = data.local_file.lambda_zip.content_base64sha256
-  handler          = "handler.lambda_handler"
-  runtime          = "python3.14"
-  memory_size      = var.lambda_memory_mb
-  timeout          = var.lambda_timeout_seconds
-  architectures    = ["arm64"] # Graviton — ~20% cheaper per ms, same Python 3.14 image.
+  function_name                  = "${local.name_prefix}-api"
+  role                           = aws_iam_role.lambda.arn
+  filename                       = data.local_file.lambda_zip.filename
+  source_code_hash               = data.local_file.lambda_zip.content_base64sha256
+  handler                        = "handler.lambda_handler"
+  runtime                        = "python3.14"
+  memory_size                    = var.lambda_memory_mb
+  timeout                        = var.lambda_timeout_seconds
+  reserved_concurrent_executions = var.lambda_reserved_concurrency
+  architectures                  = ["arm64"] # Graviton — ~20% cheaper per ms, same Python 3.14 image.
 
   environment {
     variables = {

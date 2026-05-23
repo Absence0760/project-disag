@@ -78,3 +78,23 @@ resource "aws_wafv2_web_acl" "site" {
     sampled_requests_enabled   = true
   }
 }
+
+# WAF logging — without this, blocked requests have no audit trail
+# beyond CloudWatch counters, so there's no way to tell a brute-force
+# probe from a legitimate burst, or to debug a false-positive on the
+# managed rule set.
+#
+# CloudWatch log group name MUST start with `aws-waf-logs-` and live
+# in us-east-1 for CLOUDFRONT-scoped ACLs. 30-day retention matches
+# the rest of this stack (apigw + lambda log groups).
+resource "aws_cloudwatch_log_group" "waf" {
+  provider          = aws.us_east_1
+  name              = "aws-waf-logs-${local.name_prefix}-cloudfront"
+  retention_in_days = 30
+}
+
+resource "aws_wafv2_web_acl_logging_configuration" "site" {
+  provider                = aws.us_east_1
+  log_destination_configs = [aws_cloudwatch_log_group.waf.arn]
+  resource_arn            = aws_wafv2_web_acl.site.arn
+}

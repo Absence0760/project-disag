@@ -46,8 +46,25 @@ EOT
 
 variable "lambda_timeout_seconds" {
   type        = number
-  description = "Per-invocation cap. Hard ceiling 900 (15 min)."
-  default     = 300
+  description = <<EOT
+Per-invocation cap. API Gateway HTTP API hard-limits integration
+responses to 30s, so anything beyond ~29s is pure compute waste — the
+caller will see a 504 from API GW while the Lambda keeps billing.
+EOT
+  default     = 29
+}
+
+variable "lambda_reserved_concurrency" {
+  type        = number
+  description = <<EOT
+Reserved concurrent executions for the API Lambda. A hard ceiling that
+prevents one client's burst from exhausting the account-level Lambda
+concurrency quota (default 1000) and starving the rest of the account,
+and caps the worst-case compute bill from an abuser. Sized for the
+tool's expected legitimate load — bump if real traffic justifies it.
+Set to -1 to disable reservation (uses unreserved pool).
+EOT
+  default     = 10
 }
 
 variable "allowed_origin" {
