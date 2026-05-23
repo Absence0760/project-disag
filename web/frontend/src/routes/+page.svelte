@@ -15,11 +15,11 @@
 			id: 'disag',
 			title: 'Disag',
 			tagline: 'Monthly → daily',
-			body: 'Disaggregate a monthly streamflow series (Mm³/month) into a daily series (m³/s). Six methods, from a one-file baseline to cross-river percentile matching for synthesised donor months.',
+			body: 'Disaggregate a monthly streamflow series into a daily series. Six methods, from a one-file baseline through cross-river percentile matching when both reference rivers have gaps.',
 			bullets: [
-				'Inputs: a NinhamShand .mon monthly file + 0–2 daily reference .day files',
-				'Outputs: a .day daily series plus a .rep audit log showing every patch and fallback',
-				'Best for: turning Pitman model output or gauge-station monthly totals into a usable daily record'
+				'Inputs: a monthly file plus 0–2 daily reference files',
+				'Outputs: a daily series plus a report showing every patch and fallback',
+				'Best for: turning a monthly volume record into a usable daily series for downstream modelling'
 			],
 			href: '/run?tool=disag',
 			cta: 'Open Disag'
@@ -30,9 +30,9 @@
 			tagline: 'Flow-frequency analysis',
 			body: 'Compute the exceedance (percentile) distribution for monthly or daily flow data. Produces a separate curve for each of the twelve calendar months, with optional seasonal grouping and monthly↔daily matching.',
 			bullets: [
-				'Inputs: a monthly .mon file and/or a daily .day file (either alone works)',
-				'Outputs: a .rep report listing flow values at each exceedance bin per month or season',
-				'Best for: sizing assurance studies, comparing wet vs. dry-season frequency, or sanity-checking a disagged daily series against its source monthly'
+				'Inputs: a monthly file and/or a daily file (either alone works)',
+				'Outputs: a report listing flow values at each exceedance bin per month or season',
+				'Best for: comparing wet vs. dry-season frequency, or sanity-checking a disagged daily series against its source monthly'
 			],
 			href: '/run?tool=exceed',
 			cta: 'Open Exceed'
@@ -40,16 +40,16 @@
 		{
 			id: 'converter',
 			title: 'Converter',
-			tagline: 'Pitman .ANS → NinhamShand .MON',
-			body: 'Convert a Pitman Model .ANS monthly file (fixed-width 8-char columns; numbers can run together in wet years) into the NinhamShand .MON layout that Disag accepts. CLI-only — also wired into the desktop Disag GUI as a "Convert .ANS to .MON…" button.',
+			tagline: 'Monthly format converter',
+			body: 'Convert a monthly streamflow file from the source modelling layout into the format Disag accepts. Also wired into the desktop Disag GUI as a "Convert…" button.',
 			bullets: [
-				'Inputs: a Pitman .ANS monthly file',
-				'Outputs: a NinhamShand .MON file with the same hydro-year layout Disag expects',
-				'Best for: glueing a Pitman calibration run straight into a disaggregation workflow without retyping'
+				'Inputs: a monthly streamflow file in the source layout',
+				'Outputs: a monthly file in the format Disag reads',
+				'Best for: bringing in a monthly record produced by another tool without retyping it'
 			],
 			href: null,
 			cta: 'See on GitHub',
-			cli: 'python3 -m disag.convert path/to/PUNRQ6.ANS path/to/PUNRQ6.MON'
+			cli: 'python3 -m disag.convert path/to/input.ans path/to/output.mon'
 		}
 	];
 
