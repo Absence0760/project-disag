@@ -25,20 +25,14 @@ terraform {
     }
   }
 
-  # Remote state. The tfstate bucket + lock are created by the
-  # cross-project bootstrap (~/repos/templates/scripts/new-project-account.sh).
-  # After bootstrap runs, fill in `bucket = ` with the value printed in
-  # the script's summary (format: `<bootstrap_slug>-tfstate-<account-id>`,
-  # e.g. `disag-tfstate-123456789012`), uncomment the block, and run
-  # `terraform init -migrate-state` to move state into the bucket.
-  # `use_lockfile = true` uses S3 conditional writes for locking
-  # (TF 1.10+ — no DynamoDB table needed).
-  #
-  # backend "s3" {
-  #   bucket       = "disag-tfstate-<account-id>"
-  #   key          = "web/terraform.tfstate"
-  #   region       = "us-east-1"
-  #   use_lockfile = true
-  #   encrypt      = true
-  # }
+  # Remote state in the bootstrap-created S3 bucket. Locking via S3
+  # conditional writes (Terraform 1.10+'s `use_lockfile`) — no DynamoDB
+  # needed. Bucket was created by ~/repos/templates/infra/bootstrap/2-baseline.
+  backend "s3" {
+    bucket       = "disag-tfstate-406460434695"
+    key          = "web/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
+  }
 }

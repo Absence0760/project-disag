@@ -15,7 +15,5 @@
 
 creation_rules:
   - path_regex: web/infra/.*\.enc\.yaml$
-    # Replace with your KMS key ARN, e.g.
-    # arn:aws:kms:us-east-1:111122223333:alias/disag-sops
-    kms: arn:aws:kms:us-east-1:REPLACE_ME:alias/disag-sops
+    kms: arn:aws:kms:us-east-1:406460434695:alias/disag-sops
     encrypted_regex: "^(data|stringData|password|secret|token|key|.*_key|.*_secret)$"
