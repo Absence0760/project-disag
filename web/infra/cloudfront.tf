@@ -39,7 +39,18 @@ resource "aws_cloudfront_response_headers_policy" "security" {
     content_security_policy {
       content_security_policy = join("; ", [
         "default-src 'self'",
-        "script-src 'self'",
+        # SvelteKit's adapter-static emits an inline bootstrap <script>
+        # (`Promise.all([import(...)]).then(kit.start)`) whose content
+        # changes per build (module hashes are baked into the import
+        # paths). Without 'unsafe-inline' the browser refuses to run
+        # it and the page stays blank.
+        #
+        # A nonce-based CSP would be stronger but can't be set from a
+        # static CloudFront response_headers_policy — it needs per-request
+        # generation, which means moving CSP into the SvelteKit handler.
+        # Worth doing if user-generated content ever lands in the page;
+        # not worth it today.
+        "script-src 'self' 'unsafe-inline'",
         # SvelteKit's adapter-static emits inline <style> blocks per
         # component — 'unsafe-inline' is required for them to apply.
         # Switch to nonces/hashes if a CSP report-uri ever shows abuse.
