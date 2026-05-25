@@ -202,10 +202,40 @@ pnpm tf:export-vars             # sets AWS_DEPLOY_ROLE_ARN, AWS_REGION,
 Verify with `gh variable list`. Re-run after any apply that renames
 resources (e.g. the `random_id` suffix changes).
 
-You should also create a GitHub `production` environment in repo
-Settings → Environments and add required reviewers — that's what
-gates the OIDC trust policy. Without it, the role can be assumed by
-any job in the repo that requests the `production` environment.
+### Pre-launch checklist (root-account / outside-Terraform steps)
+
+A handful of safeguards aren't expressible in this repo's Terraform —
+they're root-account toggles or Service Quotas raises that the
+bootstrap can't do for you. Run through these once per project
+account; the audit-report items they close are noted in brackets.
+
+1. **GitHub `production` environment with required reviewers.**
+   Repo Settings → Environments → New environment "production" →
+   add yourself (or a small group) as Required reviewers. **This is
+   the only thing standing between any merged workflow and the
+   deploy role.** The OIDC trust policy gates on `environment:
+   production`, but without a reviewer requirement on the GitHub
+   side any maintainer who pushes a workflow that requests that
+   environment can assume the role. [audit/infra Medium]
+
+2. **Enable IAM billing access on the member account** so Budgets
+   can be created. Root login → Account → Billing settings → toggle
+   on "IAM user and role access to billing information". Until
+   that's done, `aws_budgets_budget` resources fail apply with
+   AccessDeniedException. Once done, set `budget_monthly_usd` in
+   your local `terraform.tfvars`. [audit/cost-controls Critical]
+
+3. **Raise the "Concurrent executions" Service Quota** above the
+   new-account 10-cap so `lambda_reserved_concurrency` can be set
+   without AWS rejecting the apply for `unreserved >= 10`. Service
+   Quotas → AWS Lambda → Concurrent executions → request increase
+   (any value ≥ 100 lets you reserve 5–20). [audit/cost-controls High]
+
+4. **Confirm the SNS subscription** AWS emails on first apply with
+   the budget alarm. An unconfirmed subscription is a silent failure
+   — alarms still fire in the console but no one is paged. Check
+   in the AWS Console → SNS → Topics → `<project>-prod-alerts` →
+   Subscriptions → status should read `Confirmed`. [audit/cost-controls Low]
 
 ## Releasing
 
