@@ -45,15 +45,21 @@ resource "aws_cloudfront_response_headers_policy" "security" {
         # paths). Without 'unsafe-inline' the browser refuses to run
         # it and the page stays blank.
         #
-        # A nonce-based CSP would be stronger but can't be set from a
-        # static CloudFront response_headers_policy — it needs per-request
-        # generation, which means moving CSP into the SvelteKit handler.
-        # Worth doing if user-generated content ever lands in the page;
-        # not worth it today.
+        # KNOWN GAP — on a public-facing site this defeats CSP as the
+        # final XSS mitigation: a script-injection via a future
+        # {@html} sink, a compromised dependency, or a DOM-sink would
+        # execute freely. Accepted residual risk today because we
+        # render zero user-generated content into the page (only
+        # server-issued S3 pre-signed URLs and run IDs validated by
+        # RUN_ID_RE). When that changes, the right fix is a nonce
+        # generated per request by a CloudFront Function and injected
+        # into both this header and the bootstrap script tag. Tracked
+        # in the security audit report as a High finding.
         "script-src 'self' 'unsafe-inline'",
         # SvelteKit's adapter-static emits inline <style> blocks per
         # component — 'unsafe-inline' is required for them to apply.
-        # Switch to nonces/hashes if a CSP report-uri ever shows abuse.
+        # Same trade-off as script-src above but lower exploitability
+        # (CSS injection can't execute JS in modern browsers).
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "font-src 'self'",
