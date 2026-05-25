@@ -12,8 +12,12 @@ parent_domain    = "disag.jaredhoward.com"
 # Compute-bound disag runs benefit from more CPU; bump to 8192 or 10240
 # for large monthly files with Method 5 (PATCH_EXCEED). New AWS accounts
 # cap at 3008 — request a Service Quotas increase before going higher.
+# API Gateway HTTP API hard-caps integration timeouts at 30s — anything
+# higher is rejected at apply time. The Lambda itself can run longer, but
+# the caller sees a 504 from API GW at the 30s mark while the function
+# keeps billing. Keep timeout ≤ 29.
 lambda_memory_mb       = 3008
-lambda_timeout_seconds = 300
+lambda_timeout_seconds = 29
 
 # CORS allow-origin. Prod refuses to apply unless this is a concrete
 # https:// URL (validation in variables.tf). In dev/staging "*" is fine.
