@@ -118,9 +118,12 @@ EOT
   # No default — prod refuses to apply without an explicit value,
   # forcing every contributor to think about it. For dev/staging
   # set "*" in your tfvars.
+  # Prod requires a concrete `https://host` origin — not "*", not an
+  # empty string, not a `*.example.com` wildcard, not a non-https scheme.
+  # The regex accepts a single host (optionally with port) only.
   validation {
-    condition     = !(var.environment == "prod" && var.allowed_origin == "*")
-    error_message = "allowed_origin must be narrowed when environment = \"prod\". Set it to your CloudFront URL (e.g. https://d12345.cloudfront.net) or the custom domain."
+    condition     = var.environment != "prod" || can(regex("^https://[a-z0-9.-]+(:[0-9]+)?$", var.allowed_origin))
+    error_message = "allowed_origin must be a concrete https://host (optionally :port) when environment = \"prod\". No wildcards, no empty strings, no http://. Example: https://d12345.cloudfront.net or https://app.example.com."
   }
 }
 
