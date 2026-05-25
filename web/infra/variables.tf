@@ -38,10 +38,15 @@ Lambda memory size. CPU scales linearly with memory in Lambda:
   ~3009 MB  = 1.7 vCPU
   ~5308 MB  = 3 vCPU
   ~10240 MB = ~6 vCPU
-Default sized for compute-bound disag/exceed runs without overpaying
-on idle.
+
+Default is 3008 — the maximum Lambda memory a freshly-provisioned AWS
+account is allowed to allocate without a Service Quotas increase. Once
+the quota is raised (AWS Console → Service Quotas → AWS Lambda → search
+"Memory" → request increase, usually approved within minutes), bump
+this back up to 4096+ for the extra CPU headroom on compute-bound
+disag/exceed runs.
 EOT
-  default     = 4096
+  default     = 3008
 }
 
 variable "lambda_timeout_seconds" {
@@ -102,8 +107,18 @@ variable "max_upload_bytes" {
 
 variable "budget_monthly_usd" {
   type        = number
-  description = "Monthly AWS spend ceiling that triggers an alert (0 disables the budget)."
-  default     = 50
+  description = <<EOT
+Monthly AWS spend ceiling that triggers an alert (0 disables the budget).
+
+Default is 0 because newly-org-created member accounts can't create
+AWS Budgets until the account owner enables "IAM user and role access
+to billing information" — a root-only operation that the bootstrap
+can't perform. Until that's done (Account → Billing settings → toggle
+on), any budget create attempt fails with AccessDeniedException +
+"ask the payer account to enable budgets first." Once the toggle is
+on, bump this back up to ~50 to enable the tripwire.
+EOT
+  default     = 0
 }
 
 variable "budget_alert_email" {
