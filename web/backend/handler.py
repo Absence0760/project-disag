@@ -551,6 +551,13 @@ def _handle_list_runs(client_id: str) -> list[dict[str, Any]]:
                 if len(parts) < 5:
                     continue
                 run_id = parts[3]
+                # Defence in depth: only this Lambda writes the outputs
+                # bucket, so parts[3] should always match _new_run_id().
+                # But if the bucket ever takes a third-party write or the
+                # key layout shifts, an unvalidated run_id reaches the
+                # frontend as a link target.
+                if not RUN_ID_RE.match(run_id):
+                    continue
                 entry = runs.setdefault(
                     run_id,
                     {
