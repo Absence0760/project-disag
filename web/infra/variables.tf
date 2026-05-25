@@ -20,8 +20,18 @@ EOT
 
 variable "environment" {
   type        = string
-  description = "Environment suffix (dev / staging / prod)."
-  default     = "dev"
+  description = <<EOT
+Environment suffix (dev / staging / prod). Drives resource naming
+(`disag-md-<env>-*`) and the resolved fqdn (prod → disag.jaredhoward.com,
+others → <env>.disag.jaredhoward.com).
+
+Default is "prod" so the single-environment state in this repo lands
+at the canonical disag.jaredhoward.com URL. To stand up a parallel dev
+environment, create a new Terraform workspace and override:
+  terraform workspace new dev
+  terraform apply -var environment=dev -var allowed_origin='*'
+EOT
+  default     = "prod"
 }
 
 variable "region" {
@@ -80,16 +90,16 @@ EOT
 
 variable "allowed_origin" {
   type        = string
-  description = "CORS allow-origin header — must be a concrete https:// URL."
-  default     = "*"
+  description = "CORS allow-origin header — must be a concrete https:// URL in prod."
+  default     = "https://disag.jaredhoward.com"
 
-  # `*` is convenient for the very first `terraform apply` (before
-  # the CloudFront URL is known) but a real leak in any longer-lived
-  # environment. Apply fails fast in prod so wildcard never lands
-  # there; dev/staging keep the escape hatch.
+  # `*` is convenient for first-time / dev applies (before any
+  # CloudFront URL is known) but is a real leak in prod. Validation
+  # blocks it for prod; dev/staging keep the escape hatch via
+  # `-var allowed_origin='*'`.
   validation {
     condition     = !(var.environment == "prod" && var.allowed_origin == "*")
-    error_message = "allowed_origin must be narrowed when environment = \"prod\". Set it to your CloudFront URL (e.g. https://d12345.cloudfront.net)."
+    error_message = "allowed_origin must be narrowed when environment = \"prod\". Set it to your CloudFront URL (e.g. https://d12345.cloudfront.net) or the custom domain."
   }
 }
 

@@ -87,6 +87,7 @@ resource "aws_cloudfront_distribution" "site" {
   price_class         = "PriceClass_100" # NA + EU only; cheap default.
   comment             = "${local.name_prefix} site"
   web_acl_id          = aws_wafv2_web_acl.site.arn
+  aliases             = [local.fqdn]
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -159,7 +160,9 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = data.aws_acm_certificate.wildcard.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 
