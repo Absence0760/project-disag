@@ -23,10 +23,36 @@ lambda_timeout_seconds = 29
 # https:// URL (validation in variables.tf). In dev/staging "*" is fine.
 allowed_origin = "https://project.example.com"
 
-# Wallet-bleed defences. Defaults in variables.tf are reasonable;
-# uncomment any line below only when you want to override.
-# budget_monthly_usd    = 50
-# budget_alert_email    = "you@example.com"
+# ── Wallet-bleed defences ────────────────────────────────────────────
+#
+# These four lines are the difference between "an attacker discovers
+# the public API and runs up a bill" and "an attacker discovers the
+# public API, hits the rate limit, and the budget alarm pages you."
+# All of them should be set in prod.
+
+# Monthly spend ceiling. NB: a new AWS member account can't create
+# Budgets until the payer (root) toggles on "IAM user and role access
+# to billing information" — Account → Billing settings. Until that's
+# done, leave this at 0 (default) and the budget resource is skipped.
+# Once enabled, set to a low-tens value: a runaway loop on Lambda at
+# 3 GB × 29 s can clear $50 in a few hours, so 50 is a reasonable cap.
+budget_monthly_usd = 50
+
+# Email that gets paged on every budget threshold + every Lambda /
+# CloudFront / API Gateway alarm. Without this, alarms still fire in
+# the console but nobody is paged. AWS sends a confirmation email on
+# first apply — accept it once.
+budget_alert_email = "you@example.com"
+
+# Caps the worst-case Lambda compute spend during a sustained attack.
+# Default is -1 (no reservation) because new accounts cap Concurrent
+# Executions at 10 and AWS requires unreserved >= 10 — so any
+# reservation fails apply until Service Quotas raises the cap.
+# After raising the quota, set to a low number (5–20) — it's the
+# hard ceiling on dollars-per-attack.
+# lambda_reserved_concurrency = 5
+
+# Optional overrides — defaults in variables.tf are reasonable.
 # waf_rate_limit_per_ip = 500
 # max_upload_bytes      = 10485760  # 10 MiB
 # upload_ttl_seconds    = 300
