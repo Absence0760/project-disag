@@ -28,8 +28,13 @@ terraform {
   # Remote state in the bootstrap-created S3 bucket. Locking via S3
   # conditional writes (Terraform 1.10+'s `use_lockfile`) — no DynamoDB
   # needed. Bucket was created by ~/repos/templates/infra/bootstrap/2-baseline.
+  #
+  # The bucket name is partial-config: passed via `terraform init
+  # -backend-config=backend.config` (file is gitignored — see
+  # backend.config.example for the shape). This keeps the AWS account
+  # ID out of source control so the repo can be made public without
+  # broadcasting it.
   backend "s3" {
-    bucket       = "disag-tfstate-406460434695"
     key          = "web/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true

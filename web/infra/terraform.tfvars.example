@@ -1,20 +1,23 @@
 project          = "disag-md"
 bootstrap_slug   = "disag"          # must match the slug used when running new-project-account.sh
-environment      = "dev"
+environment      = "prod"           # "dev" / "staging" / "prod" — drives resource names and the resolved fqdn
 region           = "us-east-1"
 
+# Required: the delegated Route 53 hosted zone for this project,
+# matching the one the bootstrap baseline created. Prod CloudFront
+# serves at this exact fqdn; non-prod environments serve at
+# "<env>.<parent_domain>".
+parent_domain    = "disag.jaredhoward.com"
+
 # Compute-bound disag runs benefit from more CPU; bump to 8192 or 10240
-# for large monthly files with Method 5 (PATCH_EXCEED).
-lambda_memory_mb       = 4096
+# for large monthly files with Method 5 (PATCH_EXCEED). New AWS accounts
+# cap at 3008 — request a Service Quotas increase before going higher.
+lambda_memory_mb       = 3008
 lambda_timeout_seconds = 300
 
-# REPLACE with your CloudFront URL after the first apply. The default
-# below is a placeholder, NOT a wildcard — leaving it as-is means CORS
-# blocks every browser, which is the right failure mode. The
-# `var.environment == "prod" && var.allowed_origin == "*"` validation
-# in variables.tf blocks the wildcard in prod, but you should narrow
-# this in every environment, not just prod.
-allowed_origin = "https://CHANGE-ME.cloudfront.net"
+# CORS allow-origin. Prod refuses to apply unless this is a concrete
+# https:// URL (validation in variables.tf). In dev/staging "*" is fine.
+allowed_origin = "https://disag.jaredhoward.com"
 
 # Wallet-bleed defences. Defaults in variables.tf are reasonable;
 # uncomment any line below only when you want to override.

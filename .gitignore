@@ -37,3 +37,11 @@ web/infra/*.tfstate
 web/infra/*.tfstate.backup
 web/infra/*.tfvars
 !web/infra/*.tfvars.example
+web/infra/backend.config
+!web/infra/backend.config.example
+
+# Populated by `pnpm sops:bootstrap` from .sops.yaml.example. Holds
+# the active AWS account ID in the KMS ARN — never commit. The
+# example file is the only one that lives in source control.
+.sops.yaml
+!.sops.yaml.example

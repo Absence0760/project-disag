@@ -23,10 +23,16 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SOPS_FILE="$REPO_ROOT/.sops.yaml"
+SOPS_EXAMPLE="$REPO_ROOT/.sops.yaml.example"
 
 if [ ! -f "$SOPS_FILE" ]; then
-    echo "error: .sops.yaml not found at $SOPS_FILE" >&2
-    exit 1
+    if [ -f "$SOPS_EXAMPLE" ]; then
+        echo ".sops.yaml not found — seeding from .sops.yaml.example"
+        cp "$SOPS_EXAMPLE" "$SOPS_FILE"
+    else
+        echo "error: neither .sops.yaml nor .sops.yaml.example found at $REPO_ROOT" >&2
+        exit 1
+    fi
 fi
 
 if ! command -v aws >/dev/null 2>&1; then

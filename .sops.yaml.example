@@ -1,0 +1,15 @@
+# Template for .sops.yaml. Copy to .sops.yaml (which is gitignored)
+# and run `pnpm sops:bootstrap` to substitute REPLACE_ME with the
+# active AWS account ID:
+#
+#   cp .sops.yaml.example .sops.yaml
+#   pnpm sops:bootstrap
+#
+# The bootstrap script reads the account from `aws sts
+# get-caller-identity`, so make sure your AWS_PROFILE is set and
+# you've run `aws sso login` first.
+
+creation_rules:
+  - path_regex: web/infra/.*\.enc\.yaml$
+    kms: arn:aws:kms:us-east-1:REPLACE_ME:alias/disag-sops
+    encrypted_regex: "^(data|stringData|password|secret|token|key|.*_key|.*_secret)$"

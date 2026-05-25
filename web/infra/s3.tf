@@ -3,10 +3,10 @@ locals {
   account_id  = data.aws_caller_identity.current.account_id
 
   # Custom-domain fqdn. Prod claims the apex of the delegated zone
-  # (disag.jaredhoward.com); non-prod environments land at a labelled
-  # subdomain (dev.disag.jaredhoward.com, staging.disag.jaredhoward.com).
-  # The wildcard ACM cert (*.disag.jaredhoward.com) covers both shapes.
-  fqdn = var.environment == "prod" ? "disag.jaredhoward.com" : "${var.environment}.disag.jaredhoward.com"
+  # (var.parent_domain); non-prod environments land at a labelled
+  # subdomain (e.g. dev.<parent_domain>, staging.<parent_domain>).
+  # The wildcard ACM cert (*.<parent_domain>) covers both shapes.
+  fqdn = var.environment == "prod" ? var.parent_domain : "${var.environment}.${var.parent_domain}"
 }
 
 # 4-char suffix → keeps bucket names stable across `terraform apply`s

@@ -11,11 +11,30 @@ Slug used by the cross-project AWS account bootstrap
 (~/repos/templates/scripts/new-project-account.sh). Distinct from
 `project` — the bootstrap slug names the AWS account itself, the
 deploy IAM role (`<slug>-deploy`), the KMS alias (`alias/<slug>-sops`),
-and the delegated subdomain (`<slug>.jaredhoward.com`). This repo
+and the delegated subdomain (`<slug>.<parent_zone_root>`). This repo
 looks up bootstrap-created resources by this slug, then names its
 *own* resources with `project` for brand consistency (`disag-md-dev-*`).
 EOT
   default     = "disag"
+}
+
+variable "parent_domain" {
+  type        = string
+  description = <<EOT
+Delegated Route 53 hosted zone that this project owns (e.g.
+"disag.jaredhoward.com"). The bootstrap baseline created the zone;
+this repo references it via data source. Prod CloudFront serves at
+this fqdn; non-prod environments serve at "<env>.<parent_domain>".
+
+Required — no default, so a fresh clone can't accidentally apply
+against the wrong domain. Set in your local terraform.tfvars
+(gitignored).
+EOT
+
+  validation {
+    condition     = can(regex("^[a-z0-9.-]+\\.[a-z]{2,}$", var.parent_domain))
+    error_message = "parent_domain must be a valid lowercase domain name (e.g. project.example.com)."
+  }
 }
 
 variable "environment" {
@@ -90,13 +109,15 @@ EOT
 
 variable "allowed_origin" {
   type        = string
-  description = "CORS allow-origin header — must be a concrete https:// URL in prod."
-  default     = "https://disag.jaredhoward.com"
+  description = <<EOT
+CORS allow-origin header — must be a concrete https:// URL in prod.
+Set in terraform.tfvars to "https://<your-parent-domain>" for prod;
+in dev/staging "*" is allowed (validation only blocks it for prod).
+EOT
 
-  # `*` is convenient for first-time / dev applies (before any
-  # CloudFront URL is known) but is a real leak in prod. Validation
-  # blocks it for prod; dev/staging keep the escape hatch via
-  # `-var allowed_origin='*'`.
+  # No default — prod refuses to apply without an explicit value,
+  # forcing every contributor to think about it. For dev/staging
+  # set "*" in your tfvars.
   validation {
     condition     = !(var.environment == "prod" && var.allowed_origin == "*")
     error_message = "allowed_origin must be narrowed when environment = \"prod\". Set it to your CloudFront URL (e.g. https://d12345.cloudfront.net) or the custom domain."

@@ -1,18 +1,18 @@
 # Custom-domain wiring for the CloudFront distribution.
 #
-# The disag.jaredhoward.com hosted zone lives in this same AWS account
-# (the bootstrap baseline imported the manually-created zone). The
-# wildcard ACM cert (*.disag.jaredhoward.com + disag.jaredhoward.com)
+# The delegated hosted zone (var.parent_domain) lives in this same
+# AWS account — the bootstrap baseline imported the manually-created
+# zone. The wildcard ACM cert (*.<parent_domain> + <parent_domain>)
 # also lives in this account, in us-east-1 (CloudFront requirement).
 # Both are looked up by data source — neither resource is managed here.
 
 data "aws_route53_zone" "this" {
-  name = "disag.jaredhoward.com"
+  name = var.parent_domain
 }
 
 data "aws_acm_certificate" "wildcard" {
   provider    = aws.us_east_1
-  domain      = "disag.jaredhoward.com"
+  domain      = var.parent_domain
   statuses    = ["ISSUED"]
   most_recent = true
 }

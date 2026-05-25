@@ -1,0 +1,11 @@
+# Partial backend config for `terraform init -backend-config=backend.config`.
+# Copy to backend.config (gitignored) and fill in the actual bucket name.
+#
+# The bucket is created by the cross-project bootstrap
+# (~/repos/templates/infra/bootstrap/2-baseline) with the name pattern
+# `<bootstrap_slug>-tfstate-<account-id>`. For this project that's
+# `disag-tfstate-<account-id>` — replace the placeholder with the value
+# the bootstrap printed in its summary, or look it up:
+#   aws s3 ls --profile <profile> | grep tfstate
+
+bucket = "disag-tfstate-PLACEHOLDER_ACCOUNT_ID"
