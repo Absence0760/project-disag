@@ -28,8 +28,13 @@ resource "aws_s3_bucket" "outputs" {
   # A stray `terraform destroy` in prod would lose every history page
   # the moment versioning's noncurrent retention expires (7 days),
   # well before the operator notices.
+  #
+  # TEMPORARY: prevent_destroy disabled for the one-time dev→prod
+  # environment rename (the bucket is empty pre-launch, so nothing to
+  # protect). Re-enable to `prevent_destroy = true` immediately after
+  # the prod apply succeeds — the new prod bucket should be protected.
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 
@@ -40,8 +45,13 @@ resource "aws_s3_bucket" "frontend" {
   # Re-creating the frontend bucket changes its name (random_id suffix
   # is stable, but the bucket policy + CloudFront OAC binding both
   # have to be reapplied). Same prevent_destroy rationale as outputs.
+  #
+  # TEMPORARY: prevent_destroy disabled for the one-time dev→prod
+  # environment rename (the bucket holds rebuildable static assets).
+  # Re-enable to `prevent_destroy = true` immediately after the prod
+  # apply succeeds.
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 
