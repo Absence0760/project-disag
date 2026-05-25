@@ -2,7 +2,7 @@
 
 Wired behind API Gateway HTTP API (v2 payload format). All file
 input/output flows through S3 — uploads are pre-signed POSTs with
-size/content-type conditions, results are pre-signed GETs.
+a size condition, results are pre-signed GETs.
 
 Multi-user model
 ----------------
@@ -279,7 +279,6 @@ def _handle_upload(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
         Key=key,
         Conditions=[
             ['content-length-range', 1, MAX_UPLOAD_BYTES],
-            ['starts-with', '$Content-Type', ''],
         ],
         ExpiresIn=UPLOAD_TTL,
     )

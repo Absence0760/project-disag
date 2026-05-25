@@ -49,8 +49,9 @@
     "sops:edit": "sops web/infra/secrets.enc.yaml",
     "sops:rotate": "sops updatekeys web/infra/secrets.enc.yaml",
 
-    "//-- deploy --": "Local one-shot deploy. CI handles release-gated deploys via .github/workflows/deploy.yml.",
-    "deploy": "pnpm build && pnpm tf:apply && pnpm deploy:web",
+    "//-- deploy --": "Local one-shot deploy. CI handles release-gated deploys via .github/workflows/deploy.yml. deploy:api uses `update-function-code` because lambda.tf has `ignore_changes = [filename, source_code_hash]` (to avoid drift from CI-pushed code), so `tf:apply` rebuilds the zip but never uploads it.",
+    "deploy": "pnpm build && pnpm tf:apply && pnpm deploy:api && pnpm deploy:web",
+    "deploy:api": "cd web/infra && aws lambda update-function-code --function-name \"$(terraform output -raw lambda_function_name)\" --zip-file \"fileb://$(pwd)/../backend/lambda.zip\" --publish > /dev/null && echo 'Lambda code updated.'",
     "deploy:web": "cd web/infra && aws s3 sync ../frontend/build/ \"s3://$(terraform output -raw frontend_bucket)/\" --delete && aws cloudfront create-invalidation --distribution-id \"$(terraform output -raw cloudfront_distribution_id)\" --paths '/*'"
   },
   "devDependencies": {
