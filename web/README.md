@@ -104,11 +104,10 @@ pnpm dev:api                   # local Lambda shim only — http://localhost:800
 
 ## Provisioning infrastructure (local, with AWS SSO)
 
-This project runs in its own AWS sub-account (`disag-prod`) under the
-`jaredhoward` AWS Organization, with `disag.jaredhoward.com` as a
-delegated Route 53 subdomain. **The account and its baseline are
-provisioned by the cross-project bootstrap tooling**, not by this
-repo's Terraform.
+This project runs in its own AWS sub-account under an organisation
+parent, with a delegated Route 53 subdomain (e.g. `project.example.com`).
+**The account and its baseline are provisioned by the cross-project
+bootstrap tooling**, not by this repo's Terraform.
 
 ### One-time bootstrap (cross-project tooling)
 

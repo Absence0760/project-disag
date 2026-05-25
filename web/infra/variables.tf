@@ -22,7 +22,7 @@ variable "parent_domain" {
   type        = string
   description = <<EOT
 Delegated Route 53 hosted zone that this project owns (e.g.
-"disag.jaredhoward.com"). The bootstrap baseline created the zone;
+"project.example.com"). The bootstrap baseline created the zone;
 this repo references it via data source. Prod CloudFront serves at
 this fqdn; non-prod environments serve at "<env>.<parent_domain>".
 
@@ -41,12 +41,12 @@ variable "environment" {
   type        = string
   description = <<EOT
 Environment suffix (dev / staging / prod). Drives resource naming
-(`disag-md-<env>-*`) and the resolved fqdn (prod → disag.jaredhoward.com,
-others → <env>.disag.jaredhoward.com).
+(`disag-md-<env>-*`) and the resolved fqdn (prod → <parent_domain>,
+others → <env>.<parent_domain>).
 
 Default is "prod" so the single-environment state in this repo lands
-at the canonical disag.jaredhoward.com URL. To stand up a parallel dev
-environment, create a new Terraform workspace and override:
+at the canonical apex of the delegated zone. To stand up a parallel
+dev environment, create a new Terraform workspace and override:
   terraform workspace new dev
   terraform apply -var environment=dev -var allowed_origin='*'
 EOT
