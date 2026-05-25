@@ -64,12 +64,18 @@ variable "lambda_reserved_concurrency" {
   description = <<EOT
 Reserved concurrent executions for the API Lambda. A hard ceiling that
 prevents one client's burst from exhausting the account-level Lambda
-concurrency quota (default 1000) and starving the rest of the account,
-and caps the worst-case compute bill from an abuser. Sized for the
-tool's expected legitimate load — bump if real traffic justifies it.
-Set to -1 to disable reservation (uses unreserved pool).
+concurrency quota and starving the rest of the account, and caps the
+worst-case compute bill from an abuser.
+
+Default is -1 (no reservation, uses the shared unreserved pool) because
+newly-provisioned AWS accounts cap Lambda concurrency at 10 total, and
+AWS requires unreserved concurrency >= 10 at all times — so any positive
+reservation on a brand-new account fails apply with
+InvalidParameterValueException. Once the account-level "Concurrent
+executions" quota is raised via Service Quotas (default 1000 for
+established accounts), set this to ~10–50 to add a real ceiling.
 EOT
-  default     = 10
+  default     = -1
 }
 
 variable "allowed_origin" {
