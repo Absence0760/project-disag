@@ -14,6 +14,11 @@ on:
   pull_request_target:
     types: [opened, edited, reopened, synchronize]
 
+# pull_request_target runs in the trusted (base-repo) context with
+# access to repo secrets. This workflow only reads the PR title via
+# the GitHub API and never checks out PR-head code — DO NOT add an
+# actions/checkout step here. A checkout would pull untrusted code
+# into a trusted context (the classic pull_request_target footgun).
 permissions: read-all
 
 jobs:

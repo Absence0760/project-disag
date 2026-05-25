@@ -26,7 +26,18 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	});
 	if (!res.ok) {
 		const body = await res.text();
-		throw new Error(`${res.status} ${res.statusText}: ${body}`);
+		// Lambda errors come back as `{"error": "..."}`; gateway-layer
+		// failures (504, 503) are plain-text strings. Extract the
+		// `error` field if it's there so the rendered message stays
+		// readable.
+		let detail = body;
+		try {
+			const parsed = JSON.parse(body) as { error?: unknown };
+			if (typeof parsed.error === 'string') detail = parsed.error;
+		} catch {
+			/* non-JSON body — fall through with the raw text */
+		}
+		throw new Error(`${res.status} ${res.statusText}: ${detail}`);
 	}
 	return res.json() as Promise<T>;
 }
