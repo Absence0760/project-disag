@@ -65,6 +65,19 @@ resource "aws_budgets_budget" "monthly" {
   limit_unit        = "USD"
   time_period_start = "2026-01-01_00:00"
 
+  # Early-warning at 50 % actual: gives headroom to react before the
+  # month's budget runs out. The FORECASTED rule below catches a runaway
+  # *during* the month; this catches slow burns that don't trip the
+  # forecast model.
+  notification {
+    notification_type          = "ACTUAL"
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 50
+    threshold_type             = "PERCENTAGE"
+    subscriber_sns_topic_arns  = [aws_sns_topic.alerts.arn]
+    subscriber_email_addresses = var.budget_alert_email == "" ? [] : [var.budget_alert_email]
+  }
+
   notification {
     notification_type          = "FORECASTED"
     comparison_operator        = "GREATER_THAN"
