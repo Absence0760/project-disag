@@ -32,7 +32,6 @@ web/frontend/e2e/.results/
 web/frontend/playwright-report/
 web/frontend/test-results/
 web/infra/.terraform/
-web/infra/.terraform.lock.hcl
 web/infra/*.tfstate
 web/infra/*.tfstate.backup
 web/infra/*.tfvars
