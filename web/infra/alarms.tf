@@ -157,3 +157,74 @@ resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
     FunctionName = aws_lambda_function.api.function_name
   }
 }
+
+# Lambda Duration — catches a runaway compute (e.g. Method 5 on a huge
+# monthly file) that stays within the concurrency cap but bills near
+# the timeout per invocation. P99 > 25s flags requests creeping toward
+# the 29s API Gateway ceiling before they start 504'ing.
+resource "aws_cloudwatch_metric_alarm" "lambda_duration_p99" {
+  alarm_name          = "${local.name_prefix}-lambda-duration-p99"
+  alarm_description   = "Lambda P99 duration > 25 s — approaching the 29 s API Gateway ceiling; investigate before 504s land."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Duration"
+  extended_statistic  = "p99"
+  period              = 300
+  evaluation_periods  = 2
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 25000
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+  }
+}
+
+# ── Edge alarms — CloudFront + API Gateway 5xx ───────────────────────
+#
+# These fire when failures occur before reaching the Lambda — cache
+# storms, integration timeouts, or 503s from a reserved-concurrency
+# cap being hit. The Lambda alarms above don't catch any of those.
+
+# CloudFront publishes its global metrics to us-east-1 only — the
+# alarm has to be created there too (hence the us_east_1 provider
+# alias declared in providers.tf).
+resource "aws_cloudwatch_metric_alarm" "cloudfront_5xx" {
+  provider            = aws.us_east_1
+  alarm_name          = "${local.name_prefix}-cloudfront-5xx"
+  alarm_description   = "CloudFront 5xx rate > 1 % over 10 min — origin failures or cache-miss storms."
+  namespace           = "AWS/CloudFront"
+  metric_name         = "5xxErrorRate"
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 2
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  dimensions = {
+    DistributionId = aws_cloudfront_distribution.site.id
+    Region         = "Global"
+  }
+}
+
+# API Gateway HTTP API v2 emits `5xx` (not the REST API `5XXError`).
+# Catches integration-layer failures the Lambda metric doesn't see —
+# e.g. 503s when reserved_concurrency is exhausted, or 504s when an
+# invocation overruns the 30 s integration timeout.
+resource "aws_cloudwatch_metric_alarm" "apigw_5xx" {
+  alarm_name          = "${local.name_prefix}-apigw-5xx"
+  alarm_description   = "API Gateway 5xx > 10 in 5 min — integration failures, throttling, or timeouts."
+  namespace           = "AWS/ApiGateway"
+  metric_name         = "5xx"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 10
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  dimensions = {
+    ApiId = aws_apigatewayv2_api.http.id
+    Stage = "$default"
+  }
+}
