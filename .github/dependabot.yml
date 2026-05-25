@@ -2,11 +2,13 @@ version: 2
 
 # Ecosystems present in this repo:
 #   pip            — disag/ + exceed/ + tests/ are stdlib-only by
-#                    policy (see project-root CLAUDE.md), so no
-#                    requirements.txt. web/backend uses boto3 from
-#                    the Lambda runtime — no requirements file either.
-#                    No pip ecosystem entry needed today; add one if a
-#                    requirements.txt ever lands.
+#                    policy (see project-root CLAUDE.md). web/backend
+#                    uses boto3 from the Lambda runtime — no
+#                    requirements file there either. The single pip
+#                    surface is packaging/build-requirements.txt
+#                    (PyInstaller + pip, hash-pinned via pip-compile),
+#                    consumed by release.yml when building the user-
+#                    facing CLI binaries.
 #   npm            — web/frontend SvelteKit app.
 #   terraform      — web/infra AWS provider + modules.
 #   github-actions — the workflows under .github/workflows/.
@@ -55,6 +57,7 @@ updates:
         patterns:
           - 'hashicorp/aws'
           - 'hashicorp/random'
+          - 'carlpett/sops'
       minor-and-patch:
         update-types: ['minor', 'patch']
 
@@ -73,3 +76,15 @@ updates:
       actions:
         patterns: ['*']
         update-types: ['minor', 'patch']
+
+  - package-ecosystem: pip
+    directory: /packaging
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - python

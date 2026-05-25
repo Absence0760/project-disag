@@ -5,7 +5,9 @@ packages:
 # Each entry should reference the GHSA in a comment so a future reader
 # knows why the pin exists.
 overrides:
-  # GHSA-pxg6-pf52-xh8x (low) — cookie accepts name/path/domain with
-  # out-of-bounds characters. SvelteKit 2.x still pulls cookie@^0.6.0;
-  # force the patched line. 0.6 → 0.7 is API-compatible.
-  cookie: '>=0.7.0'
+  # GHSA-pxg6-pf52-xh8x — cookie@<0.7 accepts OOB chars in name/path/domain.
+  # SvelteKit 2.60.x still declares cookie ^0.6.0; the override forces the
+  # 1.x line (API-compatible for SvelteKit's usage; verified 2026-05).
+  # Tightened from `>=0.7.0` to lock the major and avoid an unreviewed
+  # 2.x landing transitively.
+  cookie: '^1.1.1'
