@@ -8,12 +8,14 @@
 #   - gh CLI authenticated against the repo (gh auth login)
 #   - terraform state already exists (run `pnpm tf:apply` first)
 #
-# Outputs mapped → GitHub variables:
-#   github_deploy_role_arn      → AWS_DEPLOY_ROLE_ARN
+# Outputs mapped → GitHub variables (non-sensitive identifiers):
 #   region (from tfvars)        → AWS_REGION
 #   lambda_function_name        → LAMBDA_FUNCTION_NAME
 #   frontend_bucket             → FRONTEND_BUCKET
 #   cloudfront_distribution_id  → CLOUDFRONT_DISTRIBUTION_ID
+#
+# Outputs mapped → GitHub secrets (embeds AWS account ID):
+#   github_deploy_role_arn      → AWS_DEPLOY_ROLE_ARN
 
 set -euo pipefail
 
@@ -36,10 +38,13 @@ read_output() {
 }
 
 declare -A vars=(
-    [AWS_DEPLOY_ROLE_ARN]="$(read_output github_deploy_role_arn)"
     [LAMBDA_FUNCTION_NAME]="$(read_output lambda_function_name)"
     [FRONTEND_BUCKET]="$(read_output frontend_bucket)"
     [CLOUDFRONT_DISTRIBUTION_ID]="$(read_output cloudfront_distribution_id)"
+)
+
+declare -A secrets=(
+    [AWS_DEPLOY_ROLE_ARN]="$(read_output github_deploy_role_arn)"
 )
 
 # AWS_REGION isn't a terraform output (the provider takes a var, not
@@ -53,13 +58,23 @@ vars[AWS_REGION]="${region:-us-east-1}"
 for name in "${!vars[@]}"; do
     value="${vars[$name]}"
     if [ -z "$value" ]; then
-        echo "skip $name (empty)"
+        echo "skip var $name (empty)"
         continue
     fi
-    echo "set $name = $value"
+    echo "set var $name = $value"
     gh variable set "$name" --body "$value"
+done
+
+for name in "${!secrets[@]}"; do
+    value="${secrets[$name]}"
+    if [ -z "$value" ]; then
+        echo "skip secret $name (empty)"
+        continue
+    fi
+    echo "set secret $name (value hidden)"
+    gh secret set "$name" --body "$value"
 done
 
 rm -f /tmp/disag-tf-outputs.json
 echo
-echo "Done. Verify with: gh variable list"
+echo "Done. Verify with: gh variable list && gh secret list"
