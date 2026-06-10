@@ -2,59 +2,30 @@
 
 from typing import Dict, List
 
-from disag.files import MONTHLY_HEADER_LINES, read_daily_file as _read_daily_records
+from disag.files import (
+    read_daily_file as _read_daily_records,
+    read_monthly_file as _read_monthly_records,
+)
 
 
 def read_monthly_file(filepath: str) -> Dict[int, List[float]]:
     """
-    Read monthly flow data file.
+    Read monthly flow data file and group values by calendar month.
 
-    Format: Hydro year rows (Oct-Sep) with 12 month columns.
-    Returns dict: month_number (1-12 for Jan-Dec) -> list of values
-
-    Args:
-        filepath: Path to .mon file
+    Delegates to disag.files.read_monthly_file for parsing — the same
+    reason we delegate .day reading: that reader handles the fixed-width
+    column collision in wet-year rows (e.g. ``14639.12013670.740``) and
+    2/4-digit year normalisation, which a ``.split()``-based parser here
+    would silently drop. Negative (missing-data) values are excluded; the
+    exceed tool does not patch.
 
     Returns:
-        Dictionary mapping calendar month (1-12) to list of flow values
+        Dictionary mapping calendar month (1-12) to list of flow values.
     """
-    monthly_data = {i: [] for i in range(1, 13)}  # Jan(1) to Dec(12)
-
-    with open(filepath, 'r') as f:
-        lines = f.readlines()
-
-    # Skip the fixed free-form header (matches disag.files.read_monthly_file
-    # and the docs/file-formats.md spec).
-    for line in lines[MONTHLY_HEADER_LINES:]:
-        line = line.strip()
-        if not line or line.startswith('-'):
-            continue
-
-        # Parse line: Year followed by 12 monthly values
-        parts = line.split()
-        if len(parts) < 13:
-            continue
-
-        try:
-            year = int(parts[0])
-        except ValueError:
-            continue
-        if year < 1900:
-            year += 1900
-
-        # Extract 12 months (Oct-Sep in hydro year format)
-        # Map to calendar months: Oct=10, Nov=11, Dec=12, Jan=1, Feb=2, ..., Sep=9
-        hydro_months = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-
-        for i, cal_month in enumerate(hydro_months):
-            try:
-                value = float(parts[i + 1])
-            except (ValueError, IndexError):
-                continue
-            # Spec: any negative value is the missing-data sentinel.
-            if value >= 0:
-                monthly_data[cal_month].append(value)
-
+    monthly_data: Dict[int, List[float]] = {i: [] for i in range(1, 13)}
+    for (_year, month), value in _read_monthly_records(filepath).items():
+        if value >= 0:
+            monthly_data[month].append(value)
     return monthly_data
 
 

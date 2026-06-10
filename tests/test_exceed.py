@@ -219,6 +219,30 @@ class SeasonalEdgeCasesTests(unittest.TestCase):
         )
 
 
+class ExceedMonthlyReaderCollisionTests(unittest.TestCase):
+    """exceed's .mon reader must not drop wet-year rows whose contiguous
+    9-char columns collide (regression: the old split()-based parser
+    silently skipped them via `len(parts) < 13`)."""
+
+    def test_wet_year_collision_row_is_not_dropped(self):
+        vals = [2.0, 4.0, 8.0, 200.0, 1500.0, 14639.12, 13670.74,
+                80.0, 12.0, 6.0, 3.0, 1.5]
+        fd, path = tempfile.mkstemp(suffix='.MON')
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        with open(path, 'w') as f:
+            for _ in range(5):
+                f.write('-\n')
+            f.write(f'{1991:4d}' + ''.join(f'{v:9.3f}' for v in vals) + '\n')
+
+        data = _exc_read_monthly(path)
+        # Hydro col 6 = Mar (cal month 3), col 7 = Apr (cal month 4).
+        self.assertIn(14639.12, [round(v, 2) for v in data[3]])
+        self.assertIn(13670.74, [round(v, 2) for v in data[4]])
+        # Oct value present too (row wasn't skipped wholesale).
+        self.assertIn(2.0, [round(v, 2) for v in data[10]])
+
+
 class WriteExceedanceSvgTests(unittest.TestCase):
     """The SVG flow-frequency curve writer (stdlib-only, no matplotlib)."""
 
