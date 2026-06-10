@@ -335,7 +335,7 @@ def _convert_month(
     gen_monthly: dict,
     obs_daily: list,        # obs_daily[0] = file-1 dict, obs_daily[1] = file-2 dict
     start_obs_2: tuple,     # (year, month) when file-2 data begins
-    report_lines: list,
+    decisions: dict,        # (year, month) -> per-month decision row, all methods
     obs_totals: Optional[list] = None,   # precomputed monthly totals per file
     target_dists: Optional[dict] = None,
     donor_dists: Optional[list] = None,
@@ -344,21 +344,17 @@ def _convert_month(
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
-    # PATCH_EXCEED only: register the month up-front so the per-month tier
-    # breakdown in the report has a row for every iterated month — including
-    # those that exit early because gen_monthly is missing the value.
-    pm_entry: Optional[dict] = None
-    if (method == DisagMethod.PATCH_EXCEED
-            and tier_counters is not None):
-        pm_entry = {'t1': 0, 't2': 0, 't3': 0,
-                    'donor': None, 'missing_reason': None}
-        tier_counters['per_month'][(year, month)] = pm_entry
+    # Register one decision row per iterated month, for *every* method, so the
+    # report is a complete per-month audit trail. F1/F2/OTH count the days
+    # sourced from daily file 1, daily file 2, and a patched / donor / even
+    # source respectively; `note` records the result and the reason for it.
+    dec = {'f1': 0, 'f2': 0, 'oth': 0, 'note': ''}
+    decisions[(year, month)] = dec
 
     # --- Monthly generated value (Mm3/month) ---
     gen_val = gen_monthly.get((year, month))
     if gen_val is None or gen_val < 0:
-        if pm_entry is not None:
-            pm_entry['missing_reason'] = 'monthly value missing'
+        dec['note'] = 'MISSING — monthly value missing or negative'
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
 
     # --- Fetch observed daily records ---
@@ -378,7 +374,10 @@ def _convert_month(
     )
     rec2 = obs_daily[1].get((year, month)) if use_file2 else None
 
-    # --- Missing-data check ---
+    # --- Missing-data check / donor selection ---
+    # On the missing and patched branches we set ``dec['note']`` to the reason
+    # here; the routine ones (plain file-1 disaggregation, tier-2 fills) are
+    # finalised after the qD loop once the per-source day counts are known.
     missing = False
     patch_year: Optional[int] = None
     exceed_donor: Optional[DailyRecord] = None
@@ -390,12 +389,15 @@ def _convert_month(
     elif method == DisagMethod.ONE_FILE:
         if rec1 is None or any(rec1.v[d] < 0 for d in range(dim)):
             missing = True
+            dec['note'] = 'MISSING — no complete daily record in file 1'
 
     elif method == DisagMethod.INCREMENTAL:
         if rec1 is None or rec2 is None:
             missing = True
+            dec['note'] = 'MISSING — file 1 or file 2 unavailable this month'
         elif any(rec1.v[d] < 0 or rec2.v[d] < 0 for d in range(dim)):
             missing = True
+            dec['note'] = 'MISSING — file 1 or file 2 has a missing day'
 
     elif method == DisagMethod.PATCH_FILE:
         # Missing only if the same day is absent from BOTH files
@@ -404,6 +406,7 @@ def _convert_month(
             f2 = rec2.v[d] if rec2 else -999.0
             if f1 < 0 and f2 < 0:
                 missing = True
+                dec['note'] = 'MISSING — day absent from both file 1 and file 2'
                 break
 
     elif method == DisagMethod.PATCH_CAL:
@@ -412,13 +415,12 @@ def _convert_month(
         if needs_patch:
             patch_year = find_patch_year(year, month, gen_monthly, obs_daily[0])
             if patch_year is not None:
-                report_lines.append(
-                    f'{year:4d}{month:3d}'
-                    f' Observed daily flow < 0,'
-                    f'   Patched with {patch_year:4d}{month:3d}'
+                dec['note'] = (
+                    f'patched from similar calendar month {patch_year:4d}{month:3d}'
                 )
             else:
                 missing = True
+                dec['note'] = 'MISSING — file-1 gap, no complete similar month'
 
     elif method == DisagMethod.PATCH_EXCEED:
         # Tier 1+2: any day missing in BOTH files triggers tier 3.
@@ -440,26 +442,14 @@ def _convert_month(
                 target_dists=target_dists, donor_dists=donor_dists,
             )
             if donor is None:
-                report_lines.append(
-                    f'{year:4d}{month:3d}'
-                    f' Observed daily flow < 0,'
-                    f'   No tier-3 donor available — month marked missing'
-                )
-                if pm_entry is not None:
-                    pm_entry['missing_reason'] = 'no tier-3 donor available'
+                dec['note'] = 'MISSING — no exceedance donor available'
                 missing = True
             else:
                 file_idx, donor_year, p_target, p_donor = donor
                 exceed_donor = obs_daily[file_idx].get((donor_year, month))
                 exceed_donor_file_idx = file_idx
                 if exceed_donor is None:
-                    report_lines.append(
-                        f'{year:4d}{month:3d}'
-                        f' Observed daily flow < 0,'
-                        f'   Donor record vanished — month marked missing'
-                    )
-                    if pm_entry is not None:
-                        pm_entry['missing_reason'] = 'donor record vanished'
+                    dec['note'] = 'MISSING — exceedance donor record vanished'
                     missing = True
                 else:
                     # Validate the donor covers every still-missing day with
@@ -473,37 +463,23 @@ def _convert_month(
                         if d >= len(exceed_donor.v) or exceed_donor.v[d] < 0
                     ]
                     if bad:
-                        report_lines.append(
-                            f'{year:4d}{month:3d}'
-                            f' Observed daily flow < 0,'
-                            f'   Donor file {file_idx + 1}'
+                        dec['note'] = (
+                            f'MISSING — donor file {file_idx + 1}'
                             f' {donor_year:4d}{month:3d}'
                             f' missing day(s) {",".join(str(d + 1) for d in bad)}'
-                            f' — month marked missing'
                         )
-                        if pm_entry is not None:
-                            pm_entry['missing_reason'] = (
-                                'donor missing required day'
-                            )
                         missing = True
                     else:
-                        report_lines.append(
-                            f'{year:4d}{month:3d}'
-                            f' Observed daily flow < 0,'
-                            f'   Patched with file {file_idx + 1}'
+                        dec['note'] = (
+                            f'patched from donor: file {file_idx + 1}'
                             f' {donor_year:4d}{month:3d}'
-                            f' (target exceed%={p_target:5.1f},'
-                            f' donor exceed%={p_donor:5.1f})'
+                            f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
                         )
-                        if pm_entry is not None:
-                            pm_entry['donor'] = (
-                                file_idx, donor_year, p_target, p_donor
-                            )
 
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
 
-    # --- Build daily pattern qD[] ---
+    # --- Build daily pattern qD[] (counting each day's source into dec) ---
     if method == DisagMethod.EVEN:
         qD = [1.0] * dim
         qM = float(dim)
@@ -515,28 +491,36 @@ def _convert_month(
 
             if method == DisagMethod.ONE_FILE:
                 val = f1
+                dec['f1'] += 1
 
             elif method == DisagMethod.INCREMENTAL:
                 val = f1 - f2
+                dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_FILE:
-                val = f2 if f1 < 0 else f1
+                if f1 < 0:
+                    val = f2
+                    dec['f2'] += 1
+                else:
+                    val = f1
+                    dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_CAL:
                 if f1 < 0 and patch_year is not None:
                     rec_patch = obs_daily[0].get((patch_year, month))
                     f3 = rec_patch.v[d] if rec_patch and d < len(rec_patch.v) else -999.0
                     val = f3
+                    dec['oth'] += 1
                 else:
                     val = f1
+                    dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_EXCEED:
                 if f1 >= 0:
                     val = f1
+                    dec['f1'] += 1
                     if tier_counters is not None:
                         tier_counters['tier1_days'] += 1
-                        if pm_entry is not None:
-                            pm_entry['t1'] += 1
                 elif f2 >= 0:
                     # Rescale file-2 day to file-1's per-month scale so a
                     # mixed file-1/file-2 month doesn't get a distorted shape
@@ -546,11 +530,10 @@ def _convert_month(
                         if tier2_scale and len(tier2_scale) > 1 else 1.0
                     )
                     val = f2 * scale
+                    dec['f2'] += 1
                     if tier_counters is not None:
                         tier_counters['tier2_days'] += 1
                         tier_counters['tier2_months'].add((year, month))
-                        if pm_entry is not None:
-                            pm_entry['t2'] += 1
                 elif exceed_donor is not None and d < len(exceed_donor.v):
                     # Same cross-river rescale as tier 2: when the donor
                     # comes from file 2, its day values must be brought
@@ -566,11 +549,10 @@ def _convert_month(
                         else 1.0
                     )
                     val = exceed_donor.v[d] * donor_scale
+                    dec['oth'] += 1
                     if tier_counters is not None:
                         tier_counters['tier3_days'] += 1
                         tier_counters['tier3_months'].add((year, month))
-                        if pm_entry is not None:
-                            pm_entry['t3'] += 1
                 else:
                     val = -999.0
 
@@ -582,14 +564,24 @@ def _convert_month(
         qM = sum(qD)
 
     # --- Handle zero observed monthly total ---
+    zero_fill = False
     if qM <= 0 and gen_val > 0:
-        report_lines.append(
-            f'{year:4d}{month:3d}'
-            f' Observed monthly flow <= 0,'
-            f'   Gen Flow= {gen_val:7.3f}'
-        )
+        zero_fill = True
         qD = [1.0] * dim
         qM = float(dim)
+
+    # --- Finalise the routine decision notes (missing / patched already set) ---
+    if dec['note'] == '':
+        if method == DisagMethod.EVEN:
+            dec['note'] = 'even distribution'
+        elif method == DisagMethod.INCREMENTAL:
+            dec['note'] = 'disaggregated from file 1 − file 2'
+        elif dec['f2'] > 0:
+            dec['note'] = 'disaggregated from file 1, gaps filled from file 2'
+        else:
+            dec['note'] = 'disaggregated from file 1'
+    if zero_fill:
+        dec['note'] += ' (Observed monthly flow <= 0 — even fill)'
 
     # --- Disaggregate ---
     values = []
@@ -673,11 +665,6 @@ def disaggregate(
             'tier2_months': set(),
             'tier3_days': 0,
             'tier3_months': set(),
-            # Per-month detail keyed by (year, month). Each entry holds the
-            # day-count breakdown {'t1', 't2', 't3'} plus optional 'donor' and
-            # 'missing_reason' annotations. Used to emit the per-month tier
-            # breakdown section at the end of the report.
-            'per_month': {},
         }
 
     # --- Pre-run warnings (information-only; output is unaffected) ---
@@ -744,13 +731,14 @@ def disaggregate(
 
     # --- Iterate months ---
     output_records: list = []
+    decisions: dict = {}
 
     year, month = start_ym
     while (year, month) <= end_ym:
         rec = _convert_month(
             year, month, method,
             gen_monthly, obs_daily,
-            start_obs_2, report_lines,
+            start_obs_2, decisions,
             obs_totals=obs_totals,
             target_dists=target_dists,
             donor_dists=donor_dists,
@@ -760,30 +748,22 @@ def disaggregate(
         output_records.append(rec)
         year, month = _inc_month(year, month)
 
-    # #11 Tier 1/2/3 day-count summary at the end of the report
-    if tier_counters is not None:
-        # Per-month tier breakdown — one row per iterated month so the report
-        # is a complete record (T1/T2/T3 day counts, donor info on tier-3
-        # months, and a reason on missing months).
-        report_lines.append('Per-month tier breakdown (days from each tier):')
+    # --- Per-month decision log — one row per iterated month, every method ---
+    # This is the single authoritative record of what happened to each month
+    # and why (which file the days came from, any patch/donor source, or the
+    # reason it was marked missing). F1/F2/OTH are the day counts from daily
+    # file 1, daily file 2, and a patched / donor / even source.
+    report_lines.append('Decision log (one row per month):')
+    report_lines.append('YYYY MM   F1  F2  OTH   result / source')
+    for (y, m), dec in sorted(decisions.items()):
         report_lines.append(
-            'YYYY MM   T1  T2  T3   note'
+            f'{y:4d} {m:2d}'
+            f'  {dec["f1"]:3d} {dec["f2"]:3d} {dec["oth"]:3d}'
+            f'   {dec["note"]}'
         )
-        for (y, m), pm in sorted(tier_counters['per_month'].items()):
-            line = (
-                f'{y:4d} {m:2d}'
-                f'  {pm["t1"]:3d} {pm["t2"]:3d} {pm["t3"]:3d}'
-            )
-            if pm.get('donor'):
-                file_idx, donor_year, p_target, p_donor = pm['donor']
-                line += (
-                    f'   donor: file {file_idx + 1} year {donor_year}'
-                    f' (target p={p_target:5.1f}%, donor p={p_donor:5.1f}%)'
-                )
-            elif pm.get('missing_reason'):
-                line += f'   {pm["missing_reason"]}'
-            report_lines.append(line)
 
+    # Tier 1/2/3 day-count summary (PATCH_EXCEED only)
+    if tier_counters is not None:
         report_lines.append('Tier coverage summary (days):')
         report_lines.append(
             f'  Tier 1 (file 1)        : {tier_counters["tier1_days"]:6d} day(s)'

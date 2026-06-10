@@ -184,35 +184,31 @@ The `.rep` file produced by Method 5 contains, in order:
    when used in tier-2 day patching. This corrects a distortion that
    would otherwise hit mixed-source months when the two daily files
    sit on different rivers of different absolute scale.
-3. **Per-month tier-3 patch lines:**
+3. **Decision log** — the single per-month list shared by every method.
+   Each row shows the day-count split across the three tiers (`F1` = file
+   1 / tier 1, `F2` = file 2 / tier 2, `OTH` = donor / tier 3) and a
+   `result / source` note. Tier-3 patched months name the donor and the
+   matched percentiles; dropped months carry the reason inline:
 
    ```
-   2003  6 Observed daily flow < 0,   Patched with file 1 2004  6 (target exceed%= 33.3, donor exceed%= 25.0)
-   ```
-
-4. **Per-month tier-3 failures** (when no donor exists, or when the
-   percentile-matched donor turns out to be missing the exact day the
-   target still needs — defence-in-depth in case the upstream donor
-   completeness filter ever regresses):
-
-   ```
-   2003  6 Observed daily flow < 0,   No tier-3 donor available — month marked missing
-   2003  6 Observed daily flow < 0,   Donor file 2 2001  6 missing day(s) 15 — month marked missing
-   ```
-
-5. **Per-month tier breakdown table** — one row per iterated month
-   with the day-count split across the three tiers, plus the donor info
-   on tier-3 months or the missing-reason on dropped months:
-
-   ```
-   Per-month tier breakdown (days from each tier):
-   YYYY MM   T1  T2  T3   note
-   2003  6    0   0  30   donor: file 1 year 2004 (target p= 33.3%, donor p= 25.0%)
-   2003  7   31   0   0
+   Decision log (one row per month):
+   YYYY MM   F1  F2  OTH   result / source
+   2003  6    0   0  30   patched from donor: file 1 2004  6 (exceed% target=33.3 donor=25.0)
+   2003  7   31   0   0   disaggregated from file 1
    ...
    ```
 
-6. **Tier coverage summary** at the end:
+   When no donor exists, or the percentile-matched donor turns out to be
+   missing the exact day the target still needs (defence-in-depth in case
+   the upstream donor completeness filter ever regresses), the row is
+   marked `MISSING` with the reason:
+
+   ```
+   2003  6    0   0   0   MISSING — no exceedance donor available
+   2003  6    0   0   0   MISSING — donor file 2 2001  6 missing day(s) 15
+   ```
+
+4. **Tier coverage summary** at the end:
 
    ```
    Tier coverage summary (days):

@@ -75,6 +75,19 @@ class AnsToMonTests(unittest.TestCase):
         self.assertEqual(result.last_year, 1991)
         self.assertEqual(result.skipped, [])
 
+        # NinhamShand .MON header: exactly 5 lines (file name / units /
+        # blank / column titles / rule), matching MONTHLY_HEADER_LINES.
+        with open(self.dst) as fh:
+            head = [fh.readline().rstrip('\n') for _ in range(5)]
+        self.assertEqual(head[0], f'File name : {os.path.basename(self.dst)}')
+        self.assertEqual(head[1], 'Units     : M.m3')
+        self.assertTrue(head[3].startswith('Year'))
+        self.assertIn('Oct', head[3])
+        self.assertIn('Sep', head[3])
+        self.assertEqual(set(head[4]), {'-'})
+        # Column titles and rule are the same width as a data row.
+        self.assertEqual(len(head[3]), len(head[4]))
+
         m = read_monthly_file(self.dst)
         # hydro 1990 = Oct 1990 .. Sep 1991
         self.assertAlmostEqual(m[(1990, 10)], 1.0)   # Oct
@@ -265,6 +278,19 @@ class AnsToMonCliTests(unittest.TestCase):
         self.assertIn('1990', msg)
         self.assertIn('1993', msg)
         self.assertGreater(os.path.getsize(self.dst), 0)
+
+    def test_cli_derives_output_name_from_source(self):
+        # Omitting dst writes <src without extension>.MON next to the source.
+        derived = os.path.splitext(self.src)[0] + '.MON'
+        self.addCleanup(lambda: os.path.exists(derived) and os.remove(derived))
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            rc = _cli([self.src])
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.exists(derived))
+        self.assertIn(derived, buf.getvalue())
+        m = read_monthly_file(derived)
+        self.assertIn((1990, 10), m)
 
     def test_cli_quiet_suppresses_summary(self):
         buf = io.StringIO()

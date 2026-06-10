@@ -211,6 +211,29 @@ class MonthlyReaderTests(unittest.TestCase):
         # column 12 (index 11) = Sep of hydro year + 1 → (2001, 9)
         self.assertEqual(m[(2001, 9)], 12.0)
 
+    def test_contiguous_wet_year_columns_fall_back_to_fixed_width(self):
+        # Real NinhamShand .MON rows are contiguous 9-char columns; in a wet
+        # year two full-width values touch with no separator, so .split()
+        # merges them. The reader must re-slice by fixed width. (Mirrors the
+        # converter output exercised in test_convert.)
+        path = _tmp('.MON')
+        vals = [2.0, 4.0, 8.0, 200.0, 1500.0, 14639.12, 13670.74,
+                80.0, 12.0, 6.0, 3.0, 1.5]
+        with open(path, 'w') as f:
+            for _ in range(5):
+                f.write('-\n')
+            f.write(f'{1991:4d}' + ''.join(f'{v:9.3f}' for v in vals)
+                    + '  \n')  # trailing spaces must not shift the columns
+        try:
+            m = read_monthly_file(path)
+        finally:
+            os.unlink(path)
+        # The colliding pair (Mar/Apr 1992) must round-trip at full precision.
+        self.assertAlmostEqual(m[(1992, 3)], 14639.12, places=2)
+        self.assertAlmostEqual(m[(1992, 4)], 13670.74, places=2)
+        self.assertAlmostEqual(m[(1991, 10)], 2.0, places=2)
+        self.assertAlmostEqual(m[(1992, 9)], 1.5, places=2)
+
     def test_two_digit_hydro_year_normalised(self):
         path = self._write_mon([(51, list(range(1, 13)))])
         try:
@@ -271,7 +294,6 @@ class ReportWriterTests(unittest.TestCase):
         self.assertIn('Months written     : 2', content)
         self.assertIn('Disaggregated    : 1', content)
         self.assertIn('Missing (-99.99) : 1', content)
-        self.assertIn('Total adjustments  : 3', content)
 
     def test_report_round_trip_no_records_section(self):
         # Without records, the per-record summary block should be omitted
@@ -284,7 +306,6 @@ class ReportWriterTests(unittest.TestCase):
             os.unlink(path)
         self.assertIn('adjustment line', content)
         self.assertNotIn('Months written', content)
-        self.assertIn('Total adjustments  : 1', content)
 
 
 if __name__ == '__main__':

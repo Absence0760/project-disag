@@ -33,4 +33,3 @@ def write_report(
             fh.write(f'Months written     : {total}\n')
             fh.write(f'  Disaggregated    : {disagg}\n')
             fh.write(f'  Missing (-99.99) : {missing}  ({pct:.1f}%)\n')
-        fh.write(f'Total adjustments  : {len(report_lines)}\n')

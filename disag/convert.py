@@ -15,11 +15,14 @@ row are dropped.
 from __future__ import annotations
 
 import os
-from datetime import datetime
 from typing import NamedTuple
 
 ANS_COL_WIDTH = 8
 ANS_DATA_COLS = 13  # year + 12 monthly values
+
+# Column titles for the NinhamShand .MON header, in hydro-year order.
+MON_MONTHS = ('Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar',
+              'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep')
 
 # Defence against an adversarial .ANS that's all garbage: keep at most
 # this many skipped lines so the in-memory list (and the .rep report
@@ -78,23 +81,25 @@ def ans_to_mon(src: str, dst: str) -> ConversionResult:
     if not rows:
         raise ValueError(f'{src}: no parseable data rows found')
 
+    # NinhamShand .MON header: file name / units / blank / column
+    # titles / rule — exactly 5 lines, matching the layout read_monthly_file
+    # skips and the real reference files we convert against. Months run
+    # Oct→Sep (hydro year). Data columns are contiguous 9-char fields, so
+    # the title row and rule are sized to match a data line.
+    col_titles = 'Year' + ''.join(f'{m:>9}' for m in MON_MONTHS)
     header = [
-        f'Description   : {os.path.basename(dst)}',
-        'Units         : Mm3/month',
-        f'Source        : converted from {os.path.basename(src)}',
-        f'Layout        : hydro year (Oct-Sep), {rows[0][0]}-{rows[-1][0]}',
-        f'Converted     : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
+        f'File name : {os.path.basename(dst)}',
+        'Units     : M.m3',
+        ' ',
+        col_titles,
+        '-' * len(col_titles),
     ]
 
     with open(dst, 'w') as fh:
         for h in header:
             fh.write(h + '\n')
         for year, vals in rows:
-            fh.write(
-                f'{year:5d}  '
-                + '  '.join(f'{v:9.3f}' for v in vals)
-                + '\n'
-            )
+            fh.write(f'{year:4d}' + ''.join(f'{v:9.3f}' for v in vals) + '\n')
 
     return ConversionResult(
         rows_written=len(rows),
@@ -114,15 +119,20 @@ def _cli(argv: list | None = None) -> int:
         description='Convert a Pitman .ANS monthly file to a NinhamShand .MON file.',
     )
     parser.add_argument('src', help='Source .ANS file')
-    parser.add_argument('dst', help='Destination .MON file')
+    parser.add_argument(
+        'dst', nargs='?', default=None,
+        help='Destination .MON file (default: source name with a .MON extension)',
+    )
     parser.add_argument(
         '--quiet', '-q', action='store_true',
         help='Suppress the conversion summary on stderr.',
     )
     args = parser.parse_args(argv)
 
+    dst = args.dst or (os.path.splitext(args.src)[0] + '.MON')
+
     try:
-        result = ans_to_mon(args.src, args.dst)
+        result = ans_to_mon(args.src, dst)
     except (OSError, ValueError) as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 1
@@ -130,7 +140,7 @@ def _cli(argv: list | None = None) -> int:
     if not args.quiet:
         print(
             f'wrote {result.rows_written} hydro-year rows '
-            f'({result.first_year}–{result.last_year}) to {args.dst}',
+            f'({result.first_year}–{result.last_year}) to {dst}',
             file=sys.stderr,
         )
         if result.skipped_total:

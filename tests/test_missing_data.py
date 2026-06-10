@@ -186,7 +186,7 @@ class SingleDayMissingTests(unittest.TestCase):
         jan = _record(recs, 2001, 1)
         self.assertFalse(_is_missing(jan))
         self.assertTrue(
-            any('2001  1' in l and 'Patched with 2002  1' in l for l in log),
+            any('2001  1' in l and 'similar calendar month 2002  1' in l for l in log),
             f'expected calendar-month patch line, got: {log!r}',
         )
 
@@ -211,7 +211,7 @@ class SingleDayMissingTests(unittest.TestCase):
         jan = _record(recs, 2001, 1)
         self.assertFalse(_is_missing(jan))
         self.assertTrue(
-            any('Patched with file 1' in l and '2001  1' in l for l in log),
+            any('donor: file 1' in l and '2001  1' in l for l in log),
             f'expected tier-3 donor line, got: {log!r}',
         )
 
@@ -312,7 +312,7 @@ class MissingYearTests(unittest.TestCase):
         # Every month should be filled: tier 1 for the 24 daily-covered
         # months, tier 3 for the missing hydro year 2000 (Oct 2000..Sep 2001).
         self.assertEqual(len(non_missing), 36)
-        patched = [l for l in log if 'Patched with file 1' in l]
+        patched = [l for l in log if 'donor: file 1' in l]
         # Expect roughly 12 tier-3 patch lines (one per backfilled month).
         self.assertGreaterEqual(len(patched), 12)
 
@@ -421,6 +421,48 @@ class PatchFileStartDateTests(unittest.TestCase):
         # patches where file 1 is missing. With file 1 complete there,
         # they're all fine.
         self.assertFalse(_is_missing(_record(recs, 2001, 10)))
+
+
+class DecisionLogTests(unittest.TestCase):
+    """The .rep decision log records one self-describing row per month for
+    *every* method — not just PATCH_EXCEED."""
+
+    def _month_rows(self, log):
+        # Rows in the per-month table start with a 4-digit year.
+        return [l for l in log if l[:4].strip().isdigit()]
+
+    def test_log_has_header_and_one_row_per_month(self):
+        gen = _hydro_year_monthly(2000, vol=10.0)
+        daily = _hydro_year_daily(2000, per_day=1.0)
+        recs, log = disaggregate(DisagMethod.ONE_FILE, gen, [daily], no_files=1)
+        self.assertIn('Decision log (one row per month):', log)
+        self.assertTrue(any(l.startswith('YYYY MM') for l in log))
+        self.assertEqual(len(self._month_rows(log)), len(recs))
+
+    def test_even_method_notes_every_month(self):
+        gen = _hydro_year_monthly(2000, vol=10.0)
+        recs, log = disaggregate(DisagMethod.EVEN, gen, [], no_files=0)
+        rows = self._month_rows(log)
+        self.assertEqual(len(rows), len(recs))
+        self.assertTrue(all('even distribution' in r for r in rows))
+
+    def test_incremental_note_names_both_files(self):
+        gen = _hydro_year_monthly(2000, vol=10.0)
+        d1 = _hydro_year_daily(2000, per_day=5.0)
+        d2 = _hydro_year_daily(2000, per_day=1.0)
+        _, log = disaggregate(DisagMethod.INCREMENTAL, gen, [d1, d2], no_files=2)
+        self.assertTrue(
+            any('file 1' in r and 'file 2' in r for r in self._month_rows(log)),
+            'incremental rows should name both source files',
+        )
+
+    def test_one_file_clean_run_says_disaggregated_from_file_1(self):
+        gen = _hydro_year_monthly(2000, vol=10.0)
+        daily = _hydro_year_daily(2000, per_day=1.0)
+        _, log = disaggregate(DisagMethod.ONE_FILE, gen, [daily], no_files=1)
+        rows = self._month_rows(log)
+        self.assertTrue(all('disaggregated from file 1' in r for r in rows))
+        self.assertFalse(any('MISSING' in r for r in rows))
 
 
 if __name__ == '__main__':

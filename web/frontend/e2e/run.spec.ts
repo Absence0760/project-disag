@@ -50,6 +50,8 @@ async function stubBackend(page: Page) {
 				run_id: 'exc-99',
 				tool: 'exceed',
 				created_at: '2026-05-17T12:01:00Z',
+				output_key: 'runs/exceed/exc-99/output.svg',
+				output_url: 'https://stub.s3.local/exceed.svg',
 				report_key: 'runs/exceed/exc-99/output.rep',
 				report_url: 'https://stub.s3.local/exceed.rep'
 			})
@@ -142,7 +144,9 @@ test.describe('Run page', () => {
 		);
 	});
 
-	test('exceed flow: monthly-only submit renders report link, no output link', async ({ page }) => {
+	test('exceed flow: monthly-only submit renders the curve preview + download links', async ({
+		page
+	}) => {
 		await stubBackend(page);
 		await page.goto('/run');
 
@@ -154,7 +158,53 @@ test.describe('Run page', () => {
 		const success = page.getByTestId('run-success');
 		await expect(success).toBeVisible();
 		await expect(page.getByTestId('download-report')).toBeVisible();
-		await expect(page.getByTestId('download-output')).toHaveCount(0);
+		// Exceed now returns an SVG curve as its output: shown inline + downloadable.
+		await expect(page.getByTestId('curve-preview')).toBeVisible();
+		await expect(page.getByTestId('download-output')).toBeVisible();
+	});
+
+	test('exceed seasonal builder: toggling months posts season groups', async ({ page }) => {
+		await stubBackend(page);
+		// Capture the /exceed payload (registered after stubBackend, so it
+		// takes precedence) to confirm the season groups reach the API.
+		let posted: { seasons?: Array<{ name: string; months: number[] }> } | null = null;
+		await page.route('**/exceed', async (route: Route) => {
+			posted = route.request().postDataJSON();
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					run_id: 'exc-seas',
+					tool: 'exceed',
+					created_at: '2026-05-17T12:02:00Z',
+					output_key: 'runs/exceed/exc-seas/output.svg',
+					output_url: 'https://stub.s3.local/exceed.svg',
+					report_key: 'runs/exceed/exc-seas/output.rep',
+					report_url: 'https://stub.s3.local/exceed.rep'
+				})
+			});
+		});
+		await page.goto('/run');
+
+		await page.getByTestId('tool-exceed').check();
+		await page.getByTestId('seasonal-toggle').check();
+		// Default presets (Wet/Dry) render as season rows.
+		await expect(page.getByTestId('season-row')).toHaveCount(2);
+
+		// Toggling a month chip flips its pressed state.
+		const janChip = page.getByTestId('season-row').first().getByRole('button', { name: 'Jan' });
+		const before = await janChip.getAttribute('aria-pressed');
+		await janChip.click();
+		await expect(janChip).not.toHaveAttribute('aria-pressed', before ?? 'true');
+
+		await attachFile(page, 'drop-monthly', 'SINDILA.MON');
+		await page.getByTestId('submit').click();
+		await expect(page.getByTestId('run-success')).toBeVisible();
+
+		expect(posted, '/exceed received a payload').toBeTruthy();
+		expect(Array.isArray(posted!.seasons), 'seasons is an array').toBeTruthy();
+		expect(posted!.seasons!.length).toBeGreaterThanOrEqual(1);
+		expect(posted!.seasons![0]).toHaveProperty('months');
 	});
 
 	test('switching to convert swaps the file pickers for a single .ans dropzone', async ({

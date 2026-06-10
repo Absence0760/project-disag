@@ -80,8 +80,10 @@ test.describe('@integration browser', () => {
 
 		await page.getByTestId('submit').click();
 		const { outputUrl, reportUrl } = await waitForSuccess(page);
-		// Exceed has no output file — only the report.
-		expect(outputUrl, 'exceed has no output download').toBeNull();
+		// Exceed now emits an SVG flow-frequency curve as its output.
+		expect(outputUrl, 'exceed curve download present').toBeTruthy();
+		const svgBody = await (await request.get(outputUrl as string)).text();
+		expect(svgBody).toContain('<svg');
 
 		const reportBody = await (await request.get(reportUrl)).text();
 		// write_exceedance_report emits a section per calendar month.

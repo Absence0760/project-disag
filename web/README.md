@@ -289,7 +289,7 @@ pnpm deploy                     # build → tf:apply → deploy:web
 |-------|--------|---------|
 | `/upload` | POST | Returns a pre-signed S3 PUT URL for one input file. |
 | `/disag`  | POST | Runs `disag.algorithm.disaggregate`. |
-| `/exceed` | POST | Runs `exceed.algorithm.calculate_monthly_exceedance` per calendar month. |
+| `/exceed` | POST | Flow-frequency curves per calendar month (or per free-form `seasons` group). Returns an SVG curve as `output` plus the tabular `.rep`. |
 | `/runs`   | GET  | Lists stored runs. |
 | `/runs/{run_id}` | GET | Returns pre-signed download URLs for a run's output + report. |
 

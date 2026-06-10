@@ -45,8 +45,12 @@ class Method0DemoTests(unittest.TestCase):
         disagg, missing = count_coverage(recs)
         self.assertEqual(missing, 0)
         self.assertEqual(disagg, 36)
-        # Method 0 doesn't log per-month
-        self.assertEqual(log, [])
+        # The decision log records every month; a clean run shows each one
+        # disaggregated straight from file 1 — no MISSING, no patching.
+        month_rows = [l for l in log if l[:4].strip().isdigit()]
+        self.assertEqual(len(month_rows), 36)
+        self.assertTrue(all('disaggregated from file 1' in l for l in month_rows))
+        self.assertFalse(any('MISSING' in l or 'patched' in l for l in log))
 
     def test_one_whole_month_gap_marks_only_that_month_missing(self):
         recs, _ = _run(
@@ -75,10 +79,10 @@ class Method1DemoTests(unittest.TestCase):
         self.assertEqual(missing, 0)
         self.assertEqual(disagg, 48)
         # Exactly one patch line, naming year 2003 as the donor
-        patches = [l for l in log if 'Patched with' in l]
+        patches = [l for l in log if 'patched from' in l]
         self.assertEqual(len(patches), 1)
         self.assertIn('2002  6', patches[0])
-        self.assertIn('Patched with 2003  6', patches[0])
+        self.assertIn('similar calendar month 2003  6', patches[0])
 
     def test_no_donor_marks_month_missing(self):
         """When every same-calendar-month record is also gappy, PATCH_CAL

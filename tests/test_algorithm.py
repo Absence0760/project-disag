@@ -293,7 +293,8 @@ class PatchExceedDonorGapTests(unittest.TestCase):
         )
         msg = self._patch_log(log)
         self.assertTrue(
-            any('missing day(s) 15' in l and 'month marked missing' in l
+            any('missing day(s) 15' in l and l.lstrip().startswith('2003')
+                and 'MISSING' in l
                 for l in msg),
             f'expected explicit donor-gap log line, got: {msg}',
         )
@@ -314,7 +315,8 @@ class PatchExceedDonorGapTests(unittest.TestCase):
         )
         msg = self._patch_log(log)
         self.assertTrue(
-            any('missing day(s) 15' in l and 'month marked missing' in l
+            any('missing day(s) 15' in l and l.lstrip().startswith('2003')
+                and 'MISSING' in l
                 for l in msg),
             f'expected explicit donor-gap log line, got: {msg}',
         )

@@ -67,11 +67,16 @@ from disag.algorithm import (  # noqa: E402
 from disag.convert import ans_to_mon  # noqa: E402
 from disag.files import read_daily_file, read_monthly_file, write_daily_file  # noqa: E402
 from disag.report import write_report  # noqa: E402
-from exceed.algorithm import calculate_monthly_exceedance  # noqa: E402
+from exceed.algorithm import (  # noqa: E402
+    calculate_monthly_exceedance,
+    calculate_seasonal_exceedance,
+)
 from exceed.files import (  # noqa: E402
     read_daily_file as exceed_read_daily,
     read_monthly_file as exceed_read_monthly,
     write_exceedance_report,
+    write_exceedance_svg,
+    write_seasonal_exceedance_report,
 )
 
 # Tools that publish runs under runs/<tool>/<client_id>/<run_id>/. Adding a
@@ -409,38 +414,104 @@ def _handle_exceed(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     if not (1 <= intervals <= 1000):
         raise _ClientError(400, 'intervals must be between 1 and 1000')
 
+    # Optional free-form seasonal pooling: a list of {name, months:[1-12]}
+    # groups. Each group's calendar months are pooled into one curve. When
+    # absent, fall back to the per-calendar-month behaviour.
+    seasons = _parse_seasons(body.get('seasons'))
+
     run_id = _new_run_id()
     workdir = Path(f'/tmp/{run_id}')
     workdir.mkdir(parents=True, exist_ok=True)
 
-    # Mirror exceed/__main__.py: compute one ExceedanceResult per
-    # calendar month for monthly input, plus per-month for daily
-    # input (keyed `daily_<month>`).
-    monthly_exceedance: dict = {}
-    if monthly_key:
-        monthly_data = exceed_read_monthly(str(_download(monthly_key, workdir)))
-        for month in range(1, 13):
-            series = monthly_data.get(month)
-            if not series:
-                continue
-            r = calculate_monthly_exceedance(series, intervals)
-            monthly_exceedance[month] = _result_to_dict(r)
-    if daily_key:
-        daily_data = exceed_read_daily(str(_download(daily_key, workdir)))
-        for month in range(1, 13):
-            series = daily_data.get(month)
-            if not series:
-                continue
-            r = calculate_monthly_exceedance(series, intervals)
-            monthly_exceedance[f'daily_{month}'] = _result_to_dict(r)
+    monthly_data = (
+        exceed_read_monthly(str(_download(monthly_key, workdir)))
+        if monthly_key else None
+    )
+    daily_data = (
+        exceed_read_daily(str(_download(daily_key, workdir)))
+        if daily_key else None
+    )
 
-    if not monthly_exceedance:
+    exceedance: dict = {}
+    if seasons:
+        # Pool each season's months; monthly and daily inputs each get their
+        # own set of season curves (daily ones suffixed so names don't clash).
+        if monthly_data is not None:
+            for name, r in calculate_seasonal_exceedance(
+                    monthly_data, seasons, intervals).items():
+                exceedance[name] = _result_to_dict(r)
+        if daily_data is not None:
+            for name, r in calculate_seasonal_exceedance(
+                    daily_data, seasons, intervals).items():
+                exceedance[f'{name} (daily)'] = _result_to_dict(r)
+    else:
+        # Mirror exceed/__main__.py: one ExceedanceResult per calendar month
+        # for monthly input, plus per-month for daily input (keyed
+        # `daily_<month>`).
+        if monthly_data is not None:
+            for month in range(1, 13):
+                series = monthly_data.get(month)
+                if not series:
+                    continue
+                exceedance[month] = _result_to_dict(
+                    calculate_monthly_exceedance(series, intervals))
+        if daily_data is not None:
+            for month in range(1, 13):
+                series = daily_data.get(month)
+                if not series:
+                    continue
+                exceedance[f'daily_{month}'] = _result_to_dict(
+                    calculate_monthly_exceedance(series, intervals))
+
+    if not exceedance:
         raise _ClientError(400, 'No data found in the supplied input(s)')
 
     report_path = workdir / 'output.rep'
-    write_exceedance_report(str(report_path), monthly_exceedance)
+    svg_path = workdir / 'output.svg'
+    if seasons:
+        write_seasonal_exceedance_report(str(report_path), exceedance)
+        svg_title = 'Seasonal flow-frequency curves'
+    else:
+        write_exceedance_report(str(report_path), exceedance)
+        svg_title = 'Monthly flow-frequency curves'
+    write_exceedance_svg(str(svg_path), exceedance, title=svg_title)
 
-    return _publish_run(client_id, run_id, 'exceed', output=None, report=report_path)
+    # The SVG curve is the run's primary, downloadable output ("snip the
+    # plot"); the .rep stays available as the detailed tabular report.
+    return _publish_run(client_id, run_id, 'exceed',
+                        output=svg_path, report=report_path)
+
+
+def _parse_seasons(raw: Any) -> dict[str, list[int]]:
+    """Validate the optional ``seasons`` body field into {name: [months]}.
+
+    Expects a list of ``{"name": str, "months": [1-12, ...]}`` objects.
+    Returns ``{}`` when absent. Raises ``_ClientError`` on malformed input
+    so attacker-controlled month lists can't reach the algorithm.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, list) or not raw:
+        raise _ClientError(400, 'seasons must be a non-empty list')
+    if len(raw) > 12:
+        raise _ClientError(400, 'at most 12 seasons are allowed')
+    seasons: dict[str, list[int]] = {}
+    for i, group in enumerate(raw):
+        if not isinstance(group, dict):
+            raise _ClientError(400, 'each season must be an object')
+        name = str(group.get('name') or f'Season {i + 1}')
+        months_raw = group.get('months')
+        if not isinstance(months_raw, list) or not months_raw:
+            raise _ClientError(400, f'season "{name}" needs a non-empty months list')
+        months: list[int] = []
+        for m in months_raw:
+            if not isinstance(m, int) or isinstance(m, bool) or not (1 <= m <= 12):
+                raise _ClientError(400, f'season "{name}" has an invalid month: {m!r}')
+            months.append(m)
+        if name in seasons:
+            raise _ClientError(400, f'duplicate season name: {name}')
+        seasons[name] = months
+    return seasons
 
 
 def _result_to_dict(r: Any) -> dict[str, Any]:

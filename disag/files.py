@@ -23,6 +23,7 @@ from datetime import datetime
 MISSING = -99.99
 DAILY_HEADER_LINES = 12
 MONTHLY_HEADER_LINES = 5
+MONTHLY_VAL_WIDTH = 9  # width of each .mon value column (contiguous, right-justified)
 
 
 @dataclass
@@ -100,6 +101,37 @@ def read_daily_file(path: str) -> dict:
     return records
 
 
+def _parse_monthly_values(parts: list, line: str):
+    """Return the 12 monthly values from a .mon data line, or ``None``.
+
+    Normal rows are whitespace-separated, so ``parts[1:13]`` is enough.
+    But .mon values are written as contiguous 9-char columns, and in a
+    wet year two adjacent full-width fields touch with no separator
+    (e.g. ``14639.12013670.740``) — the same fixed-width trap documented
+    for .day files. Those rows have fewer than 13 tokens, so we re-slice
+    the final twelve 9-char columns by position.
+    """
+    if len(parts) >= 13:
+        try:
+            return [float(x) for x in parts[1:13]]
+        except ValueError:
+            pass
+    # rstrip() (not just '\n') so trailing spaces can't shift the column
+    # offsets — the twelve values are the final 9-char fields of the row.
+    body = line.rstrip()
+    span = 12 * MONTHLY_VAL_WIDTH
+    if len(body) < span:
+        return None
+    region = body[-span:]
+    try:
+        return [
+            float(region[i * MONTHLY_VAL_WIDTH:(i + 1) * MONTHLY_VAL_WIDTH])
+            for i in range(12)
+        ]
+    except ValueError:
+        return None
+
+
 def read_monthly_file(path: str) -> dict:
     """Read a monthly flow file (hydro-year records, Oct-Sep).
 
@@ -114,12 +146,17 @@ def read_monthly_file(path: str) -> dict:
 
         for line in fh:
             parts = line.split()
-            if len(parts) < 13:
+            if not parts:
                 continue
-            hydro_year = int(parts[0])
+            try:
+                hydro_year = int(parts[0])
+            except ValueError:
+                continue
             if hydro_year < 1900:
                 hydro_year += 1900
-            vals = [float(x) for x in parts[1:13]]
+            vals = _parse_monthly_values(parts, line)
+            if vals is None:
+                continue
 
             # Map hydro months (Oct=0 … Sep=11) to calendar (year, month)
             cal_dates = [

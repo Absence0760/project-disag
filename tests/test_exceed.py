@@ -18,7 +18,10 @@ from exceed.algorithm import (
     get_season_presets,
     match_exceedance_values,
 )
-from exceed.files import read_monthly_file as _exc_read_monthly
+from exceed.files import (
+    read_monthly_file as _exc_read_monthly,
+    write_exceedance_svg,
+)
 
 
 def _data_method4(name):
@@ -214,6 +217,58 @@ class SeasonalEdgeCasesTests(unittest.TestCase):
             results['Jan'].total_count, 3,
             'algorithm intentionally does not filter; pre-filter at the reader',
         )
+
+
+class WriteExceedanceSvgTests(unittest.TestCase):
+    """The SVG flow-frequency curve writer (stdlib-only, no matplotlib)."""
+
+    def _dict(self, values):
+        r = calculate_monthly_exceedance(values, 20)
+        return {
+            'flow_values': r.flow_values,
+            'exceedance_pct': r.exceedance_pct,
+            'count_above': r.count_above,
+            'count_below': r.count_below,
+            'total_count': r.total_count,
+        }
+
+    def _write(self, exceedance, **kw):
+        fd, path = tempfile.mkstemp(suffix='.svg')
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        write_exceedance_svg(path, exceedance, **kw)
+        with open(path) as f:
+            return f.read()
+
+    def test_monthly_keys_render_a_polyline_per_series(self):
+        exc = {1: self._dict([1.0, 2.0, 3.0, 4.0, 5.0]),
+               6: self._dict([10.0, 20.0, 30.0])}
+        svg = self._write(exc, title='Monthly flow-frequency curves')
+        self.assertTrue(svg.lstrip().startswith('<svg'))
+        self.assertIn('</svg>', svg)
+        self.assertEqual(svg.count('<polyline'), 2)
+        # Int month keys become month-name legend entries.
+        self.assertIn('January', svg)
+        self.assertIn('June', svg)
+        self.assertIn('Monthly flow-frequency curves', svg)
+
+    def test_daily_and_season_keys_label_correctly(self):
+        exc = {'daily_3': self._dict([1.0, 2.0, 3.0]),
+               'Wet Season': self._dict([4.0, 5.0, 6.0])}
+        svg = self._write(exc)
+        self.assertIn('Daily March', svg)
+        self.assertIn('Wet Season', svg)
+
+    def test_title_is_xml_escaped(self):
+        exc = {1: self._dict([1.0, 2.0, 3.0])}
+        svg = self._write(exc, title='Flows < 5 & rising')
+        self.assertIn('Flows &lt; 5 &amp; rising', svg)
+        self.assertNotIn('< 5 &', svg)
+
+    def test_all_zero_flows_do_not_crash(self):
+        # ymax guard: a degenerate all-zero series must not divide by zero.
+        svg = self._write({1: self._dict([0.0, 0.0, 0.0])})
+        self.assertIn('<polyline', svg)
 
 
 class ExceedCliSmokeTest(unittest.TestCase):

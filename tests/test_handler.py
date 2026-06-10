@@ -431,6 +431,34 @@ class ExceedValidationTests(HandlerTestBase):
         )
         self.assertEqual(resp['statusCode'], 403)
 
+    def test_seasons_not_a_list_returns_400(self):
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/exceed',
+                body={
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'seasons': 'spring',
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_season_with_invalid_month_returns_400(self):
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/exceed',
+                body={
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'seasons': [{'name': 'Bad', 'months': [13]}],
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+
 
 # ── /convert ────────────────────────────────────────────────────────
 

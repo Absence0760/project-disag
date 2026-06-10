@@ -36,6 +36,42 @@ test.describe('@integration exceed', () => {
 		expect(report).toContain('MONTHLY - JANUARY');
 	});
 
+	test('emits a downloadable SVG curve as the run output', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'exceed_demo', 'target.MON');
+
+		const result = await runExceed(request, { monthly_key: monthlyKey, intervals: 20 });
+
+		// The flow-frequency curve is now the primary output artifact.
+		expect(result.output_key, 'output_key ends in .svg').toMatch(/\.svg$/);
+		expect(result.output_url, 'output_url present').toBeTruthy();
+		const svg = await fetchText(request, result.output_url as string);
+		expect(svg).toContain('<svg');
+		expect(svg).toContain('<polyline');
+	});
+
+	test('seasonal pooling produces one curve per season', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'exceed_demo', 'target.MON');
+
+		const result = await runExceed(request, {
+			monthly_key: monthlyKey,
+			intervals: 20,
+			seasons: [
+				{ name: 'Wet', months: [10, 11, 12, 1, 2, 3] },
+				{ name: 'Dry', months: [4, 5, 6, 7, 8, 9] }
+			]
+		});
+
+		// Seasonal report headings are uppercased by write_seasonal_exceedance_report.
+		const report = await fetchText(request, result.report_url);
+		expect(report).toContain('Seasonal Exceedance Report');
+		expect(report).toContain('WET');
+		expect(report).toContain('DRY');
+		// And the SVG legend names the seasons.
+		const svg = await fetchText(request, result.output_url as string);
+		expect(svg).toContain('Wet');
+		expect(svg).toContain('Dry');
+	});
+
 	test('rejects an empty payload with 400', async ({ request }) => {
 		const res = await request.post('http://127.0.0.1:8765/exceed', {
 			data: { intervals: 20 },

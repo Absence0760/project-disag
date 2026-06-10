@@ -36,10 +36,11 @@ def _run(method, daily_paths):
 
 
 def _tier3_patches(report_lines):
-    """The Tier-3 log lines start at column 0 with ``YYYY MM ``."""
+    """Tier-3 donor rows in the decision log: a ``YYYY MM`` row whose note
+    names a ``donor:`` source (only tier-3 patches carry that token)."""
     return [
         l for l in report_lines
-        if l[:4].strip().isdigit() and 'Patched with file' in l
+        if l[:4].strip().isdigit() and 'donor:' in l
     ]
 
 
@@ -81,7 +82,7 @@ class Method5ScenarioTests(unittest.TestCase):
         # Only Jun 2005 falls through to tier 3 — gauge B covers Jun 2003.
         self.assertEqual(len(patches), 1)
         self.assertIn('2005  6', patches[0])
-        self.assertIn('Patched with file 1 2002  6', patches[0])
+        self.assertIn('donor: file 1 2002  6', patches[0])
 
     def test_scenario_4_tier1_plus_tier3(self):
         recs, log = _run(
@@ -94,9 +95,9 @@ class Method5ScenarioTests(unittest.TestCase):
         patches = _tier3_patches(log)
         self.assertEqual(len(patches), 2)
         self.assertIn('2003  6', patches[0])
-        self.assertIn('Patched with file 1 2004  6', patches[0])
+        self.assertIn('donor: file 1 2004  6', patches[0])
         self.assertIn('2005  6', patches[1])
-        self.assertIn('Patched with file 1 2002  6', patches[1])
+        self.assertIn('donor: file 1 2002  6', patches[1])
 
     def test_scenario_5_all_three_tiers_in_one_month(self):
         # File 1 has Jun 2003 days 11..20 missing (0-indexed 10..19);
@@ -115,7 +116,7 @@ class Method5ScenarioTests(unittest.TestCase):
         patches = _tier3_patches(log)
         self.assertEqual(len(patches), 1)
         self.assertIn('2003  6', patches[0])
-        self.assertIn('Patched with file 1 2005  6', patches[0])
+        self.assertIn('donor: file 1 2005  6', patches[0])
 
         # Tier coverage summary: 4 Tier-2 days, 6 Tier-3 days, all in 1 month.
         tier2 = next(l for l in log if 'Tier 2' in l)
@@ -173,11 +174,11 @@ class ReportObservabilityTests(unittest.TestCase):
         # Section header + column header are present
         header_idx = next(
             (i for i, l in enumerate(log)
-             if l.startswith('Per-month tier breakdown')),
+             if l.startswith('Decision log')),
             -1,
         )
         if header_idx == -1:
-            self.fail('per-month breakdown section missing from report')
+            self.fail('decision log section missing from report')
         self.assertTrue(log[header_idx + 1].startswith('YYYY MM'))
 
         # Pull the per-month rows: lines after the column header that begin
@@ -194,7 +195,7 @@ class ReportObservabilityTests(unittest.TestCase):
 
         # The mixed-tier month (Jun 2003) must show all three counts non-zero
         jun_2003 = next(r for r in rows if r.startswith('2003  6'))
-        # Format: 'YYYY MM   T1 T2 T3'
+        # Format: 'YYYY MM   F1 F2 OTH   result / source'
         parts = jun_2003.split()
         self.assertEqual(parts[0], '2003')
         self.assertEqual(parts[1], '6')
@@ -202,7 +203,7 @@ class ReportObservabilityTests(unittest.TestCase):
         self.assertEqual(t1, 20)
         self.assertEqual(t2, 4)
         self.assertEqual(t3, 6)
-        self.assertIn('donor: file 1 year 2005', jun_2003)
+        self.assertIn('donor: file 1 2005  6', jun_2003)
 
         # A non-tier-3 month should have zero T2/T3 and full T1
         oct_2000 = next(r for r in rows if r.startswith('2000 10'))
@@ -485,17 +486,17 @@ class Method1VsMethod5DivergenceTests(unittest.TestCase):
         from disag.algorithm import disaggregate
         gen, obs = self._build()
         _, log = disaggregate(DisagMethod.PATCH_CAL, gen, [obs, {}], 1)
-        patch = next(l for l in log if 'Patched with' in l)
-        self.assertIn('2003  6', patch)               # target month
-        self.assertIn('Patched with 2002  6', patch)  # method 1's pick
+        patch = next(l for l in log if 'patched from' in l)
+        self.assertIn('2003  6', patch)                               # target month
+        self.assertIn('similar calendar month 2002  6', patch)        # method 1's pick
 
     def test_method5_picks_closest_percentile(self):
         from disag.algorithm import disaggregate
         gen, obs = self._build()
         _, log = disaggregate(DisagMethod.PATCH_EXCEED, gen, [obs, {}], 1)
-        patch = next(l for l in log if 'Patched with file' in l)
+        patch = next(l for l in log if 'donor:' in l)
         self.assertIn('2003  6', patch)
-        self.assertIn('Patched with file 1 2005  6', patch)
+        self.assertIn('donor: file 1 2005  6', patch)
 
     def test_methods_diverge_on_this_dataset(self):
         """Sanity: confirm the two methods explicitly chose different
@@ -504,8 +505,8 @@ class Method1VsMethod5DivergenceTests(unittest.TestCase):
         gen, obs = self._build()
         _, log1 = disaggregate(DisagMethod.PATCH_CAL,    gen, [obs, {}], 1)
         _, log5 = disaggregate(DisagMethod.PATCH_EXCEED, gen, [obs, {}], 1)
-        donor1 = next(l for l in log1 if 'Patched with' in l)
-        donor5 = next(l for l in log5 if 'Patched with file' in l)
+        donor1 = next(l for l in log1 if 'patched from' in l)
+        donor5 = next(l for l in log5 if 'donor:' in l)
         # Pick the donor-year token from each line and assert they differ
         self.assertIn('2002', donor1)
         self.assertIn('2005', donor5)
@@ -605,9 +606,9 @@ class Tier3CrossFileRescaleTests(unittest.TestCase):
         _, log = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2,
         )
-        patch = next(l for l in log if 'Patched with file' in l)
+        patch = next(l for l in log if 'donor:' in l)
         self.assertIn('2003  6', patch)
-        self.assertIn('Patched with file 2', patch)
+        self.assertIn('donor: file 2', patch)
 
     def test_tier3_donor_rescaled_to_file1_scale(self):
         # File-1 mean ≈ 10, file-2 mean ≈ 3 → rescale factor 10/3 ≈ 3.33.

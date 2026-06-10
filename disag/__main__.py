@@ -156,7 +156,7 @@ def main():
     print(f'\nDone — {len(records)} months written '
           f'({disagg} disaggregated, {missing} missing).')
     if report_lines:
-        print(f'{len(report_lines)} adjustment(s) logged to {args.report}')
+        print(f'Per-month decision log written to {args.report}')
 
     if pct_missing > 50 and method == DisagMethod.ONE_FILE:
         print(

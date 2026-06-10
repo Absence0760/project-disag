@@ -89,13 +89,16 @@ The bundled converter slices by column position and handles this case:
 
 ```bash
 python3 -m disag.convert path/to/input.ANS path/to/output.MON
+python3 -m disag.convert path/to/input.ANS          # dst defaults to input.MON
 ```
 
-It also skips the trailing `AVERAGE` row and any blank lines, and prepends
-the five-line `.MON` header the disag reader expects. The same logic is
-wired into the disag GUI as a **Convert .ANS to .MON…** button. The
-output is keyed by **hydro year** (Oct→Sep), matching the `.ANS` row
-layout exactly, so no month reshuffling happens.
+The destination is optional — omit it and the converter writes alongside
+the source with the extension swapped to `.MON`. It also skips the
+trailing `AVERAGE` row and any blank lines, and prepends the five-line
+NinhamShand `.MON` header (see below). The same logic is wired into the
+disag GUI as a **Convert .ANS to .MON…** button. The output is keyed by
+**hydro year** (Oct→Sep), matching the `.ANS` row layout exactly, so no
+month reshuffling happens.
 
 ---
 
@@ -103,8 +106,25 @@ layout exactly, so no month reshuffling happens.
 
 ### Header (5 lines)
 
-The first 5 lines are free-form text (description, units, source, etc.) and are
-skipped by the reader.
+The first 5 lines are skipped by the reader. Real NinhamShand files (and the
+`.ANS → .MON` converter's output) use a fixed shape: a `File name :` line, a
+`Units     :` line, a blank line, a `Year  Oct … Sep` column-title row, and a
+rule of dashes the same width as a data row. The reader only counts the lines,
+so any 5-line header works, but the converter emits this layout so its output
+is byte-compatible with the reference tooling.
+
+```
+File name : ef6-nat.mon
+Units     : M.m3
+
+Year      Oct      Nov      Dec      Jan      Feb      Mar      Apr      May      Jun      Jul      Aug      Sep
+----------------------------------------------------------------------------------------------------------------
+```
+
+Data values are written as **contiguous 9-char columns** (year `%4d`, then
+twelve `%9.3f` fields). In a wet year two full-width values can touch with no
+separator (e.g. `14639.12013670.740`); `read_monthly_file` falls back to
+fixed-width slicing for those rows, the same trap documented for `.day` files.
 
 ### Data records — one per hydro year
 
@@ -136,23 +156,35 @@ This record covers October 1990 through September 1991.
 
 ## Report file (`.rep`)
 
-Plain text log produced alongside each output file. It records:
+Plain text log produced alongside each output file. Its core is a
+**decision log with one row per month, for every method** — so you can
+read straight down it to see what happened to each month and why. Each
+row carries:
 
-- Any month where daily data was missing and a patch year was used
-  (methods 1, 2, and 5).
-- Any month where the observed monthly total was zero but the generated flow
-  was positive (fallback to even distribution).
+- `F1` / `F2` / `OTH` — the number of days that month sourced from daily
+  file 1, daily file 2, and a patched / donor / even source respectively.
+- a `result / source` note — `disaggregated from file 1`, `patched from
+  similar calendar month YYYY MM` (method 1), `patched from donor:
+  file N YYYY MM (exceed% …)` (method 5), `even distribution`, or
+  `MISSING — <reason>`. A month that fell back to an even split because
+  the observed monthly total was ≤ 0 is annotated inline.
+
+Method 5 (PATCH_EXCEED) appends a tier coverage summary; any pre-run
+warnings (zero-target months, sparse/flat distributions, file-2 → file-1
+scale factors) precede the log.
 
 ```
 --------------------------------------------------------------------------------
 Disag Report  : 2026-03-28 14:32:01
 Method        : Distrib with file 1, Patched with similar month
 --------------------------------------------------------------------------------
-1975  3 Observed daily flow < 0,   Patched with 1982  3
-1981  8 Observed monthly flow <= 0,   Gen Flow=   5.123
+Decision log (one row per month):
+YYYY MM   F1  F2  OTH   result / source
+1975  2   28   0   0   disaggregated from file 1
+1975  3    0   0  31   patched from similar calendar month 1982  3
+1981  8   31   0   0   disaggregated from file 1 (Observed monthly flow <= 0 — even fill)
 --------------------------------------------------------------------------------
 Months written     : 840
   Disaggregated    : 838
   Missing (-99.99) : 2  (0.2%)
-Total adjustments  : 2
 ```

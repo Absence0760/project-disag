@@ -21,10 +21,17 @@ export interface DisagRequest {
 	daily2_key?: string | null;
 }
 
+export interface SeasonGroup {
+	name: string;
+	months: number[]; // calendar months 1-12 pooled into this season
+}
+
 export interface ExceedRequest {
 	monthly_key?: string | null;
 	daily_key?: string | null;
 	intervals?: number;
+	/** Free-form seasonal pooling; omit for per-calendar-month curves. */
+	seasons?: SeasonGroup[];
 }
 
 export interface ConvertRequest {

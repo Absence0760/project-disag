@@ -55,8 +55,11 @@ test.describe('@integration convert', () => {
 		expect(result.output_key, 'output_key ends in .mon').toMatch(/\.mon$/);
 
 		const out = await fetchText(request, result.output_url);
+		// NinhamShand .MON header: file name / units / column titles.
+		expect(out).toContain('File name : output.mon');
+		expect(out).toContain('Units     : M.m3');
+		expect(out).toMatch(/^Year\s+Oct\s+Nov\b/m);
 		// The fixture is three hydro years; output must echo them.
-		expect(out).toContain('Source        : converted from SAMPLE.ANS');
 		expect(out).toMatch(/^\s*1990\s/m);
 		expect(out).toMatch(/^\s*1991\s/m);
 		expect(out).toMatch(/^\s*1992\s/m);

@@ -11,7 +11,7 @@ See [../docs/exceed.md](../docs/exceed.md) for the algorithm and
 
 | File | Purpose |
 |------|---------|
-| [files.py](files.py) | `read_monthly_file` (calendar-month flattening), `read_daily_file` (delegates to `disag.files.read_daily_file`), and three report writers. |
+| [files.py](files.py) | `read_monthly_file` (calendar-month flattening), `read_daily_file` (delegates to `disag.files.read_daily_file`), three report writers, and `write_exceedance_svg` (stdlib SVG flow-frequency curve — no matplotlib). |
 | [algorithm.py](algorithm.py) | `ExceedanceCalculator`, `calculate_monthly_exceedance`, `calculate_seasonal_exceedance`, `match_exceedance_values`, plus `SEASON_PRESETS` (2 / 3 / 4 season). |
 | [gui.py](gui.py) | `ExceedApp` — three-tab Tk window: **Basic**, **Seasonal**, **Matching**. |
 | [__main__.py](__main__.py) | Argparse + GUI smoke-test + dispatch. |

@@ -64,12 +64,12 @@ test.describe('@integration disag', () => {
 		});
 
 		const report = await fetchText(request, result.report_url);
-		expect(report).toContain('Patched with similar month');
+		expect(report).toContain('Patched with similar month'); // method-name header
 		// The known gap is 2002-06; the patcher picks 2003-06 as donor
 		// (closest absolute volume in the same calendar month). See
-		// examples/method1_demo/README.md.
+		// examples/method1_demo/README.md. The decision log names both.
 		expect(report).toMatch(/2002\s+6/);
-		expect(report).toMatch(/Patched with 2003\s+6/);
+		expect(report).toMatch(/similar calendar month 2003\s+6/);
 	});
 
 	test('method 2 — file patching, silent by design (day-level)', async ({ request }) => {

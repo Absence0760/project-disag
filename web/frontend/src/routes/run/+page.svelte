@@ -1,14 +1,34 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { requestUpload, putToS3, runConvert, runDisag, runExceed } from '$lib/api';
-	import type { DisagMethod, RunResult, Tool } from '$lib/types';
+	import type { DisagMethod, RunResult, SeasonGroup, Tool } from '$lib/types';
 	import FileDrop from '$lib/FileDrop.svelte';
+
+	const MONTH_ABBR = [
+		'Jan',
+		'Feb',
+		'Mar',
+		'Apr',
+		'May',
+		'Jun',
+		'Jul',
+		'Aug',
+		'Sep',
+		'Oct',
+		'Nov',
+		'Dec'
+	];
 
 	const VALID_TOOLS: Tool[] = ['disag', 'exceed', 'convert'];
 	const queryTool = page.url.searchParams.get('tool');
 	let tool = $state<Tool>(VALID_TOOLS.includes(queryTool as Tool) ? (queryTool as Tool) : 'disag');
 	let method = $state<DisagMethod>(0);
 	let intervals = $state(20);
+	let seasonalMode = $state(false);
+	let seasons = $state<SeasonGroup[]>([
+		{ name: 'Wet', months: [10, 11, 12, 1, 2, 3] },
+		{ name: 'Dry', months: [4, 5, 6, 7, 8, 9] }
+	]);
 	let monthlyFile = $state<File | null>(null);
 	let daily1File = $state<File | null>(null);
 	let daily2File = $state<File | null>(null);
@@ -99,10 +119,19 @@
 				if (!monthlyFile && !daily1File) {
 					throw new Error('Exceed needs at least one of a monthly or daily file.');
 				}
+				let seasonGroups: SeasonGroup[] | undefined;
+				if (seasonalMode) {
+					seasonGroups = seasons
+						.map((s) => ({ name: s.name.trim() || 'Season', months: s.months }))
+						.filter((s) => s.months.length > 0);
+					if (seasonGroups.length === 0) {
+						throw new Error('Add at least one season with one or more months.');
+					}
+				}
 				const monthly_key = await uploadIfPresent(monthlyFile);
 				const daily_key = await uploadIfPresent(daily1File);
 				stage = 'computing';
-				result = await runExceed({ monthly_key, daily_key, intervals });
+				result = await runExceed({ monthly_key, daily_key, intervals, seasons: seasonGroups });
 			} else {
 				if (!ansFile) throw new Error('Source monthly file is required.');
 				const ans_key = (await uploadIfPresent(ansFile))!;
@@ -129,8 +158,25 @@
 	function outputLabel(key: string | undefined): string {
 		if (!key) return 'output';
 		const m = key.match(/\.([a-z0-9]+)$/i);
+		if (m && m[1].toLowerCase() === 'svg') return 'curve (.svg)';
 		return m ? `.${m[1].toLowerCase()} output` : 'output';
 	}
+
+	function toggleSeasonMonth(season: SeasonGroup, month: number) {
+		season.months = season.months.includes(month)
+			? season.months.filter((m) => m !== month)
+			: [...season.months, month].sort((a, b) => a - b);
+	}
+
+	function addSeason() {
+		seasons = [...seasons, { name: `Season ${seasons.length + 1}`, months: [] }];
+	}
+
+	function removeSeason(i: number) {
+		seasons = seasons.filter((_, idx) => idx !== i);
+	}
+
+	const isSvg = $derived(!!result?.output_key && /\.svg$/i.test(result.output_key));
 </script>
 
 <svelte:head>
@@ -198,6 +244,57 @@
 				class="input"
 				data-testid="intervals-input"
 			/>
+		</section>
+
+		<section class="card group" aria-label="Seasons">
+			<h3>Seasons</h3>
+			<label class="check">
+				<input type="checkbox" bind:checked={seasonalMode} data-testid="seasonal-toggle" />
+				<span>Pool months into seasons (one curve per season)</span>
+			</label>
+			{#if seasonalMode}
+				<p class="muted">
+					Throw any months together into a season — they don’t have to be contiguous.
+				</p>
+				<div class="seasons">
+					{#each seasons as season, i (i)}
+						<div class="season-row" data-testid="season-row">
+							<input
+								class="input season-name"
+								type="text"
+								bind:value={season.name}
+								aria-label="Season name"
+								placeholder="Season name"
+							/>
+							<div class="months" role="group" aria-label={`Months for ${season.name}`}>
+								{#each MONTH_ABBR as label, mi (mi)}
+									{@const month = mi + 1}
+									<button
+										type="button"
+										class="month-chip"
+										class:on={season.months.includes(month)}
+										aria-pressed={season.months.includes(month)}
+										onclick={() => toggleSeasonMonth(season, month)}
+									>
+										{label}
+									</button>
+								{/each}
+							</div>
+							<button
+								type="button"
+								class="btn ghost small"
+								onclick={() => removeSeason(i)}
+								disabled={seasons.length <= 1}
+							>
+								Remove
+							</button>
+						</div>
+					{/each}
+				</div>
+				<button type="button" class="btn secondary small" onclick={addSeason}>
+					+ Add season
+				</button>
+			{/if}
 		</section>
 	{/if}
 
@@ -278,6 +375,14 @@
 			Outputs are stored in S3 under the <code>{result.tool}</code> namespace. Links below are short-lived
 			(1 hour by default).
 		</p>
+		{#if isSvg && result.output_url}
+			<figure class="curve" data-testid="curve-preview">
+				<img src={result.output_url} alt="Flow-frequency exceedance curve" />
+				<figcaption class="muted">
+					Right-click the curve to save it, or use the button below.
+				</figcaption>
+			</figure>
+		{/if}
 		<div class="actions">
 			{#if result.output_url}
 				<a class="btn" href={result.output_url} data-testid="download-output">
@@ -310,6 +415,71 @@
 	.muted {
 		color: var(--text-muted);
 		margin: 0 0 var(--space-3);
+	}
+
+	.check {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.seasons {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		margin: var(--space-3) 0;
+	}
+
+	.season-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.season-name {
+		width: 10rem;
+		flex: 0 0 auto;
+	}
+
+	.months {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.month-chip {
+		border: 1px solid var(--border, #cbd5e1);
+		background: var(--surface, #fff);
+		color: var(--text, #0f172a);
+		border-radius: var(--radius-sm, 6px);
+		padding: 2px 8px;
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+
+	.month-chip.on {
+		background: var(--accent, #2563eb);
+		border-color: var(--accent, #2563eb);
+		color: #fff;
+	}
+
+	.btn.small {
+		padding: 4px 10px;
+		font-size: 0.85rem;
+	}
+
+	.curve {
+		margin: var(--space-3) 0;
+	}
+
+	.curve img {
+		width: 100%;
+		max-width: 720px;
+		height: auto;
+		background: #fff;
+		border: 1px solid var(--border, #e2e8f0);
+		border-radius: var(--radius-md, 10px);
 	}
 
 	.input {
