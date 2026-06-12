@@ -27,8 +27,9 @@ logged in the report file.
 
 The tool uses a **hydro year** that runs from **October to September**.
 The monthly input file stores one record per hydro year (12 values: Oct, Nov,
-Dec, Jan, …, Sep). Processing always starts on 1 October of the first complete
-hydro year covered by all input files.
+Dec, Jan, …, Sep). Processing always starts on 1 October of the first hydro
+year present in the monthly (`gen_monthly`) file and runs to its last month;
+the daily reference files do not clamp this window (they only gate patching).
 
 ---
 
@@ -57,8 +58,9 @@ other years for a **complete** month of the same calendar month whose generated
 monthly volume is closest to the target month. If a suitable year is found, it
 is used as a day-level patch: on each day where file 1 is valid, file 1 is
 used; on each day where file 1 is missing (value `< 0`), that day's value is
-taken from the patch year's daily record. The substitution is logged once per
-month in the report file.
+taken from the patch year's daily record. Candidate months whose length differs
+from the target month (the leap-February case) are filtered out, mirroring
+method 5. The substitution is logged once per month in the report file.
 
 If no complete substitute month exists, the output month is set to missing.
 

@@ -34,9 +34,12 @@ YYY MM  TTTTTTTTTT
 
 | Field | Width | Description |
 |-------|-------|-------------|
-| Year  | ≥ 3 chars (right-justified) | Calendar year |
-| Month | 3 chars (right-justified) | Calendar month (1–12) |
+| Year  | 3 chars (`%3d`; a 4-digit year ≥ 1000 simply overflows to 4) | Calendar year |
+| Month | 3 chars (`%3d`, right-justified) | Calendar month (1–12) |
 | Total | 10 chars, 3 decimal places | Monthly total in Mm3 (sum of daily values converted from m3/s) |
+
+The three fields are written with no separators (`{year:3d}{month:3d}{total:10.3f}`);
+the gaps you see in examples are just field padding.
 
 **Lines 2–5 — daily values**
 
@@ -45,6 +48,10 @@ Each day value occupies exactly **7 characters**, right-justified:
 - 3 decimal places for values 0–99
 - 2 decimal places for values 100–999 or any negative (missing)
 - 1 decimal place for values > 999
+
+A missing-day sentinel (`-99.99`) fills the full 7 characters with no leading
+space, so consecutive sentinels run together (`-99.990-99.990`) — never
+`.split()` a daily line; slice it in fixed 7-char columns.
 
 Days 1–28 appear on four lines of 7 values each (49 characters per line).
 

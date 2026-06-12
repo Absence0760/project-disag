@@ -75,7 +75,7 @@ volume of the generated record.
 
 This is the messy part of the problem. Real gauges fail, get vandalised,
 or were only installed partway through the period of interest. The tool
-gives you four ways to handle it:
+gives you six methods to handle it:
 
 | # | Method | What it does when day *d* is missing in file 1 |
 |---|--------|------------------------------------------------|
@@ -128,10 +128,11 @@ separately from July — because in seasonal climates you can't lump them.
 
 `testfiles/SINDILA.MON` has 70 years of monthly volumes. The 70 January
 values range roughly 0.29 – 3.82 Mm³. Splitting that range into 20
-intervals (`Δ = 0.186 Mm³`) and bucketing all 70 January values produces:
+intervals (`Δ = (max − min) / 20 ≈ 0.177 Mm³`) and bucketing all 70
+January values produces:
 
 ```
-JANUARY
+MONTHLY - JANUARY
 Total values: 70  Below range: 0  Above range: 1
 
 Exceedance%    Flow Value

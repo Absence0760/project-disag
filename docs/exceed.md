@@ -23,8 +23,8 @@ monotonically non-increasing as `flow_i` increases.
 | Symbol | Description |
 |--------|-------------|
 | `Δ`    | `(max − min) / N` — interval width |
-| `count_above_range` | values strictly greater than `max` (rare; only with manual ranges) |
-| `count_below_range` | values strictly less than `min` (also rare) |
+| `count_above_range` | values `≥ max` — the top interval boundary is exclusive, so the maximum value itself lands here |
+| `count_below_range` | values strictly less than `min` (rare; only with manual ranges) |
 
 When `min == max` (all values identical) the calculator nudges `max` up by
 `1.01 × min + 0.01` to avoid a zero-width range.
@@ -141,7 +141,7 @@ from both the CLI and the GUI tabs.
 Exceedance Analysis Report  : 2026-04-24 20:05:32
 --------------------------------------------------------------------------------
 
-JANUARY
+MONTHLY - JANUARY
 --------------------------------------------------------------------------------
 Total values: 70  Below range: 0  Above range: 1
 

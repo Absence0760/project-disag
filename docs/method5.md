@@ -60,9 +60,10 @@ because **gauge B isn't on River A** — its absolute volumes are
 different. Gauge B's biggest June ever might be 0.5 Mm³, not 5.5.
 
 But the *percentile rank* carries across rivers. If River A's June 2003
-sat at the 33rd percentile of all observed Junes at A (i.e. wetter than
-67% of A's other Junes), the regional weather that June was somewhat
-wet. The same June at gauge B should also have been somewhat wet
+sat at exceedance percentile `p ≈ 33 %` among all observed Junes at A
+(the formula below — only about a third of A's Junes were as wet or
+wetter, i.e. it was wetter than ~67%), the regional weather that June was
+somewhat wet. The same June at gauge B should also have been somewhat wet
 relative to B's own distribution — even though the absolute m³/s
 numbers are different. The day-to-day *pattern* (early-month runoff
 spike, mid-month base flow, late-month recession, etc.) tracks the
@@ -90,7 +91,7 @@ For target month `(Y, M)` with monthly volume `V_target`:
 
 3. Pick the candidate whose `|p_donor − p_target|` is smallest.
    Ties are broken by year proximity to the target year, then by
-   smaller file index.
+   smaller file index, then by earlier donor year.
 
 4. For each day still missing in the target month after Tiers 1
    and 2, copy the donor's day-d value. Run the standard
