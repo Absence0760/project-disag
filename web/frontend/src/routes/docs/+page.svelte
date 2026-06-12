@@ -3,6 +3,8 @@
 	// visual explainer of what the toolkit does and how a run flows through
 	// the system. Each section has an id so the on-page contents can deep-link.
 
+	import { DOC_PAGES } from '$lib/docMeta';
+
 	type TocItem = { id: string; label: string };
 
 	const toc: TocItem[] = [
@@ -671,32 +673,12 @@
 		edge cases, and the on-disk byte layout — are published here as their own pages:
 	</p>
 	<div class="ref-grid">
-		<a class="card ref" href="/docs/problem">
-			<h3>The problem</h3>
-			<p>The domain context, with worked examples for both tools.</p>
-		</a>
-		<a class="card ref" href="/docs/algorithm">
-			<h3>Disaggregation algorithm</h3>
-			<p>The core formula and every method's behaviour, step by step.</p>
-		</a>
-		<a class="card ref" href="/docs/exceed">
-			<h3>Exceedance analysis</h3>
-			<p>The flow-frequency algorithm, seasonal grouping, and matching logic.</p>
-		</a>
-		<a class="card ref" href="/docs/method5">
-			<h3>Method 5 deep-dive</h3>
-			<p>The exceedance-matched cross-river donor — what it solves and how.</p>
-		</a>
-		<a class="card ref" href="/docs/file-formats">
-			<h3>File formats</h3>
-			<p>
-				The complete <code>.mon</code> / <code>.day</code> / <code>.rep</code> on-disk spec.
-			</p>
-		</a>
-		<a class="card ref" href="/docs/building">
-			<h3>Building executables</h3>
-			<p>Per-OS PyInstaller build guide for the standalone CLI binaries.</p>
-		</a>
+		{#each DOC_PAGES as doc (doc.slug)}
+			<a class="card ref" href={`/docs/${doc.slug}`}>
+				<h3>{doc.label}</h3>
+				<p>{doc.blurb}</p>
+			</a>
+		{/each}
 	</div>
 	<div class="actions">
 		<a class="btn" href="/run">Try a run →</a>

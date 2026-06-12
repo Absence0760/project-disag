@@ -62,8 +62,8 @@ test.describe('Docs page', () => {
 		await page.goto('/docs');
 		const side = page.locator('.docs-side');
 		await expect(side.getByRole('link', { name: 'Overview' })).toHaveClass(/active/);
-		// All six reference pages are linked.
-		await expect(side.locator('a[href^="/docs/"]')).toHaveCount(6);
+		// Every reference page is linked (kept in sync with DOC_PAGES).
+		await expect(side.locator('a[href^="/docs/"]')).toHaveCount(10);
 	});
 
 	test('the overview "Go deeper" cards link into the rendered doc pages', async ({ page }) => {

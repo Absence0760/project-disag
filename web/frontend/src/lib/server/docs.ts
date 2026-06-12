@@ -10,20 +10,28 @@ import { DOC_PAGES } from '$lib/docMeta';
 // Raw markdown, imported straight from the repo's docs/ directory. Vite's
 // `?raw` query returns the file contents as a string at build time.
 import problem from '../../../../../docs/problem.md?raw';
+import usage from '../../../../../docs/usage.md?raw';
 import algorithm from '../../../../../docs/algorithm.md?raw';
 import exceed from '../../../../../docs/exceed.md?raw';
-import fileFormats from '../../../../../docs/file-formats.md?raw';
 import method5 from '../../../../../docs/method5.md?raw';
+import converter from '../../../../../docs/converter.md?raw';
+import fileFormats from '../../../../../docs/file-formats.md?raw';
+import glossary from '../../../../../docs/glossary.md?raw';
+import faq from '../../../../../docs/faq.md?raw';
 import building from '../../../../../docs/building.md?raw';
 
 const GITHUB_BASE = 'https://github.com/Absence0760/project-disag';
 
 const RAW: Record<string, string> = {
 	problem,
+	usage,
 	algorithm,
 	exceed,
-	'file-formats': fileFormats,
 	method5,
+	converter,
+	'file-formats': fileFormats,
+	glossary,
+	faq,
 	building
 };
 
@@ -36,15 +44,11 @@ const SOURCES: Array<{ slug: string; source: string }> = DOC_PAGES.map(({ slug }
 
 const SLUGS = new Set(SOURCES.map((d) => d.slug));
 
-// Map a markdown filename (as written inside the docs) to its slug.
-const FILE_TO_SLUG: Record<string, string> = {
-	'problem.md': 'problem',
-	'algorithm.md': 'algorithm',
-	'exceed.md': 'exceed',
-	'file-formats.md': 'file-formats',
-	'method5.md': 'method5',
-	'building.md': 'building'
-};
+// Map a markdown filename (as written inside the docs) to its slug, derived
+// from the shared page list so a new doc is linkable the moment it's added.
+const FILE_TO_SLUG: Record<string, string> = Object.fromEntries(
+	DOC_PAGES.map(({ slug }) => [`${slug}.md`, slug])
+);
 
 // Minimal POSIX-ish path normaliser — enough to resolve the `../` links the
 // docs use (e.g. `../CLAUDE.md`, `../examples/method5_demo/`) relative to the
@@ -61,10 +65,16 @@ function normalize(path: string): string {
 
 // Rewrite a link href written for the on-disk docs into one that works on the
 // website: sibling .md docs become /docs/<slug>; everything else relative
-// resolves against the repo and points at GitHub. Absolute and in-page
-// anchors pass through untouched.
+// resolves against the repo and points at GitHub. Absolute site paths (`/run`,
+// `/docs#methods`), full URLs, and in-page anchors pass through untouched.
 function rewriteHref(href: string): string {
-	if (!href || href.startsWith('http://') || href.startsWith('https://') || href.startsWith('#')) {
+	if (
+		!href ||
+		href.startsWith('http://') ||
+		href.startsWith('https://') ||
+		href.startsWith('#') ||
+		href.startsWith('/')
+	) {
 		return href;
 	}
 
