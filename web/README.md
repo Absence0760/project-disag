@@ -3,11 +3,12 @@
 A SvelteKit single-page app in front of an AWS Lambda backend that
 wraps the `disag/` and `exceed/` Python packages from this repo.
 
-Files flow through S3: the browser uploads to a pre-signed PUT URL,
-Lambda processes the inputs in `/tmp`, writes outputs back to a second
-S3 bucket, and the browser downloads via pre-signed GETs. Previous
-runs live under `runs/<tool>/<run-id>/` and surface on the History
-page.
+Files flow through S3: the browser uploads to a pre-signed POST URL
+(POST, not PUT — only `generate_presigned_post` can enforce the
+`content-length-range` upload-size cap), Lambda processes the inputs in
+`/tmp`, writes outputs back to a second S3 bucket, and the browser
+downloads via pre-signed GETs. Previous runs live under
+`runs/<tool>/<run-id>/` and surface on the History page.
 
 ## Layout
 
@@ -287,7 +288,7 @@ pnpm deploy                     # build → tf:apply → deploy:web
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/upload` | POST | Returns a pre-signed S3 PUT URL for one input file. |
+| `/upload` | POST | Returns a pre-signed S3 POST (policy + fields) for one input file, with a `content-length-range` size cap. |
 | `/disag`  | POST | Runs `disag.algorithm.disaggregate`. |
 | `/exceed` | POST | Flow-frequency curves per calendar month (or per free-form `seasons` group). Returns an SVG curve as `output` plus the tabular `.rep`. |
 | `/runs`   | GET  | Lists stored runs. |
@@ -295,12 +296,20 @@ pnpm deploy                     # build → tf:apply → deploy:web
 
 ## Compute notes
 
-The Lambda is sized at 4 GB / 5 min by default (see
-`lambda_memory_mb` and `lambda_timeout_seconds` in
-`infra/variables.tf`). Lambda hands out CPU in proportion to memory —
-4 GB ≈ 2.2 vCPU, 10 GB ≈ 6 vCPU — so bump memory if Method 5
-(`PATCH_EXCEED`) on a large monthly file pushes past the 5-minute
-budget. Hard ceiling is 900 s (15 min); past that, switch to Fargate.
+The Lambda defaults to 3008 MB / 29 s (see `lambda_memory_mb` and
+`lambda_timeout_seconds` in `infra/variables.tf`). 3008 MB is the most
+a freshly-provisioned AWS account may allocate without a Service Quotas
+raise; bump it to 4096+ for more CPU after raising the quota. Lambda
+hands out CPU in proportion to memory — ~3009 MB ≈ 1.7 vCPU, 10240 MB ≈
+6 vCPU — so more memory speeds up the compute-bound Method 5
+(`PATCH_EXCEED`) path.
+
+The 29 s timeout is **not** a soft default: this API Gateway HTTP API
+hard-limits an integration response to 30 s, so anything past ~29 s is
+billed compute the caller never sees (it gets a 504 from API GW while
+the Lambda keeps running). For work that genuinely needs longer than
+~29 s, move it off the synchronous API path — switch to Fargate, or an
+async invoke + polling model.
 
 Architecture is `arm64` (Graviton) — same Python 3.14 image, ~20%
 cheaper per millisecond.
