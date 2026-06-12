@@ -88,6 +88,21 @@ def _inc_month(year: int, month: int) -> tuple:
     return year, month
 
 
+def _day_val(rec: Optional['DailyRecord'], d: int) -> float:
+    """Day-``d`` value of a daily record, or the missing sentinel if the
+    record is absent or too short.
+
+    Centralises the bounds guard so every method treats a truncated
+    record as a missing day rather than raising ``IndexError``. The
+    reader pads each record to its month length, so the guard is
+    defensive — but it keeps all six methods consistent instead of only
+    PATCH_EXCEED handling short records gracefully.
+    """
+    if rec is None or d >= len(rec.v):
+        return -999.0
+    return rec.v[d]
+
+
 def _hydro_start_ym(records: dict) -> tuple:
     """
     Return the (year, 10) hydro-year start for a daily file.
@@ -230,25 +245,48 @@ def _per_month_distributions(
     """Precompute per-calendar-month distributions used by
     ``find_exceed_donor``.
 
+    Distributions are keyed by ``(month, days_in_month)`` rather than
+    month alone so a February percentile is ranked only against other
+    Februaries of the *same* length. A 29-day February carries an extra
+    day of volume, so pooling leap and non-leap Februaries biased the
+    rank; splitting by day-count removes that bias. For every other
+    month the day-count is constant across years, so this is a no-op.
+
     Returns ``(target_dists, donor_dists)`` where:
-      * ``target_dists[m]`` is the list of valid ``gen_monthly`` values
-        for calendar month ``m``;
-      * ``donor_dists[file_idx][m]`` is the list of complete-month
-        totals for the same calendar month in daily file ``file_idx``.
+      * ``target_dists[(m, dim)]`` is the list of valid ``gen_monthly``
+        values for calendar month ``m`` with ``dim`` days;
+      * ``donor_dists[file_idx][(m, dim)]`` is the matching list of
+        complete-month totals from daily file ``file_idx``.
     """
-    target_dists: dict = {m: [] for m in range(1, 13)}
+    target_dists: dict = {}
     for (y, m), v in gen_monthly.items():
         if v >= 0:
-            target_dists[m].append(v)
+            dim = calendar.monthrange(y, m)[1]
+            target_dists.setdefault((m, dim), []).append(v)
 
     donor_dists: list = []
     for totals in obs_totals:
-        per_month: dict = {m: [] for m in range(1, 13)}
+        per_month: dict = {}
         for (y, m), v in totals.items():
-            per_month[m].append(v)
+            dim = calendar.monthrange(y, m)[1]
+            per_month.setdefault((m, dim), []).append(v)
         donor_dists.append(per_month)
 
     return target_dists, donor_dists
+
+
+def _cal_month_values(dists: dict, month: int) -> list:
+    """All distribution values for calendar ``month`` across day-counts.
+
+    ``_per_month_distributions`` keys by ``(month, dim)``; the pre-run
+    warnings reason at the calendar-month level, so they aggregate the
+    (at most two, for February) day-count buckets back together.
+    """
+    out: list = []
+    for (m, _dim), vals in dists.items():
+        if m == month:
+            out.extend(vals)
+    return out
 
 
 def find_exceed_donor(
@@ -287,12 +325,14 @@ def find_exceed_donor(
             gen_monthly, obs_totals
         )
 
-    target_dist = target_dists.get(target_month, [])
+    target_dim = calendar.monthrange(target_year, target_month)[1]
+
+    # Rank within the same (month, day-count) bucket as the target so a
+    # leap/non-leap February isn't compared across mismatched volumes.
+    target_dist = target_dists.get((target_month, target_dim), [])
     if len(target_dist) < 2:
         return None
     p_target = _exceed_pct(target_vol, target_dist)
-
-    target_dim = calendar.monthrange(target_year, target_month)[1]
 
     best_key: Optional[tuple] = None
     best_p_donor: float = 0.0
@@ -300,7 +340,7 @@ def find_exceed_donor(
     for file_idx, totals in enumerate(obs_totals):
         if not totals:
             continue
-        donor_dist = donor_dists[file_idx].get(target_month, [])
+        donor_dist = donor_dists[file_idx].get((target_month, target_dim), [])
         if len(donor_dist) < 2:
             continue
         for (y, m), vol in totals.items():
@@ -382,12 +422,13 @@ def _convert_month(
     patch_year: Optional[int] = None
     exceed_donor: Optional[DailyRecord] = None
     exceed_donor_file_idx: int = 0
+    pending_match: Optional[tuple] = None
 
     if method == DisagMethod.EVEN:
         pass  # never missing
 
     elif method == DisagMethod.ONE_FILE:
-        if rec1 is None or any(rec1.v[d] < 0 for d in range(dim)):
+        if rec1 is None or any(_day_val(rec1, d) < 0 for d in range(dim)):
             missing = True
             dec['note'] = 'MISSING — no complete daily record in file 1'
 
@@ -395,15 +436,16 @@ def _convert_month(
         if rec1 is None or rec2 is None:
             missing = True
             dec['note'] = 'MISSING — file 1 or file 2 unavailable this month'
-        elif any(rec1.v[d] < 0 or rec2.v[d] < 0 for d in range(dim)):
+        elif any(_day_val(rec1, d) < 0 or _day_val(rec2, d) < 0
+                 for d in range(dim)):
             missing = True
             dec['note'] = 'MISSING — file 1 or file 2 has a missing day'
 
     elif method == DisagMethod.PATCH_FILE:
         # Missing only if the same day is absent from BOTH files
         for d in range(dim):
-            f1 = rec1.v[d] if rec1 else -999.0
-            f2 = rec2.v[d] if rec2 else -999.0
+            f1 = _day_val(rec1, d)
+            f2 = _day_val(rec2, d)
             if f1 < 0 and f2 < 0:
                 missing = True
                 dec['note'] = 'MISSING — day absent from both file 1 and file 2'
@@ -411,7 +453,8 @@ def _convert_month(
 
     elif method == DisagMethod.PATCH_CAL:
         # If any day is missing, try to borrow a complete month from another year
-        needs_patch = rec1 is None or any(rec1.v[d] < 0 for d in range(dim))
+        needs_patch = rec1 is None or any(
+            _day_val(rec1, d) < 0 for d in range(dim))
         if needs_patch:
             patch_year = find_patch_year(year, month, gen_monthly, obs_daily[0])
             if patch_year is not None:
@@ -431,9 +474,7 @@ def _convert_month(
         # gaps on the exact days we need.
         needs_donor_days = []
         for d in range(dim):
-            f1 = rec1.v[d] if rec1 and d < len(rec1.v) else -999.0
-            f2 = rec2.v[d] if rec2 and d < len(rec2.v) else -999.0
-            if f1 < 0 and f2 < 0:
+            if _day_val(rec1, d) < 0 and _day_val(rec2, d) < 0:
                 needs_donor_days.append(d)
 
         if needs_donor_days:
@@ -460,7 +501,7 @@ def _convert_month(
                     # zero-flow days no audit line ever announced.
                     bad = [
                         d for d in needs_donor_days
-                        if d >= len(exceed_donor.v) or exceed_donor.v[d] < 0
+                        if _day_val(exceed_donor, d) < 0
                     ]
                     if bad:
                         dec['note'] = (
@@ -475,11 +516,12 @@ def _convert_month(
                             f' {donor_year:4d}{month:3d}'
                             f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
                         )
-                        if tier_counters is not None:
-                            tier_counters['tier3_matches'].append(
-                                (year, month, p_target, p_donor,
-                                 file_idx, donor_year)
-                            )
+                        # Staged, not committed: a month selected here can
+                        # still be overridden by the zero-observed even-fill
+                        # below, in which case the donor shape is discarded
+                        # and must not count toward tier-3 stats.
+                        pending_match = (year, month, p_target, p_donor,
+                                         file_idx, donor_year)
 
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
@@ -489,10 +531,16 @@ def _convert_month(
         qD = [1.0] * dim
         qM = float(dim)
     else:
+        # Tier day-counts are staged locally and only committed to the
+        # shared tier_counters once we know the month wasn't replaced by
+        # the zero-observed even-fill below (see Bug 4) — otherwise an
+        # even-filled month would be miscredited to file 1 / file 2 / a
+        # donor that didn't actually shape its output.
+        local_t1 = local_t2 = local_t3 = 0
         qD = []
         for d in range(dim):
-            f1 = rec1.v[d] if rec1 and d < len(rec1.v) else -999.0
-            f2 = rec2.v[d] if rec2 and d < len(rec2.v) else -999.0
+            f1 = _day_val(rec1, d)
+            f2 = _day_val(rec2, d)
 
             if method == DisagMethod.ONE_FILE:
                 val = f1
@@ -513,7 +561,7 @@ def _convert_month(
             elif method == DisagMethod.PATCH_CAL:
                 if f1 < 0 and patch_year is not None:
                     rec_patch = obs_daily[0].get((patch_year, month))
-                    f3 = rec_patch.v[d] if rec_patch and d < len(rec_patch.v) else -999.0
+                    f3 = _day_val(rec_patch, d)
                     val = f3
                     dec['oth'] += 1
                 else:
@@ -524,8 +572,7 @@ def _convert_month(
                 if f1 >= 0:
                     val = f1
                     dec['f1'] += 1
-                    if tier_counters is not None:
-                        tier_counters['tier1_days'] += 1
+                    local_t1 += 1
                 elif f2 >= 0:
                     # Rescale file-2 day to file-1's per-month scale so a
                     # mixed file-1/file-2 month doesn't get a distorted shape
@@ -536,9 +583,7 @@ def _convert_month(
                     )
                     val = f2 * scale
                     dec['f2'] += 1
-                    if tier_counters is not None:
-                        tier_counters['tier2_days'] += 1
-                        tier_counters['tier2_months'].add((year, month))
+                    local_t2 += 1
                 elif exceed_donor is not None and d < len(exceed_donor.v):
                     # Same cross-river rescale as tier 2: when the donor
                     # comes from file 2, its day values must be brought
@@ -553,11 +598,9 @@ def _convert_month(
                             and exceed_donor_file_idx < len(tier2_scale))
                         else 1.0
                     )
-                    val = exceed_donor.v[d] * donor_scale
+                    val = _day_val(exceed_donor, d) * donor_scale
                     dec['oth'] += 1
-                    if tier_counters is not None:
-                        tier_counters['tier3_days'] += 1
-                        tier_counters['tier3_months'].add((year, month))
+                    local_t3 += 1
                 else:
                     val = -999.0
 
@@ -574,6 +617,22 @@ def _convert_month(
         zero_fill = True
         qD = [1.0] * dim
         qM = float(dim)
+
+    # --- Commit staged tier counts (PATCH_EXCEED) ---
+    # Only now is it known whether the observed shape survived or was
+    # replaced by the even-fill above. On even-fill the output came from
+    # neither tier, so none of the staged counts (days, month membership,
+    # or the donor match) are credited.
+    if tier_counters is not None and not zero_fill:
+        tier_counters['tier1_days'] += local_t1
+        tier_counters['tier2_days'] += local_t2
+        if local_t2:
+            tier_counters['tier2_months'].add((year, month))
+        tier_counters['tier3_days'] += local_t3
+        if local_t3:
+            tier_counters['tier3_months'].add((year, month))
+        if pending_match is not None:
+            tier_counters['tier3_matches'].append(pending_match)
 
     # --- Finalise the routine decision notes (missing / patched already set) ---
     if dec['note'] == '':
@@ -653,10 +712,6 @@ def disaggregate(
     # Output length is therefore always equal to gen_monthly's hydro span,
     # so the .day file is self-describing — no silently-clipped months.
 
-    # Hydro-year start for each daily file (used only by per-month logic
-    # below, e.g. start_obs_2 for tier-2 / PATCH_FILE day-level patching).
-    obs_starts = [_hydro_start_ym(obs_daily[f]) for f in range(no_files)]
-
     # Monthly file start: first hydro year (always October).
     first_mon = min(gen_monthly.keys())
     hydro_year = first_mon[0] if first_mon[1] >= 10 else first_mon[0] - 1
@@ -665,8 +720,16 @@ def disaggregate(
     start_ym = monthly_start
     end_ym = max(gen_monthly.keys())
 
-    # Start date for file-2 (PATCH_FILE: use file 1 only before this)
-    start_obs_2 = obs_starts[1] if no_files >= 2 else (9999, 12)
+    # File-2 activation: consult file 2 from its *actual* first recorded
+    # month, not the rounded hydro-year start. Rounding up to the first
+    # full October (via _hydro_start_ym) silently dropped a partial first
+    # hydro-year of real file-2 data from tier-2 patching, even though
+    # those same months were still eligible as tier-3 donors. The gate is
+    # otherwise redundant: obs_daily[1].get(...) already returns None for
+    # any month file 2 doesn't cover.
+    start_obs_2 = (
+        min(obs_daily[1]) if no_files >= 2 and obs_daily[1] else (9999, 12)
+    )
 
     # --- Precompute per-file monthly totals for PATCH_EXCEED tier 3 ---
     obs_totals: list = []
@@ -718,7 +781,8 @@ def disaggregate(
     # PATCH_EXCEED-specific distribution warnings
     if method == DisagMethod.PATCH_EXCEED and target_dists is not None:
         # #7 Sparse calendar months — tier 3 cannot fire for these
-        sparse = [m for m in range(1, 13) if len(target_dists[m]) < 2]
+        sparse = [m for m in range(1, 13)
+                  if len(_cal_month_values(target_dists, m)) < 2]
         if sparse:
             report_lines.append(
                 f'Warning: gen_monthly has fewer than 2 valid values for '
@@ -729,7 +793,8 @@ def disaggregate(
         # #9 Flat distributions — donor selection collapses to year proximity
         flat = [
             m for m in range(1, 13)
-            if len(target_dists[m]) >= 2 and len(set(target_dists[m])) == 1
+            if len(_cal_month_values(target_dists, m)) >= 2
+            and len(set(_cal_month_values(target_dists, m))) == 1
         ]
         if flat:
             report_lines.append(
@@ -746,7 +811,8 @@ def disaggregate(
         # the donor pool failed.
         if donor_dists is not None:
             for file_idx, per_month in enumerate(donor_dists):
-                short = [m for m in range(1, 13) if len(per_month[m]) < 2]
+                short = [m for m in range(1, 13)
+                         if len(_cal_month_values(per_month, m)) < 2]
                 if short:
                     report_lines.append(
                         f'Warning: daily file {file_idx + 1} has fewer than 2 '

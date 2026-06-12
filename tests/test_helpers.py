@@ -2,9 +2,11 @@
 
 The end-to-end suites in test_demo_methods.py, test_e2e.py, and
 test_missing_data.py exercise these helpers transitively but never
-pin their isolated behaviour. A regression in `_inc_month` or
-`_hydro_start_ym` would silently corrupt every run before any
-end-to-end assertion noticed.
+pin their isolated behaviour. A regression in `_inc_month` would
+silently corrupt every run before any end-to-end assertion noticed.
+`_hydro_start_ym` is a standalone hydro-year helper (no longer on the
+disaggregation path since file-2 activation switched to the record's
+actual first month); it is pinned here so its behaviour can't drift.
 
 Each test below names a discrete invariant of one helper so a
 regression points at the responsible function.

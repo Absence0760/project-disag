@@ -139,7 +139,14 @@ second question is meaningful.
   calendar month.** No donor pool; the month is marked missing.
 - **Feb leap-year mismatch.** Feb 29 in a leap target year cannot
   borrow from a Feb 28 donor (day 29 wouldn't exist in the donor).
-  Such candidates are filtered out before the rank match.
+  Such candidates are filtered out before the rank match. The
+  percentile distributions are also split by day-count, so a 29-day
+  February is ranked only against other 29-day Februaries (a 29-day
+  month carries an extra day of volume; pooling it with 28-day
+  Februaries would bias the rank). Because complete leap Februaries are
+  sparse (~1 year in 4), tier-3 matches for leap Februaries are
+  necessarily coarser than for other months — the donor match-quality
+  summary will show a larger maximum gap driven by these months.
 - **Daily file is much shorter than `gen_monthly`** (in either
   direction). The run window is the full span of `gen_monthly` for
   every method now, not just Method 5. Months before file 1's start
@@ -239,16 +246,20 @@ It then contains, in order:
 
    ```
    Tier-3 donor match quality (190 months):
-     |target - donor| exceed gap : mean 0.31 pt   max 1.77 pt
-     donor source split          : file 1:  83 month(s)   file 2: 107 month(s)
+     |target - donor| exceed gap : mean 0.34 pt   max 3.17 pt
+     donor source split          : file 1:  81 month(s)   file 2: 109 month(s)
      distinct donor months       : 176  (14 reused)
-     matches worse than 1.0 pt   : 2  [2024  2 52.8 vs 54.5; 1988  2 69.4 vs 70.7]
+     matches worse than 1.0 pt   : 3  [1984  2 88.9 vs 85.7; 2024  2 38.9 vs 35.7; 1988  2 66.7 vs 64.3]
    ```
 
    The `matches worse than 1.0 pt` line lists up to five worst offenders
    (sorted by gap) — the months an analyst should spot-check. A high
    `reused` count or a lopsided source split is a cue that one donor
-   pool is doing most of the work.
+   pool is doing most of the work. The worst gaps are typically leap
+   Februaries: complete leap-Feb donors are sparse, so even the closest
+   one can sit several percentile points from the target (see the
+   leap-year edge case above) — that's an honest limit of the data, not
+   a matching error.
 
 Tier-2 day-level patches are *not* logged per-month — the same
 behaviour as Method 2 (`PATCH_FILE`). The summary line at the end is
