@@ -1,10 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { DOC_PAGES } from '$lib/docMeta';
+	import { DOC_PAGES, type DocPage } from '$lib/docMeta';
 
 	let { children } = $props();
 
 	const isActive = (href: string) => page.url.pathname === href;
+
+	// Bucket the pages by their group, preserving first-appearance order, so
+	// the side panel renders one labelled section per group.
+	const groups = DOC_PAGES.reduce<Array<{ name: string; items: DocPage[] }>>((acc, doc) => {
+		const last = acc[acc.length - 1];
+		if (last && last.name === doc.group) last.items.push(doc);
+		else acc.push({ name: doc.group, items: [doc] });
+		return acc;
+	}, []);
 </script>
 
 <div class="docs-shell">
@@ -18,15 +27,17 @@
 			>
 				Overview
 			</a>
-			<span class="side-sep">Reference</span>
-			{#each DOC_PAGES as doc (doc.slug)}
-				<a
-					href={`/docs/${doc.slug}`}
-					class:active={isActive(`/docs/${doc.slug}`)}
-					aria-current={isActive(`/docs/${doc.slug}`) ? 'page' : undefined}
-				>
-					{doc.label}
-				</a>
+			{#each groups as group (group.name)}
+				<span class="side-sep">{group.name}</span>
+				{#each group.items as doc (doc.slug)}
+					<a
+						href={`/docs/${doc.slug}`}
+						class:active={isActive(`/docs/${doc.slug}`)}
+						aria-current={isActive(`/docs/${doc.slug}`) ? 'page' : undefined}
+					>
+						{doc.label}
+					</a>
+				{/each}
 			{/each}
 		</nav>
 	</aside>
