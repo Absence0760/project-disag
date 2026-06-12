@@ -5,6 +5,7 @@
 // HTML once, at module load. Consumed by routes/docs/[slug]/+page.server.ts.
 
 import { marked } from 'marked';
+import { DOC_PAGES } from '$lib/docMeta';
 
 // Raw markdown, imported straight from the repo's docs/ directory. Vite's
 // `?raw` query returns the file contents as a string at build time.
@@ -17,16 +18,21 @@ import building from '../../../../../docs/building.md?raw';
 
 const GITHUB_BASE = 'https://github.com/Absence0760/project-disag';
 
-// Order here is the order shown in the docs sidebar — concept first, then
-// the deep dives, then the build guide.
-const SOURCES: Array<{ slug: string; source: string }> = [
-	{ slug: 'problem', source: problem },
-	{ slug: 'algorithm', source: algorithm },
-	{ slug: 'exceed', source: exceed },
-	{ slug: 'method5', source: method5 },
-	{ slug: 'file-formats', source: fileFormats },
-	{ slug: 'building', source: building }
-];
+const RAW: Record<string, string> = {
+	problem,
+	algorithm,
+	exceed,
+	'file-formats': fileFormats,
+	method5,
+	building
+};
+
+// Order and membership come from the shared DOC_PAGES list so the rendered
+// pages and the layout's side panel stay in lockstep.
+const SOURCES: Array<{ slug: string; source: string }> = DOC_PAGES.map(({ slug }) => ({
+	slug,
+	source: RAW[slug]
+}));
 
 const SLUGS = new Set(SOURCES.map((d) => d.slug));
 
@@ -141,7 +147,6 @@ function plainText(md: string): string {
 }
 
 export type Doc = { slug: string; title: string; html: string };
-export type DocLink = { slug: string; title: string };
 
 const DOCS: Doc[] = SOURCES.map(({ slug, source }) => {
 	const { title, body } = splitTitle(source);
@@ -154,8 +159,6 @@ const DOCS: Doc[] = SOURCES.map(({ slug, source }) => {
 });
 
 export const docSlugs: string[] = SOURCES.map((d) => d.slug);
-
-export const docLinks: DocLink[] = DOCS.map(({ slug, title }) => ({ slug, title }));
 
 export function getDoc(slug: string): Doc | undefined {
 	if (!SLUGS.has(slug)) return undefined;

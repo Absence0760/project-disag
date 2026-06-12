@@ -33,7 +33,7 @@ test.describe('Docs page', () => {
 		await expect(page.getByTestId('nav-docs')).toHaveClass(/active/);
 	});
 
-	test('renders a rendered markdown doc page with sidebar and rewritten links', async ({
+	test('renders a rendered markdown doc page with side panel and rewritten links', async ({
 		page
 	}) => {
 		await page.goto('/docs/problem');
@@ -47,10 +47,23 @@ test.describe('Docs page', () => {
 		// Intra-doc markdown links were rewritten to in-app routes.
 		await expect(page.locator('.prose a[href="/docs/algorithm"]').first()).toBeVisible();
 
-		// Sidebar lists sibling docs and lets you navigate between them.
-		await page.locator('.sidebar a', { hasText: 'Exceedance Analysis' }).click();
+		// The docs side panel lists every doc and the active page is marked.
+		const side = page.locator('.docs-side');
+		await expect(side.locator('a[aria-current="page"]')).toHaveText('The problem');
+		await side.getByRole('link', { name: 'Exceedance analysis' }).click();
 		await expect(page).toHaveURL(/\/docs\/exceed$/);
 		await expect(page.getByRole('heading', { level: 1 })).toContainText(/Exceedance/);
+		await expect(side.locator('a[aria-current="page"]')).toHaveText('Exceedance analysis');
+	});
+
+	test('the side panel is present on the overview with Overview marked active', async ({
+		page
+	}) => {
+		await page.goto('/docs');
+		const side = page.locator('.docs-side');
+		await expect(side.getByRole('link', { name: 'Overview' })).toHaveClass(/active/);
+		// All six reference pages are linked.
+		await expect(side.locator('a[href^="/docs/"]')).toHaveCount(6);
 	});
 
 	test('the overview "Go deeper" cards link into the rendered doc pages', async ({ page }) => {

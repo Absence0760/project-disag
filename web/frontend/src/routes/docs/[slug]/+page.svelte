@@ -1,49 +1,27 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const doc = $derived(data.doc);
-	const nav = $derived(data.nav);
 </script>
 
 <svelte:head>
 	<title>{doc.title} · Disag-MD docs</title>
 </svelte:head>
 
-<nav class="crumbs" aria-label="Breadcrumb">
-	<a href="/docs">Docs</a>
-	<span aria-hidden="true">/</span>
-	<span aria-current="page">{doc.title}</span>
-</nav>
-
-<div class="layout">
-	<aside class="sidebar" aria-label="Documentation pages">
-		<a class="side-overview" href="/docs">← Overview</a>
-		<ul>
-			{#each nav as item (item.slug)}
-				<li>
-					<a
-						href={`/docs/${item.slug}`}
-						aria-current={page.params.slug === item.slug ? 'page' : undefined}
-						class:active={page.params.slug === item.slug}
-					>
-						{item.title}
-					</a>
-				</li>
-			{/each}
-		</ul>
-	</aside>
-
-	<article>
-		<h1 class="doc-title">{doc.title}</h1>
-		<!-- doc.html is built at prerender time from the repo's own trusted
-		     docs/*.md files (see $lib/server/docs.ts) — no user input flows here. -->
-		<div class="prose">
-			{@html doc.html}
-		</div>
-	</article>
-</div>
+<article>
+	<nav class="crumbs" aria-label="Breadcrumb">
+		<a href="/docs">Docs</a>
+		<span aria-hidden="true">/</span>
+		<span aria-current="page">{doc.title}</span>
+	</nav>
+	<h1 class="doc-title">{doc.title}</h1>
+	<!-- doc.html is built at prerender time from the repo's own trusted
+	     docs/*.md files (see $lib/server/docs.ts) — no user input flows here. -->
+	<div class="prose">
+		{@html doc.html}
+	</div>
+</article>
 
 <style>
 	.crumbs {
@@ -58,56 +36,6 @@
 		color: var(--text-muted);
 	}
 
-	.layout {
-		display: grid;
-		grid-template-columns: 220px minmax(0, 1fr);
-		gap: var(--space-6);
-		align-items: start;
-	}
-
-	.sidebar {
-		position: sticky;
-		top: 90px;
-		border-right: 1px solid var(--border);
-		padding-right: var(--space-4);
-	}
-	.side-overview {
-		display: inline-block;
-		font-size: 0.85rem;
-		color: var(--text-muted);
-		margin-bottom: var(--space-3);
-		font-weight: 500;
-	}
-	.sidebar ul {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.sidebar a {
-		display: block;
-		padding: 0.4rem 0.6rem;
-		border-radius: var(--radius-sm);
-		font-size: 0.9rem;
-		color: var(--text-muted);
-		line-height: 1.3;
-	}
-	.sidebar a:hover {
-		background: var(--surface-2);
-		color: var(--text);
-		text-decoration: none;
-	}
-	.sidebar a.active {
-		background: var(--accent-soft);
-		color: var(--accent);
-		font-weight: 600;
-	}
-
-	.layout > article {
-		min-width: 0;
-	}
 	.doc-title {
 		font-size: clamp(1.7rem, 2.2vw, 2.1rem);
 		margin: 0 0 var(--space-4);
@@ -224,23 +152,5 @@
 	.prose :global(img) {
 		max-width: 100%;
 		height: auto;
-	}
-
-	@media (max-width: 720px) {
-		.layout {
-			grid-template-columns: 1fr;
-			gap: var(--space-4);
-		}
-		.sidebar {
-			position: static;
-			border-right: none;
-			border-bottom: 1px solid var(--border);
-			padding-right: 0;
-			padding-bottom: var(--space-3);
-		}
-		.sidebar ul {
-			flex-direction: row;
-			flex-wrap: wrap;
-		}
 	}
 </style>
