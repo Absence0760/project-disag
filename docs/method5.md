@@ -152,7 +152,14 @@ second question is meaningful.
 
 ## What the report tells you
 
-The `.rep` file produced by Method 5 contains, in order:
+The `.rep` file produced by Method 5 opens with a **period-of-record
+header** naming the span and size of the run (emitted for every method):
+
+```
+Period of record   : 1952-10 → 2024-09  (72 hydro years, 864 months)
+```
+
+It then contains, in order:
 
 1. **Pre-run warnings** (only emitted when relevant):
    - `Warning: N target monthly value(s) are zero` — those months
@@ -208,14 +215,35 @@ The `.rep` file produced by Method 5 contains, in order:
    2003  6    0   0   0   MISSING — donor file 2 2001  6 missing day(s) 15
    ```
 
-4. **Tier coverage summary** at the end:
+4. **Tier coverage summary** — day counts and their share of the whole
+   record, so "how much was real vs borrowed" is a glance, not a
+   calculation:
 
    ```
    Tier coverage summary (days):
-     Tier 1 (file 1)        :   2131 day(s)
-     Tier 2 (file 2)        :     30 day(s)  across   1 month(s)
-     Tier 3 (donor month)   :     30 day(s)  across   1 month(s)
+     Tier 1 (file 1)        :   2131 day(s)  ( 97.3%)
+     Tier 2 (file 2)        :     30 day(s)  (  1.4%)  across   1 month(s)
+     Tier 3 (donor month)   :     30 day(s)  (  1.4%)  across   1 month(s)
    ```
+
+5. **Tier-3 donor match quality** (only when at least one donor fired) —
+   aggregates the per-month `target`/`donor` exceedance percentiles from
+   the decision log into the quality metric for the method's core
+   operation. A small mean gap means donors landed close to their targets
+   on the percentile that drives selection:
+
+   ```
+   Tier-3 donor match quality (190 months):
+     |target - donor| exceed gap : mean 0.31 pt   max 1.77 pt
+     donor source split          : file 1:  83 month(s)   file 2: 107 month(s)
+     distinct donor months       : 176  (14 reused)
+     matches worse than 1.0 pt   : 2  [2024  2 52.8 vs 54.5; 1988  2 69.4 vs 70.7]
+   ```
+
+   The `matches worse than 1.0 pt` line lists up to five worst offenders
+   (sorted by gap) — the months an analyst should spot-check. A high
+   `reused` count or a lopsided source split is a cue that one donor
+   pool is doing most of the work.
 
 Tier-2 day-level patches are *not* logged per-month — the same
 behaviour as Method 2 (`PATCH_FILE`). The summary line at the end is

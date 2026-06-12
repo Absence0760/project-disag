@@ -475,6 +475,11 @@ def _convert_month(
                             f' {donor_year:4d}{month:3d}'
                             f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
                         )
+                        if tier_counters is not None:
+                            tier_counters['tier3_matches'].append(
+                                (year, month, p_target, p_donor,
+                                 file_idx, donor_year)
+                            )
 
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
@@ -577,7 +582,10 @@ def _convert_month(
         elif method == DisagMethod.INCREMENTAL:
             dec['note'] = 'disaggregated from file 1 − file 2'
         elif dec['f2'] > 0:
-            dec['note'] = 'disaggregated from file 1, gaps filled from file 2'
+            if dec['f1'] == 0:
+                dec['note'] = 'disaggregated from file 2 (file 1 fully missing)'
+            else:
+                dec['note'] = 'disaggregated from file 1, gaps filled from file 2'
         else:
             dec['note'] = 'disaggregated from file 1'
     if zero_fill:
@@ -665,7 +673,23 @@ def disaggregate(
             'tier2_months': set(),
             'tier3_days': 0,
             'tier3_months': set(),
+            # One (year, month, p_target, p_donor, file_idx, donor_year)
+            # tuple per month actually patched from a donor — feeds the
+            # tier-3 donor match-quality summary.
+            'tier3_matches': [],
         }
+
+    # --- Period-of-record header (every method) ---
+    n_months = ((end_ym[0] - start_ym[0]) * 12
+                + (end_ym[1] - start_ym[1]) + 1)
+    start_hy = start_ym[0] if start_ym[1] >= 10 else start_ym[0] - 1
+    end_hy = end_ym[0] if end_ym[1] >= 10 else end_ym[0] - 1
+    n_hydro = end_hy - start_hy + 1
+    report_lines.append(
+        f'Period of record   : {start_ym[0]:4d}-{start_ym[1]:02d} → '
+        f'{end_ym[0]:4d}-{end_ym[1]:02d}  '
+        f'({n_hydro} hydro years, {n_months} months)'
+    )
 
     # --- Pre-run warnings (information-only; output is unaffected) ---
     # Zero-target months — output for those months will be all zeros
@@ -764,17 +788,65 @@ def disaggregate(
 
     # Tier 1/2/3 day-count summary (PATCH_EXCEED only)
     if tier_counters is not None:
+        t1 = tier_counters['tier1_days']
+        t2 = tier_counters['tier2_days']
+        t3 = tier_counters['tier3_days']
+        tot = t1 + t2 + t3
+        def _pct(n: int) -> str:
+            return f'{n / tot * 100:5.1f}%' if tot else '  n/a'
         report_lines.append('Tier coverage summary (days):')
         report_lines.append(
-            f'  Tier 1 (file 1)        : {tier_counters["tier1_days"]:6d} day(s)'
+            f'  Tier 1 (file 1)        : {t1:6d} day(s)  ({_pct(t1)})'
         )
         report_lines.append(
-            f'  Tier 2 (file 2)        : {tier_counters["tier2_days"]:6d} day(s)'
+            f'  Tier 2 (file 2)        : {t2:6d} day(s)  ({_pct(t2)})'
             f'  across {len(tier_counters["tier2_months"]):3d} month(s)'
         )
         report_lines.append(
-            f'  Tier 3 (donor month)   : {tier_counters["tier3_days"]:6d} day(s)'
+            f'  Tier 3 (donor month)   : {t3:6d} day(s)  ({_pct(t3)})'
             f'  across {len(tier_counters["tier3_months"]):3d} month(s)'
         )
+
+        # Tier-3 donor match-quality summary — how closely the donor
+        # months matched the target on the exceedance percentile that
+        # drives PATCH_EXCEED selection. This is the quality metric for
+        # the method's core operation; without it the per-month
+        # target/donor percentiles in the log never get aggregated.
+        matches = tier_counters['tier3_matches']
+        if matches:
+            gaps = [abs(pt - pd) for _, _, pt, pd, _, _ in matches]
+            n = len(gaps)
+            from_f1 = sum(1 for *_, fi, _ in matches if fi == 0)
+            from_f2 = n - from_f1
+            distinct = {(fi, dy, m) for _, m, _, _, fi, dy in matches}
+            reused = n - len(distinct)
+            outliers = sorted(
+                ((y, m, pt, pd) for y, m, pt, pd, _, _ in matches
+                 if abs(pt - pd) > 1.0),
+                key=lambda r: abs(r[2] - r[3]), reverse=True,
+            )
+            report_lines.append(f'Tier-3 donor match quality ({n} months):')
+            report_lines.append(
+                f'  |target - donor| exceed gap : '
+                f'mean {sum(gaps) / n:.2f} pt   max {max(gaps):.2f} pt'
+            )
+            report_lines.append(
+                f'  donor source split          : '
+                f'file 1: {from_f1:3d} month(s)   file 2: {from_f2:3d} month(s)'
+            )
+            report_lines.append(
+                f'  distinct donor months       : '
+                f'{len(distinct):3d}  ({reused} reused)'
+            )
+            if outliers:
+                worst = '; '.join(
+                    f'{y:4d}{m:3d} {pt:.1f} vs {pd:.1f}'
+                    for y, m, pt, pd in outliers[:5]
+                )
+                more = f' (+{len(outliers) - 5} more)' if len(outliers) > 5 else ''
+                report_lines.append(
+                    f'  matches worse than 1.0 pt   : '
+                    f'{len(outliers)}  [{worst}{more}]'
+                )
 
     return output_records, report_lines

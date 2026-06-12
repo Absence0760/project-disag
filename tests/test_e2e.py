@@ -160,6 +160,69 @@ class ReportObservabilityTests(unittest.TestCase):
         tier2 = next(l for l in log if 'Tier 2' in l)
         self.assertIn('0 day(s)', tier2)
 
+    def test_period_of_record_header(self):
+        # The demo monthly file spans hydro years 2000–2005 (Oct 2000 →
+        # Sep 2006 = 72 months).  Header is method-agnostic.
+        _, log = _run(
+            DisagMethod.PATCH_EXCEED,
+            [os.path.join(DATA, 'gauge_a_complete.DAY')],
+        )
+        header = next(
+            (l for l in log if l.startswith('Period of record')), None
+        )
+        self.assertIsNotNone(header, 'period-of-record header missing')
+        self.assertIn('2000-10', header)
+        self.assertIn('2006-09', header)
+        self.assertIn('6 hydro years', header)
+        self.assertIn('72 months', header)
+
+    def test_tier_coverage_shows_percentages(self):
+        # 2 gappy Junes → 60 Tier-3 days out of 2191 total (real calendar
+        # months) = 2.7%; the remaining 2131 days are Tier 1 = 97.3%.
+        _, log = _run(
+            DisagMethod.PATCH_EXCEED,
+            [os.path.join(DATA, 'gauge_a_with_gaps.DAY')],
+        )
+        tier3 = next(l for l in log if 'Tier 3' in l)
+        self.assertIn('2.7%', tier3)
+        tier1 = next(l for l in log if 'Tier 1' in l)
+        self.assertIn('97.3%', tier1)
+
+    def test_tier3_match_quality_summary(self):
+        # gauge_a_with_gaps fires Tier 3 for Jun 2003 and Jun 2005, both
+        # drawn from file 1.  The match-quality block must aggregate the
+        # per-month target/donor exceedance percentiles.
+        _, log = _run(
+            DisagMethod.PATCH_EXCEED,
+            [os.path.join(DATA, 'gauge_a_with_gaps.DAY')],
+        )
+        header = next(
+            (l for l in log if l.startswith('Tier-3 donor match quality')),
+            None,
+        )
+        self.assertIsNotNone(header, 'match-quality summary missing')
+        self.assertIn('2 months', header)
+        gap = next(l for l in log if '|target - donor| exceed gap' in l)
+        self.assertIn('mean', gap)
+        self.assertIn('max', gap)
+        split = next(l for l in log if 'donor source split' in l)
+        self.assertIn('file 1:   2 month(s)', split)
+        self.assertIn('file 2:   0 month(s)', split)
+        distinct = next(l for l in log if 'distinct donor months' in l)
+        # Two different donor years (2004, 2002) → 2 distinct, 0 reused.
+        self.assertIn('2  (0 reused)', distinct)
+
+    def test_match_quality_absent_without_tier3(self):
+        # Pure Tier-1 run: no donor patches, so no match-quality block.
+        _, log = _run(
+            DisagMethod.PATCH_EXCEED,
+            [os.path.join(DATA, 'gauge_a_complete.DAY')],
+        )
+        self.assertFalse(
+            any(l.startswith('Tier-3 donor match quality') for l in log),
+            'match-quality block should not appear when no donor fired',
+        )
+
     def test_per_month_breakdown_lists_every_iterated_month(self):
         # Scenario 5: 1 month splits across all three tiers (Jun 2003 →
         # T1=20, T2=4, T3=6); every other month is pure T1.  The breakdown
