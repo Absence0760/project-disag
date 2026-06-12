@@ -35,9 +35,15 @@ Focused read-only sweeps; each delegates either to `repo-security-auditor` or to
 | `/audit/accessibility` | WCAG 2.2 AA pass on the SvelteKit frontend |
 | `/audit/all` | All of the above in parallel + consolidated report. Optional area filter. |
 
+### Hooks (`hooks/`)
+
+- **`git-scope-guard.py`** — a `PreToolUse` Bash guard (wired in `settings.json`) for when more than one Claude session shares this checkout. It denies git commands that would sweep up working-tree changes the current session did not make — bare `git commit` (no pathspec), `git add -A`/`.`/`-u`, `git commit -a`, `git reset --hard`, `git checkout/restore .`, `git rm .`, `git clean -f`, whole-tree `git stash`, and `git commit --amend` with a staged index. Each denial names the path-scoped alternative (e.g. `git commit -m "…" -- path/to/file`). Read-only git and path-scoped writes pass untouched. Self-contained (computes the repo root from its own location) — copied verbatim from the sibling `project-running` / `project-flakey` repos.
+  - **Practical effect:** commit by naming paths — `git add <paths>` then `git commit -m "…" -- <paths>` — not bare `git commit`.
+  - **Test:** `python3 .claude/hooks/git-scope-guard.test.py` (32 subprocess + 5 white-box cases; not in CI — the hook itself is the live guard, the test just pins its logic).
+
 ### `settings.json`
 
-The per-project permission allowlist (and denylist). Things on the allowlist run without a prompt; things on the denylist refuse outright. See the comments on the file itself.
+The per-project permission allowlist (and denylist). Things on the allowlist run without a prompt; things on the denylist refuse outright. The `hooks.PreToolUse` block wires up `hooks/git-scope-guard.py` (above). See the comments on the file itself.
 
 ## Why this set, and not more
 
