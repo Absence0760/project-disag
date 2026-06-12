@@ -14,6 +14,9 @@ Bug 3 — only PATCH_EXCEED guarded day-index access; the other methods
 Bug 4 — tier day-counts were committed even when a month was replaced by
         the zero-observed even-fill, miscrediting the output to a tier
         that didn't shape it.
+Bug 5 — read_monthly_file parsed the year from line.split()[0], so a wet
+        October (whose full-width value fuses with the 4-char year)
+        crashed int() and the whole hydro-year row was silently dropped.
 
 Stdlib only.
 """
@@ -21,6 +24,7 @@ Stdlib only.
 import calendar
 import os
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -32,7 +36,7 @@ from disag.algorithm import (
     _per_month_distributions,
     disaggregate,
 )
-from disag.files import DailyRecord, MISSING
+from disag.files import DailyRecord, MISSING, read_monthly_file
 
 
 def _rec(y, m, fill, gap_day=None):
@@ -154,6 +158,52 @@ class Bug4EvenFillTierAttribution(unittest.TestCase):
         self.assertIn(f'{total_days - june_days} day(s)', tier1)
         # And the month's row is flagged as an even fill.
         self.assertIn('even fill', _row(log, (2000, 6)))
+
+
+class Bug5WetOctoberRowParsed(unittest.TestCase):
+    """A hydro-year row whose October value is full-width (and so fuses
+    with the 4-char year) must still parse, not be silently dropped."""
+
+    def _write_mon(self, rows):
+        """rows: list of (year, october_value); the other 11 months are
+        100.0. Returns the path to a temp .MON file."""
+        hdr = 'File name : x\nUnits : M.m3\n \nYear ...\n----\n'
+        body = ''
+        for year, oct_val in rows:
+            vals = [oct_val] + [100.0] * 11
+            body += f'{year:4d}' + ''.join(f'{v:9.3f}' for v in vals) + '\n'
+        fh = tempfile.NamedTemporaryFile('w', suffix='.MON', delete=False)
+        fh.write(hdr + body)
+        fh.close()
+        return fh.name
+
+    def _read(self, rows):
+        path = self._write_mon(rows)
+        try:
+            return read_monthly_file(path)
+        finally:
+            os.unlink(path)
+
+    def test_wet_october_row_not_dropped(self):
+        # 1991's October is 14639.12 (>= 10000 → full 9-char field, no
+        # leading space) so it fuses with the year. Both years must survive.
+        res = self._read([(1990, 35.6), (1991, 14639.12)])
+        self.assertEqual(len(res), 24)                  # 2 years × 12 months
+        self.assertAlmostEqual(res[(1991, 10)], 14639.12, places=2)
+        self.assertEqual(res[(1992, 1)], 100.0)         # hydro 1991 → Jan 1992
+
+    def test_two_digit_year_with_wet_october(self):
+        # 2-digit year (52 → 1952) AND a wet October at once: the positional
+        # year read must handle both.
+        res = self._read([(52, 50000.0)])
+        self.assertEqual(res[(1952, 10)], 50000.0)
+
+    def test_ordinary_row_unaffected(self):
+        # Regression guard: a normal dry-October, space-separated row reads
+        # exactly as before.
+        res = self._read([(1960, 35.62)])
+        self.assertAlmostEqual(res[(1960, 10)], 35.62, places=2)
+        self.assertEqual(len(res), 12)
 
 
 if __name__ == '__main__':

@@ -144,12 +144,21 @@ def read_monthly_file(path: str) -> dict:
         for _ in range(MONTHLY_HEADER_LINES):
             fh.readline()
 
+        span = 12 * MONTHLY_VAL_WIDTH
         for line in fh:
             parts = line.split()
             if not parts:
                 continue
+            # Parse the year positionally from the columns *before* the
+            # twelve value fields, not from parts[0]. In a wet year
+            # October's full-width value fuses with the 4-char year
+            # (e.g. '199114639.120…'), so parts[0] would be unparseable
+            # and the whole hydro-year row was silently dropped — the same
+            # fixed-width trap _parse_monthly_values guards on the value side.
+            body = line.rstrip()
+            year_field = body[:-span] if len(body) > span else parts[0]
             try:
-                hydro_year = int(parts[0])
+                hydro_year = int(year_field)
             except ValueError:
                 continue
             if hydro_year < 1900:
