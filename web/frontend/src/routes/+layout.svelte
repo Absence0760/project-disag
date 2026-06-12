@@ -7,7 +7,8 @@
 	const nav = [
 		{ href: '/', label: 'Overview' },
 		{ href: '/run', label: 'Run' },
-		{ href: '/history', label: 'History' }
+		{ href: '/history', label: 'History' },
+		{ href: '/docs', label: 'Docs' }
 	];
 </script>
 

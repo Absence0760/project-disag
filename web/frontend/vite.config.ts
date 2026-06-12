@@ -18,6 +18,12 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
 		port: 5173,
+		// The docs pages import the repo's docs/*.md as `?raw` (see
+		// src/lib/server/docs.ts), which live two levels above this
+		// frontend package — allow the dev server to read them.
+		fs: {
+			allow: ['../..']
+		},
 		proxy: {
 			'/api': {
 				target: 'http://127.0.0.1:8000',
