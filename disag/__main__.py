@@ -81,8 +81,8 @@ def main():
                 f'Cannot open GUI: {exc}\n\n'
                 'tkinter is not available in this Python installation.\n'
                 'On macOS, fix it with:\n'
-                '    brew install python@3.13 python-tk@3.13\n'
-                '    python3.13 -m disag\n\n'
+                '    brew install python@3.14 python-tk@3.14\n'
+                '    python3.14 -m disag\n\n'
                 'To run without a GUI use --no-gui (see --help).',
                 file=sys.stderr,
             )

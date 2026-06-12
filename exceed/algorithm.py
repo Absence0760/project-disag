@@ -25,10 +25,14 @@ class ExceedanceCalculator:
             max_flow: Maximum flow value for range
             num_intervals: Number of intervals to divide range into
         """
+        if num_intervals < 1:
+            raise ValueError(
+                f'num_intervals must be >= 1, got {num_intervals}')
+
         self.min_flow = min_flow
         self.max_flow = max_flow
         self.num_intervals = num_intervals
-        
+
         # Calculate interval size
         self.interval_size = (max_flow - min_flow) / num_intervals
         

@@ -102,18 +102,37 @@ methods (1, 2, and 5) that *replace* missing daily values; see
 ## CLI
 
 ```bash
+# Basic: one exceedance curve per calendar month
 python3 -m exceed --no-gui \
     --monthly testfiles/SINDILA.MON \
     --daily   testfiles/RUKOKI-l.DAY \
     --output  exceedance.rep \
     --intervals 20
+
+# Also write a flow-frequency chart alongside the report
+python3 -m exceed --no-gui --monthly testfiles/SINDILA.MON \
+    --output exceedance.rep --svg exceedance.svg
+
+# Seasonal: pool calendar months into 2, 3, or 4 seasons
+python3 -m exceed --no-gui --monthly testfiles/SINDILA.MON \
+    --seasonal 2 --output seasonal.rep
+
+# Matching: pair monthly vs daily exceedance percentiles
+python3 -m exceed --no-gui \
+    --monthly testfiles/SINDILA.MON --daily testfiles/RUKOKI-l.DAY \
+    --match --tolerance 5 --output match.rep
 ```
 
-`--monthly` and `--daily` are both optional but at least one is required.
-`--intervals` is the `N` above; valid range 5–100.
+For basic mode `--monthly` and `--daily` are both optional but at least
+one is required. `--intervals` is the `N` above and must be ≥ 1 (the GUI
+spinbox offers 5–100). `--seasonal` needs `--monthly`; `--match` needs
+both `--monthly` and `--daily`. `--svg` works with basic and seasonal
+mode and renders the flow-frequency curve as a standalone SVG (no
+third-party libraries). A missing or unreadable input file produces a
+clean `Error: …` message rather than a traceback.
 
-The CLI mode emits a basic per-month report; seasonal and matching modes
-are GUI-only at present.
+All three modes — basic, seasonal, and matching — are now available
+from both the CLI and the GUI tabs.
 
 ## Output format
 

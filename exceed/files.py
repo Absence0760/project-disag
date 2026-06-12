@@ -248,6 +248,68 @@ def write_exceedance_svg(
         f.write('\n'.join(out))
 
 
+def write_matching_report(
+    filepath: str,
+    monthly_data: Dict[int, List[float]],
+    daily_data: Dict[int, List[float]],
+    num_intervals: int = 20,
+    tolerance_pct: float = 5.0,
+) -> int:
+    """Write the monthly↔daily exceedance-matching report and return the
+    number of matches found.
+
+    For each calendar month present in both inputs, computes the
+    exceedance curve of the monthly and daily series independently, then
+    pairs entries whose exceedance percentiles agree within
+    ``tolerance_pct``. Shared by the CLI (--match) and the GUI Matching
+    tab so both produce identical output.
+    """
+    from datetime import datetime
+
+    # Imported here (not at module top) to keep files.py importable
+    # without pulling in the algorithm module for the common report paths.
+    from .algorithm import calculate_monthly_exceedance, match_exceedance_values
+
+    total_matches = 0
+    with open(filepath, 'w') as f:
+        f.write('-' * 80 + '\n')
+        f.write('Exceedance Matching Report  : '
+                f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'Tolerance: {tolerance_pct:g}% exceedance   '
+                f'Intervals: {num_intervals}\n')
+        f.write('-' * 80 + '\n\n')
+
+        for month in range(1, 13):
+            m_vals = monthly_data.get(month)
+            d_vals = daily_data.get(month)
+            if not m_vals or not d_vals:
+                continue
+
+            monthly_result = calculate_monthly_exceedance(m_vals, num_intervals)
+            daily_result = calculate_monthly_exceedance(d_vals, num_intervals)
+            matches = match_exceedance_values(
+                monthly_result, daily_result, tolerance_pct)
+            if not matches:
+                continue
+
+            f.write(f'{_MONTH_NAMES[month]} ({len(matches)} matches)\n')
+            f.write('-' * 80 + '\n')
+            f.write('Exceedance%  Flow Monthly   Flow Daily  Difference\n')
+            f.write('-' * 60 + '\n')
+            for match in matches:
+                f.write(f'{match["exceed_monthly"]:8.2f}%   '
+                        f'{match["flow_monthly"]:12.3f}    '
+                        f'{match["flow_daily"]:12.3f}    '
+                        f'{match["diff"]:8.2f}%\n')
+            f.write('\n')
+            total_matches += len(matches)
+
+        if total_matches == 0:
+            f.write('No matches found within the given tolerance.\n')
+
+    return total_matches
+
+
 def write_seasonal_exceedance_report(
     filepath: str,
     seasonal_exceedance: Dict[str, Dict]

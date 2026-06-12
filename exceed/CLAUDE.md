@@ -18,14 +18,24 @@ See [../docs/exceed.md](../docs/exceed.md) for the algorithm and
 
 ## Three modes
 
+Each mode is available from **both** the GUI tabs and the CLI.
+
 1. **Basic** — exceedance distribution for each of 12 calendar months,
    computed independently for monthly and daily inputs. CLI: `--monthly`
    and/or `--daily`.
-2. **Seasonal** (GUI tab) — group calendar months into 2 / 3 / 4 seasons
-   (presets in `SEASON_PRESETS`) and compute one exceedance per season.
-3. **Matching** (GUI tab) — for each calendar month, compute exceedance for
-   monthly and daily inputs separately, then pair entries whose exceedance %
-   are within a user-specified tolerance.
+2. **Seasonal** — group calendar months into 2 / 3 / 4 seasons (presets in
+   `SEASON_PRESETS`) and compute one exceedance per season. CLI:
+   `--seasonal {2,3,4}` (needs `--monthly`).
+3. **Matching** — for each calendar month, compute exceedance for monthly
+   and daily inputs separately, then pair entries whose exceedance % are
+   within a user-specified tolerance. CLI: `--match --tolerance PCT`
+   (needs `--monthly` and `--daily`). Both the CLI and the GUI write the
+   report via the shared `files.write_matching_report`.
+
+Basic and seasonal mode also accept `--svg PATH` to render the
+flow-frequency curve via `files.write_exceedance_svg` (stdlib SVG, no
+matplotlib). The GUI exposes the same chart through an "Also save a
+flow-frequency chart" checkbox on the Basic and Seasonal tabs.
 
 ## Why we delegate `.day` reading to disag
 

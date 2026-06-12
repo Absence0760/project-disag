@@ -21,11 +21,16 @@ from exceed.algorithm import (
 from exceed.files import (
     read_monthly_file as _exc_read_monthly,
     write_exceedance_svg,
+    write_matching_report,
 )
 
 
 def _data_method4(name):
     return os.path.join(ROOT, 'examples', 'method4_demo', 'data', name)
+
+
+def _data_method0(name):
+    return os.path.join(ROOT, 'examples', 'method0_demo', 'data', name)
 
 
 class CalculatorTests(unittest.TestCase):
@@ -318,6 +323,130 @@ class ExceedCliSmokeTest(unittest.TestCase):
         finally:
             if os.path.exists(out):
                 os.unlink(out)
+
+
+class ExceedanceCalculatorValidationTests(unittest.TestCase):
+    """The calculator rejects a non-positive interval count up front."""
+
+    def test_zero_intervals_raises(self):
+        with self.assertRaises(ValueError):
+            ExceedanceCalculator(0.0, 10.0, 0)
+
+    def test_negative_intervals_raises(self):
+        with self.assertRaises(ValueError):
+            ExceedanceCalculator(0.0, 10.0, -3)
+
+
+class WriteMatchingReportTests(unittest.TestCase):
+    """The shared matching-report writer used by the CLI and GUI."""
+
+    def test_returns_count_and_writes_file(self):
+        monthly = {m: [] for m in range(1, 13)}
+        daily = {m: [] for m in range(1, 13)}
+        monthly[1] = [1.0, 2.0, 3.0, 4.0, 5.0]
+        daily[1] = [1.0, 2.0, 3.0, 4.0, 5.0]
+        fd, out = tempfile.mkstemp(suffix='.rep')
+        os.close(fd)
+        try:
+            n = write_matching_report(out, monthly, daily,
+                                      num_intervals=5, tolerance_pct=50.0)
+            self.assertIsInstance(n, int)
+            self.assertGreater(n, 0)
+            with open(out) as f:
+                content = f.read()
+            self.assertIn('Exceedance Matching Report', content)
+            self.assertIn('JANUARY', content.upper())
+        finally:
+            if os.path.exists(out):
+                os.unlink(out)
+
+    def test_no_matches_writes_explicit_line(self):
+        # Empty inputs → zero matches → explicit "no matches" line, not silence.
+        monthly = {m: [] for m in range(1, 13)}
+        daily = {m: [] for m in range(1, 13)}
+        fd, out = tempfile.mkstemp(suffix='.rep')
+        os.close(fd)
+        try:
+            n = write_matching_report(out, monthly, daily)
+            self.assertEqual(n, 0)
+            with open(out) as f:
+                self.assertIn('No matches found', f.read())
+        finally:
+            if os.path.exists(out):
+                os.unlink(out)
+
+
+class ExceedCliModesTest(unittest.TestCase):
+    """Subprocess coverage for the CLI seasonal / match / svg / error paths."""
+
+    def _run(self, *extra):
+        return subprocess.run(
+            [sys.executable, '-m', 'exceed', '--no-gui', *extra],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+
+    def test_seasonal_mode_writes_report(self):
+        fd, out = tempfile.mkstemp(suffix='.rep')
+        os.close(fd)
+        try:
+            res = self._run('--monthly', _data_method4('target.MON'),
+                            '--seasonal', '2', '--output', out)
+            self.assertEqual(res.returncode, 0, msg=res.stderr)
+            with open(out) as f:
+                self.assertIn('SEASON', f.read().upper())
+        finally:
+            if os.path.exists(out):
+                os.unlink(out)
+
+    def test_match_mode_writes_report(self):
+        fd, out = tempfile.mkstemp(suffix='.rep')
+        os.close(fd)
+        try:
+            res = self._run('--monthly', _data_method4('target.MON'),
+                            '--daily', _data_method0('gauge_complete.DAY'),
+                            '--match', '--tolerance', '5', '--output', out)
+            self.assertEqual(res.returncode, 0, msg=res.stderr)
+            with open(out) as f:
+                self.assertIn('Matching Report', f.read())
+        finally:
+            if os.path.exists(out):
+                os.unlink(out)
+
+    def test_svg_flag_writes_chart(self):
+        fd_r, out = tempfile.mkstemp(suffix='.rep')
+        os.close(fd_r)
+        fd_s, svg = tempfile.mkstemp(suffix='.svg')
+        os.close(fd_s)
+        try:
+            res = self._run('--monthly', _data_method4('target.MON'),
+                            '--output', out, '--svg', svg, '--intervals', '10')
+            self.assertEqual(res.returncode, 0, msg=res.stderr)
+            with open(svg) as f:
+                self.assertIn('<svg', f.read())
+        finally:
+            for p in (out, svg):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_zero_intervals_rejected(self):
+        res = self._run('--monthly', _data_method4('target.MON'),
+                        '--output', os.devnull, '--intervals', '0')
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn('intervals', (res.stderr + res.stdout).lower())
+
+    def test_missing_file_clean_error_no_traceback(self):
+        res = self._run('--monthly', '/nonexistent/missing.MON',
+                        '--output', os.devnull)
+        self.assertNotEqual(res.returncode, 0)
+        combined = res.stderr + res.stdout
+        self.assertIn('Error:', combined)
+        self.assertNotIn('Traceback', combined)
+
+    def test_no_output_warns(self):
+        res = self._run('--monthly', _data_method4('target.MON'))
+        # Exit 0 (analysis ran) but a warning that nothing was saved.
+        self.assertEqual(res.returncode, 0, msg=res.stderr)
+        self.assertIn('nothing was written', res.stderr)
 
 
 if __name__ == '__main__':

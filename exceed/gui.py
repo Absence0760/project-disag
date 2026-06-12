@@ -1,6 +1,8 @@
 """Tkinter GUI for the Exceed tool with seasonal grouping and matching."""
 
 import os
+import subprocess
+import sys
 from tkinter import (
     BooleanVar,
     DoubleVar,
@@ -16,14 +18,56 @@ from .algorithm import (
     calculate_monthly_exceedance,
     calculate_seasonal_exceedance,
     get_season_presets,
-    match_exceedance_values,
 )
 from .files import (
     read_daily_file,
     read_monthly_file,
     write_exceedance_report,
+    write_exceedance_svg,
+    write_matching_report,
     write_seasonal_exceedance_report,
 )
+
+
+def _open_in_os(path: str) -> None:
+    """Open a file/folder with the platform's default handler."""
+    if sys.platform == 'darwin':
+        subprocess.run(['open', path], check=False)
+    elif os.name == 'nt':
+        os.startfile(path)  # type: ignore[attr-defined]
+    else:
+        subprocess.run(['xdg-open', path], check=False)
+
+
+class _Tooltip:
+    """Minimal hover tooltip for a widget (stdlib Tk only)."""
+
+    def __init__(self, widget, text: str):
+        self.widget = widget
+        self.text = text
+        self._tip = None
+        widget.bind('<Enter>', self._show)
+        widget.bind('<Leave>', self._hide)
+
+    def _show(self, _event=None):
+        if self._tip or not self.text:
+            return
+        from tkinter import Label, Toplevel
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self._tip = Toplevel(self.widget)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f'+{x}+{y}')
+        Label(
+            self._tip, text=self.text, justify='left', relief='solid',
+            borderwidth=1, background='#ffffe0', padx=6, pady=3,
+            wraplength=320,
+        ).pack()
+
+    def _hide(self, _event=None):
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
 
 
 class ExceedApp(Tk):
@@ -32,9 +76,24 @@ class ExceedApp(Tk):
     def __init__(self):
         super().__init__()
         self.title('Flow Frequency (Exceedance) Analysis')
-        self.resizable(False, True)
+        self.resizable(True, True)
         self._last_dir = os.getcwd()
         self._build_ui()
+
+    def _finish(self, status_var, msg: str, report_path: str):
+        """Report success and offer to open the report file."""
+        status_var.set(msg)
+        if report_path and os.path.isfile(report_path):
+            if messagebox.askyesno(
+                'Analysis complete', f'{msg}\n\nOpen the report now?'):
+                _open_in_os(report_path)
+        else:
+            messagebox.showinfo('Analysis complete', msg)
+
+    @staticmethod
+    def _svg_path_for(report_path: str) -> str:
+        """SVG path sitting next to the report (same base name)."""
+        return os.path.splitext(report_path)[0] + '.svg'
     
     def _build_ui(self):
         """Build the user interface with tabs."""
@@ -103,7 +162,16 @@ class ExceedApp(Tk):
             intervals_frame, from_=5, to=100, textvariable=self._intervals_var,
             width=10)
         intervals_spin.grid(row=0, column=1, sticky='w', padx=8, pady=5)
-        
+        _Tooltip(intervals_spin,
+                 'How many flow bands the range is split into. More '
+                 'intervals = finer curve, but needs more data per band.')
+
+        self._basic_svg_var = BooleanVar(value=False)
+        ttk.Checkbutton(
+            intervals_frame, text='Also save a flow-frequency chart (.svg)',
+            variable=self._basic_svg_var,
+        ).grid(row=1, column=0, columnspan=2, sticky='w', padx=8, pady=(0, 5))
+
         # ── Status bar ────────────────────────────────────────────────
         self._status_var = StringVar(value='Select files to begin.')
         ttk.Label(parent, textvariable=self._status_var,
@@ -154,18 +222,20 @@ class ExceedApp(Tk):
         config_frame = ttk.LabelFrame(parent, text='Season Configuration')
         config_frame.grid(row=1, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
         
-        ttk.Label(config_frame, text='Preset:').grid(row=0, column=0, sticky='w', padx=8, pady=5)
-        
+        ttk.Label(config_frame, text='Seasons:').grid(row=0, column=0, sticky='w', padx=8, pady=5)
+
         self._season_preset_var = StringVar(value='2')
         preset_menu = ttk.Combobox(
             config_frame, textvariable=self._season_preset_var,
             values=['2', '3', '4'], state='readonly', width=5)
         preset_menu.grid(row=0, column=1, sticky='w', padx=8, pady=5)
         preset_menu.bind('<<ComboboxSelected>>', lambda e: self._update_season_config())
-        
-        ttk.Button(
-            config_frame, text='Load Preset',
-            command=self._load_season_preset).grid(row=0, column=2, sticky='w', padx=8, pady=5)
+
+        ttk.Label(
+            config_frame,
+            text='Pick a preset, then tick/untick months to customise.',
+            foreground='#555',
+        ).grid(row=0, column=2, sticky='w', padx=8, pady=5)
         
         # Season detail frame (will be populated dynamically)
         self._season_detail_frame = ttk.Frame(config_frame)
@@ -184,10 +254,20 @@ class ExceedApp(Tk):
             row=0, column=0, sticky='w', padx=8, pady=5)
 
         self._seasonal_intervals_var = IntVar(value=20)
-        ttk.Spinbox(
+        seasonal_spin = ttk.Spinbox(
             intervals_frame, from_=5, to=100,
             textvariable=self._seasonal_intervals_var, width=10,
-        ).grid(row=0, column=1, sticky='w', padx=8, pady=5)
+        )
+        seasonal_spin.grid(row=0, column=1, sticky='w', padx=8, pady=5)
+        _Tooltip(seasonal_spin,
+                 'How many flow bands the range is split into. More '
+                 'intervals = finer curve, but needs more data per band.')
+
+        self._seasonal_svg_var = BooleanVar(value=False)
+        ttk.Checkbutton(
+            intervals_frame, text='Also save a flow-frequency chart (.svg)',
+            variable=self._seasonal_svg_var,
+        ).grid(row=1, column=0, columnspan=2, sticky='w', padx=8, pady=(0, 5))
 
         # ── Status and button ───────────────────────────────────────────
         self._seasonal_status_var = StringVar(value='Configure seasons and select files.')
@@ -245,8 +325,12 @@ class ExceedApp(Tk):
         ttk.Label(options_frame, text='Tolerance (% exceedance):').grid(
             row=0, column=0, sticky='w', padx=8, pady=5)
         self._tolerance_var = DoubleVar(value=5.0)
-        ttk.Spinbox(options_frame, from_=0.1, to=50, textvariable=self._tolerance_var,
-                   width=10).grid(row=0, column=1, sticky='w', padx=8, pady=5)
+        tol_spin = ttk.Spinbox(options_frame, from_=0.1, to=50,
+                               textvariable=self._tolerance_var, width=10)
+        tol_spin.grid(row=0, column=1, sticky='w', padx=8, pady=5)
+        _Tooltip(tol_spin,
+                 'Pair a monthly and a daily flow when their exceedance '
+                 'percentiles agree within this many percent.')
         
         ttk.Label(options_frame, text='Intervals:').grid(row=0, column=2, sticky='w', padx=8, pady=5)
         self._match_intervals_var = IntVar(value=20)
@@ -294,7 +378,8 @@ class ExceedApp(Tk):
         if path:
             self._last_dir = os.path.dirname(path)
             self._vars[key].set(path)
-            if key == 'mon' and not self._vars['rep'].get():
+            # Suggest a report name from the first input file chosen.
+            if key in ('mon', 'day') and not self._vars['rep'].get():
                 base = os.path.splitext(path)[0]
                 self._vars['rep'].set(base + '.rep')
 
@@ -452,13 +537,23 @@ class ExceedApp(Tk):
                             'total_count': result.total_count,
                         }
             
+            if not monthly_exceedance:
+                raise ValueError('No usable flow data found in the input file(s).')
+
+            report_path = self._vars['rep'].get()
             self._status_var.set('Writing report…')
-            write_exceedance_report(self._vars['rep'].get(), monthly_exceedance)
-            
-            msg = f'Done — {len(monthly_exceedance)} analyses written.'
-            self._status_var.set(msg)
-            messagebox.showinfo('Analysis complete', msg)
-        
+            write_exceedance_report(report_path, monthly_exceedance)
+
+            extra = ''
+            if self._basic_svg_var.get():
+                svg_path = self._svg_path_for(report_path)
+                self._status_var.set('Writing chart…')
+                write_exceedance_svg(svg_path, monthly_exceedance)
+                extra = f'  Chart: {os.path.basename(svg_path)}'
+
+            msg = f'Done — {len(monthly_exceedance)} analyses written.{extra}'
+            self._finish(self._status_var, msg, report_path)
+
         except Exception as exc:
             self._status_var.set(f'Error: {exc}')
             messagebox.showerror('Error', str(exc))
@@ -502,13 +597,22 @@ class ExceedApp(Tk):
                     'total_count': result.total_count,
                 }
             
+            report_path = self._seasonal_rep_var.get()
             self._seasonal_status_var.set('Writing report…')
-            write_seasonal_exceedance_report(self._seasonal_rep_var.get(), seasonal_exceedance)
-            
-            msg = f'Done — {len(seasonal_exceedance)} seasonal analyses written.'
-            self._seasonal_status_var.set(msg)
-            messagebox.showinfo('Analysis complete', msg)
-        
+            write_seasonal_exceedance_report(report_path, seasonal_exceedance)
+
+            extra = ''
+            if self._seasonal_svg_var.get():
+                svg_path = self._svg_path_for(report_path)
+                self._seasonal_status_var.set('Writing chart…')
+                write_exceedance_svg(svg_path, seasonal_exceedance,
+                                     title='Seasonal flow-frequency curve')
+                extra = f'  Chart: {os.path.basename(svg_path)}'
+
+            msg = (f'Done — {len(seasonal_exceedance)} seasonal analyses '
+                   f'written.{extra}')
+            self._finish(self._seasonal_status_var, msg, report_path)
+
         except Exception as exc:
             self._seasonal_status_var.set(f'Error: {exc}')
             messagebox.showerror('Error', str(exc))
@@ -528,53 +632,16 @@ class ExceedApp(Tk):
             
             num_intervals = self._match_intervals_var.get()
             tolerance = self._tolerance_var.get()
-            
+
             self._match_status_var.set('Calculating exceedance and matching…')
-            
-            month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                          'July', 'August', 'September', 'October', 'November', 'December']
-            
-            # Calculate and match for each month
-            with open(self._match_vars['match_rep'].get(), 'w') as f:
-                from datetime import datetime
-                f.write('-' * 80 + '\n')
-                f.write(f'Exceedance Matching Report  : {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
-                f.write('-' * 80 + '\n\n')
-                
-                total_matches = 0
-                for month in range(1, 13):
-                    if month not in monthly_data or month not in daily_data:
-                        continue
-                    
-                    if not monthly_data[month] or not daily_data[month]:
-                        continue
-                    
-                    monthly_result = calculate_monthly_exceedance(
-                        monthly_data[month], num_intervals)
-                    daily_result = calculate_monthly_exceedance(
-                        daily_data[month], num_intervals)
-                    
-                    matches = match_exceedance_values(
-                        monthly_result, daily_result, tolerance)
-                    
-                    if matches:
-                        f.write(f'{month_names[month]} ({len(matches)} matches)\n')
-                        f.write('-' * 80 + '\n')
-                        f.write('Exceedance%  Flow Monthly   Flow Daily  Difference\n')
-                        f.write('-' * 60 + '\n')
-                        
-                        for match in matches:
-                            f.write(f'{match["exceed_monthly"]:8.2f}%   '
-                                   f'{match["flow_monthly"]:12.3f}    '
-                                   f'{match["flow_daily"]:12.3f}    '
-                                   f'{match["diff"]:8.2f}%\n')
-                        f.write('\n')
-                        total_matches += len(matches)
-            
+
+            report_path = self._match_vars['match_rep'].get()
+            total_matches = write_matching_report(
+                report_path, monthly_data, daily_data, num_intervals, tolerance)
+
             msg = f'Done — {total_matches} matches found.'
-            self._match_status_var.set(msg)
-            messagebox.showinfo('Analysis complete', msg)
-        
+            self._finish(self._match_status_var, msg, report_path)
+
         except Exception as exc:
             self._match_status_var.set(f'Error: {exc}')
             messagebox.showerror('Error', str(exc))
