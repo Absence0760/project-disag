@@ -47,7 +47,16 @@
 </header>
 
 {#if loading}
-	<div class="card" data-testid="run-loading" aria-busy="true">Loading run…</div>
+	<div class="card skeleton" data-testid="run-loading" aria-busy="true">
+		<div class="skel skel-badge"></div>
+		<div class="skel skel-title"></div>
+		<div class="skel skel-line"></div>
+		<div class="skel-actions">
+			<div class="skel skel-btn"></div>
+			<div class="skel skel-btn"></div>
+		</div>
+		<span class="sr-only">Loading run…</span>
+	</div>
 {:else if error}
 	<div class="alert error card" role="alert" data-testid="run-error">
 		<strong>Couldn’t load this run.</strong>
@@ -91,5 +100,54 @@
 	}
 	.muted {
 		color: var(--text-muted);
+	}
+
+	.skeleton {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+	}
+	.skel {
+		border-radius: var(--radius-sm);
+		background: linear-gradient(
+			90deg,
+			var(--surface-2) 0%,
+			color-mix(in srgb, var(--surface-2) 70%, var(--border-strong)) 50%,
+			var(--surface-2) 100%
+		);
+		background-size: 200% 100%;
+		animation: shimmer 1.4s infinite;
+	}
+	.skel-badge {
+		width: 4rem;
+		height: 1.1rem;
+		border-radius: 999px;
+	}
+	.skel-title {
+		width: 60%;
+		height: 1.3rem;
+	}
+	.skel-line {
+		width: 80%;
+		height: 0.9rem;
+	}
+	.skel-actions {
+		display: flex;
+		gap: var(--space-3);
+		margin-top: var(--space-2);
+	}
+	.skel-btn {
+		width: 9rem;
+		height: 2.4rem;
+		border-radius: var(--radius-md);
+	}
+
+	@keyframes shimmer {
+		0% {
+			background-position: 200% 0;
+		}
+		100% {
+			background-position: -200% 0;
+		}
 	}
 </style>

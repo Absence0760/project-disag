@@ -117,11 +117,14 @@
 	}
 	.no-pad {
 		padding: 0;
-		overflow: hidden;
+		/* Let the table scroll sideways on narrow screens instead of forcing
+		   the whole page wider than the viewport. */
+		overflow-x: auto;
 	}
 
 	table {
 		width: 100%;
+		min-width: 540px;
 		border-collapse: collapse;
 	}
 

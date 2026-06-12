@@ -138,6 +138,14 @@ textarea {
 	color: inherit;
 }
 
+/* Tint native form controls (checkbox / radio / number spinners) so they
+   match the slate-plus-one-accent palette instead of the browser default. */
+input,
+textarea,
+select {
+	accent-color: var(--accent);
+}
+
 :focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);

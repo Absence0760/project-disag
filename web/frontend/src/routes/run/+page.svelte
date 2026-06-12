@@ -193,7 +193,7 @@
 
 <form onsubmit={submit} aria-busy={running}>
 	<section class="card group" aria-label="Tool">
-		<h3>Tool</h3>
+		<h2>Tool</h2>
 		<div class="segmented" role="radiogroup" aria-label="Pick a tool">
 			<label class:active={tool === 'disag'}>
 				<input type="radio" bind:group={tool} value="disag" data-testid="tool-disag" />
@@ -212,7 +212,7 @@
 
 	{#if tool === 'disag'}
 		<section class="card group" aria-label="Method">
-			<h3>Method</h3>
+			<h2>Method</h2>
 			<div class="method-grid">
 				{#each methodOptions as opt (opt.value)}
 					<label class="method-card" class:active={method === opt.value}>
@@ -234,7 +234,7 @@
 		</section>
 	{:else if tool === 'exceed'}
 		<section class="card group" aria-label="Histogram intervals">
-			<h3>Histogram intervals</h3>
+			<h2>Histogram intervals</h2>
 			<p class="muted">More intervals = finer resolution; fewer = smoother curve.</p>
 			<input
 				type="number"
@@ -247,7 +247,7 @@
 		</section>
 
 		<section class="card group" aria-label="Seasons">
-			<h3>Seasons</h3>
+			<h2>Seasons</h2>
 			<label class="check">
 				<input type="checkbox" bind:checked={seasonalMode} data-testid="seasonal-toggle" />
 				<span>Pool months into seasons (one curve per season)</span>
@@ -299,7 +299,7 @@
 	{/if}
 
 	<section class="card group" aria-label="Files">
-		<h3>Files</h3>
+		<h2>Files</h2>
 		<div class="files">
 			{#if tool === 'convert'}
 				<FileDrop
@@ -408,8 +408,12 @@
 		gap: var(--space-4);
 	}
 
-	.group h3 {
+	/* Section labels are h2 for heading order (page h1 → section h2), but
+	   sized like the compact card label they visually are, not the large
+	   global h2. */
+	.group h2 {
 		margin-top: 0;
+		font-size: 1.1rem;
 	}
 
 	.muted {
@@ -449,19 +453,29 @@
 	}
 
 	.month-chip {
-		border: 1px solid var(--border, #cbd5e1);
-		background: var(--surface, #fff);
-		color: var(--text, #0f172a);
-		border-radius: var(--radius-sm, 6px);
-		padding: 2px 8px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		color: var(--text-muted);
+		border-radius: var(--radius-sm);
+		padding: 0.35rem 0.7rem;
 		font-size: 0.8rem;
+		font-weight: 500;
 		cursor: pointer;
+		transition:
+			background 0.12s,
+			border-color 0.12s,
+			color 0.12s;
+	}
+	.month-chip:hover {
+		border-color: var(--border-strong);
+		color: var(--text);
 	}
 
 	.month-chip.on {
-		background: var(--accent, #2563eb);
-		border-color: var(--accent, #2563eb);
+		background: var(--accent);
+		border-color: var(--accent);
 		color: #fff;
+		font-weight: 600;
 	}
 
 	.btn.small {
@@ -477,9 +491,11 @@
 		width: 100%;
 		max-width: 720px;
 		height: auto;
+		/* SVG curve is authored on a white canvas — keep it white in dark mode
+		   rather than letting it sit on a dark surface. */
 		background: #fff;
-		border: 1px solid var(--border, #e2e8f0);
-		border-radius: var(--radius-md, 10px);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
 	}
 
 	.input {
@@ -489,6 +505,10 @@
 		border: 1px solid var(--border);
 		background: var(--surface);
 		width: 8rem;
+		transition: border-color 0.12s;
+	}
+	.input:hover {
+		border-color: var(--border-strong);
 	}
 
 	.segmented {
