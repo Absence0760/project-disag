@@ -66,6 +66,15 @@ class CalculatorTests(unittest.TestCase):
         result = calc.calculate_result()
         self.assertEqual(result.count_below, 2)
 
+    def test_value_just_below_min_uses_floor_not_truncation(self):
+        # Half an interval below min: (9.5 - 10)/1 = -0.5. int() truncates
+        # toward zero → bucket 1 (wrongly in range); floor → count_below.
+        calc = ExceedanceCalculator(min_flow=10.0, max_flow=20.0, num_intervals=10)
+        calc.process_value(9.5)
+        result = calc.calculate_result()
+        self.assertEqual(result.count_below, 1)
+        self.assertEqual(calc.counts[1], 0)
+
 
 class CalculateMonthlyExceedanceTests(unittest.TestCase):
     """The thin wrapper that auto-derives min/max from the data."""

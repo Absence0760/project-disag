@@ -149,18 +149,25 @@ def read_monthly_file(path: str) -> dict:
             parts = line.split()
             if not parts:
                 continue
-            # Parse the year positionally from the columns *before* the
-            # twelve value fields, not from parts[0]. In a wet year
-            # October's full-width value fuses with the 4-char year
-            # (e.g. '199114639.120…'), so parts[0] would be unparseable
-            # and the whole hydro-year row was silently dropped — the same
-            # fixed-width trap _parse_monthly_values guards on the value side.
-            body = line.rstrip()
-            year_field = body[:-span] if len(body) > span else parts[0]
+            # Parse the year. Whitespace-separated rows give a clean
+            # parts[0], so try that first. Only fall back to a positional
+            # slice when it fails: in a fixed-width wet year October's
+            # full-width value fuses with the 4-char year
+            # (e.g. '199114639.120…'), so parts[0] is unparseable and the
+            # year lives in the columns *before* the twelve value fields —
+            # the same fixed-width trap _parse_monthly_values guards on the
+            # value side. Trying the positional slice first would instead
+            # drop ragged large-value rows (line longer than the value span
+            # but not column-aligned), so order matters here.
             try:
-                hydro_year = int(year_field)
+                hydro_year = int(parts[0])
             except ValueError:
-                continue
+                body = line.rstrip()
+                year_field = body[:-span] if len(body) > span else parts[0]
+                try:
+                    hydro_year = int(year_field)
+                except ValueError:
+                    continue
             if hydro_year < 1900:
                 hydro_year += 1900
             vals = _parse_monthly_values(parts, line)

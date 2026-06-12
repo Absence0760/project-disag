@@ -40,9 +40,11 @@ ALLOWED_ORIGIN    CORS allow-origin — unset = no CORS header emitted
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import traceback
@@ -356,38 +358,36 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     no_files = 2 if use_daily2 else min_files
 
     run_id = _new_run_id()
-    workdir = Path(f'/tmp/{run_id}')
-    workdir.mkdir(parents=True, exist_ok=True)
+    with _workdir(run_id) as workdir:
+        monthly_path = _download(monthly_key, workdir)
+        gen_monthly = read_monthly_file(str(monthly_path))
 
-    monthly_path = _download(monthly_key, workdir)
-    gen_monthly = read_monthly_file(str(monthly_path))
+        obs_daily: list[dict] = [{}, {}]
+        daily1_path = None
+        daily2_path = None
+        if no_files >= 1:
+            daily1_path = _download(daily1_key, workdir)
+            obs_daily[0] = read_daily_file(str(daily1_path))
+        if use_daily2:
+            daily2_path = _download(daily2_key, workdir)
+            obs_daily[1] = read_daily_file(str(daily2_path))
 
-    obs_daily: list[dict] = [{}, {}]
-    daily1_path = None
-    daily2_path = None
-    if no_files >= 1:
-        daily1_path = _download(daily1_key, workdir)
-        obs_daily[0] = read_daily_file(str(daily1_path))
-    if use_daily2:
-        daily2_path = _download(daily2_key, workdir)
-        obs_daily[1] = read_daily_file(str(daily2_path))
+        records, report_lines = disaggregate(dm, gen_monthly, obs_daily, no_files)
 
-    records, report_lines = disaggregate(dm, gen_monthly, obs_daily, no_files)
+        output_path = workdir / 'output.day'
+        report_path = workdir / 'output.rep'
+        header_info = {
+            'monthly_file': monthly_path.name,
+            'daily_file_1': daily1_path.name if daily1_path else '',
+            'daily_file_2': daily2_path.name if daily2_path else '',
+            'method_str': METHOD_NAMES[dm],
+        }
+        write_daily_file(str(output_path), records, header_info)
+        write_report(str(report_path), dm, report_lines, records)
 
-    output_path = workdir / 'output.day'
-    report_path = workdir / 'output.rep'
-    header_info = {
-        'monthly_file': monthly_path.name,
-        'daily_file_1': daily1_path.name if daily1_path else '',
-        'daily_file_2': daily2_path.name if daily2_path else '',
-        'method_str': METHOD_NAMES[dm],
-    }
-    write_daily_file(str(output_path), records, header_info)
-    write_report(str(report_path), dm, report_lines, records)
-
-    return _publish_run(
-        client_id, run_id, 'disag', output=output_path, report=report_path,
-    )
+        return _publish_run(
+            client_id, run_id, 'disag', output=output_path, report=report_path,
+        )
 
 
 # ── /exceed ──────────────────────────────────────────────────────────
@@ -420,66 +420,65 @@ def _handle_exceed(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     seasons = _parse_seasons(body.get('seasons'))
 
     run_id = _new_run_id()
-    workdir = Path(f'/tmp/{run_id}')
-    workdir.mkdir(parents=True, exist_ok=True)
+    with _workdir(run_id) as workdir:
+        monthly_data = (
+            exceed_read_monthly(str(_download(monthly_key, workdir)))
+            if monthly_key else None
+        )
+        daily_data = (
+            exceed_read_daily(str(_download(daily_key, workdir)))
+            if daily_key else None
+        )
 
-    monthly_data = (
-        exceed_read_monthly(str(_download(monthly_key, workdir)))
-        if monthly_key else None
-    )
-    daily_data = (
-        exceed_read_daily(str(_download(daily_key, workdir)))
-        if daily_key else None
-    )
+        exceedance: dict = {}
+        if seasons:
+            # Pool each season's months; monthly and daily inputs each get
+            # their own set of season curves (daily ones suffixed so names
+            # don't clash).
+            if monthly_data is not None:
+                for name, r in calculate_seasonal_exceedance(
+                        monthly_data, seasons, intervals).items():
+                    exceedance[name] = _result_to_dict(r)
+            if daily_data is not None:
+                for name, r in calculate_seasonal_exceedance(
+                        daily_data, seasons, intervals).items():
+                    exceedance[f'{name} (daily)'] = _result_to_dict(r)
+        else:
+            # Mirror exceed/__main__.py: one ExceedanceResult per calendar
+            # month for monthly input, plus per-month for daily input (keyed
+            # `daily_<month>`).
+            if monthly_data is not None:
+                for month in range(1, 13):
+                    series = monthly_data.get(month)
+                    if not series:
+                        continue
+                    exceedance[month] = _result_to_dict(
+                        calculate_monthly_exceedance(series, intervals))
+            if daily_data is not None:
+                for month in range(1, 13):
+                    series = daily_data.get(month)
+                    if not series:
+                        continue
+                    exceedance[f'daily_{month}'] = _result_to_dict(
+                        calculate_monthly_exceedance(series, intervals))
 
-    exceedance: dict = {}
-    if seasons:
-        # Pool each season's months; monthly and daily inputs each get their
-        # own set of season curves (daily ones suffixed so names don't clash).
-        if monthly_data is not None:
-            for name, r in calculate_seasonal_exceedance(
-                    monthly_data, seasons, intervals).items():
-                exceedance[name] = _result_to_dict(r)
-        if daily_data is not None:
-            for name, r in calculate_seasonal_exceedance(
-                    daily_data, seasons, intervals).items():
-                exceedance[f'{name} (daily)'] = _result_to_dict(r)
-    else:
-        # Mirror exceed/__main__.py: one ExceedanceResult per calendar month
-        # for monthly input, plus per-month for daily input (keyed
-        # `daily_<month>`).
-        if monthly_data is not None:
-            for month in range(1, 13):
-                series = monthly_data.get(month)
-                if not series:
-                    continue
-                exceedance[month] = _result_to_dict(
-                    calculate_monthly_exceedance(series, intervals))
-        if daily_data is not None:
-            for month in range(1, 13):
-                series = daily_data.get(month)
-                if not series:
-                    continue
-                exceedance[f'daily_{month}'] = _result_to_dict(
-                    calculate_monthly_exceedance(series, intervals))
+        if not exceedance:
+            raise _ClientError(400, 'No data found in the supplied input(s)')
 
-    if not exceedance:
-        raise _ClientError(400, 'No data found in the supplied input(s)')
+        report_path = workdir / 'output.rep'
+        svg_path = workdir / 'output.svg'
+        if seasons:
+            write_seasonal_exceedance_report(str(report_path), exceedance)
+            svg_title = 'Seasonal flow-frequency curves'
+        else:
+            write_exceedance_report(str(report_path), exceedance)
+            svg_title = 'Monthly flow-frequency curves'
+        write_exceedance_svg(str(svg_path), exceedance, title=svg_title)
 
-    report_path = workdir / 'output.rep'
-    svg_path = workdir / 'output.svg'
-    if seasons:
-        write_seasonal_exceedance_report(str(report_path), exceedance)
-        svg_title = 'Seasonal flow-frequency curves'
-    else:
-        write_exceedance_report(str(report_path), exceedance)
-        svg_title = 'Monthly flow-frequency curves'
-    write_exceedance_svg(str(svg_path), exceedance, title=svg_title)
-
-    # The SVG curve is the run's primary, downloadable output ("snip the
-    # plot"); the .rep stays available as the detailed tabular report.
-    return _publish_run(client_id, run_id, 'exceed',
-                        output=svg_path, report=report_path)
+        # The SVG curve is the run's primary, downloadable output ("snip the
+        # plot"); the .rep stays available as the detailed tabular report.
+        return _publish_run(client_id, run_id, 'exceed',
+                            output=svg_path, report=report_path)
 
 
 def _parse_seasons(raw: Any) -> dict[str, list[int]]:
@@ -534,39 +533,37 @@ def _handle_convert(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     ans_key = _validate_input_key(client_id, body.get('ans_key'))
 
     run_id = _new_run_id()
-    workdir = Path(f'/tmp/{run_id}')
-    workdir.mkdir(parents=True, exist_ok=True)
+    with _workdir(run_id) as workdir:
+        src_path = _download(ans_key, workdir)
+        out_path = workdir / 'output.mon'
+        report_path = workdir / 'output.rep'
 
-    src_path = _download(ans_key, workdir)
-    out_path = workdir / 'output.mon'
-    report_path = workdir / 'output.rep'
+        try:
+            result = ans_to_mon(str(src_path), str(out_path))
+        except (OSError, ValueError) as exc:
+            # ValueError from ans_to_mon → caller-supplied bad input → 400.
+            # OSError on /tmp read/write → almost always a malformed upload
+            # the tool can't open → also 400. In either case the underlying
+            # exception message embeds the Lambda's /tmp/<run_id>/ path
+            # (audit A09 — info disclosure), so we keep the wire response
+            # generic and log the detail server-side for triage.
+            print(f'convert failed for {ans_key}: {exc}')
+            raise _ClientError(
+                400,
+                'Conversion failed: the file could not be read as a monthly '
+                'streamflow file in the source layout.',
+            ) from exc
 
-    try:
-        result = ans_to_mon(str(src_path), str(out_path))
-    except (OSError, ValueError) as exc:
-        # ValueError from ans_to_mon → caller-supplied bad input → 400.
-        # OSError on /tmp read/write → almost always a malformed upload
-        # the tool can't open → also 400. In either case the underlying
-        # exception message embeds the Lambda's /tmp/<run_id>/ path
-        # (audit A09 — info disclosure), so we keep the wire response
-        # generic and log the detail server-side for triage.
-        print(f'convert failed for {ans_key}: {exc}')
-        raise _ClientError(
-            400,
-            'Conversion failed: the file could not be read as a monthly '
-            'streamflow file in the source layout.',
-        ) from exc
+        _write_convert_report(
+            report_path,
+            src_name=src_path.name,
+            out_name=out_path.name,
+            result=result,
+        )
 
-    _write_convert_report(
-        report_path,
-        src_name=src_path.name,
-        out_name=out_path.name,
-        result=result,
-    )
-
-    return _publish_run(
-        client_id, run_id, 'convert', output=out_path, report=report_path,
-    )
+        return _publish_run(
+            client_id, run_id, 'convert', output=out_path, report=report_path,
+        )
 
 
 def _write_convert_report(
@@ -689,6 +686,24 @@ def _new_run_id() -> str:
     # invocations, so the random suffix avoids collisions if two
     # invocations share a container.
     return f'{int(time.time())}-{uuid.uuid4().hex[:8]}'
+
+
+@contextlib.contextmanager
+def _workdir(run_id: str):
+    """Per-run scratch dir under /tmp, removed when the handler returns.
+
+    Lambda's /tmp (512 MiB by default) persists across warm invocations,
+    so leaving each run's downloaded inputs + generated outputs behind
+    eventually fills it and every subsequent invocation on that container
+    fails with 'No space left on device'. Always reclaim the dir, even on
+    error.
+    """
+    workdir = Path(f'/tmp/{run_id}')
+    workdir.mkdir(parents=True, exist_ok=True)
+    try:
+        yield workdir
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def _download(key: str, workdir: Path) -> Path:

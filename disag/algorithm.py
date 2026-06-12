@@ -133,6 +133,8 @@ def find_patch_year(
     if target_vol is None or target_vol < 0:
         return None
 
+    target_dim = calendar.monthrange(target_year, target_month)[1]
+
     best_year: Optional[int] = None
     best_diff = float('inf')
 
@@ -146,6 +148,12 @@ def find_patch_year(
         if rec is None:
             continue
         dim = calendar.monthrange(y, m)[1]
+        # The donor must have the same number of days as the target,
+        # otherwise the copy loop reads past the donor's last day and
+        # silently zeroes it (a 28-day Feb donor for a 29-day leap Feb
+        # target leaves Feb 29 with no flow). Mirrors find_exceed_donor.
+        if dim != target_dim:
+            continue
         if all(rec.v[d] >= 0 for d in range(dim)):
             best_year = y
             best_diff = diff

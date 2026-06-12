@@ -99,7 +99,19 @@ def ans_to_mon(src: str, dst: str) -> ConversionResult:
         for h in header:
             fh.write(h + '\n')
         for year, vals in rows:
-            fh.write(f'{year:4d}' + ''.join(f'{v:9.3f}' for v in vals) + '\n')
+            fields = []
+            for v in vals:
+                cell = f'{v:9.3f}'
+                # A value too large for the 9-char field would overflow into
+                # its neighbour and silently corrupt the fixed-width row that
+                # read_monthly_file re-slices on. Fail loud instead.
+                if len(cell) > 9:
+                    raise ValueError(
+                        f'monthly value {v} for hydro year {year} exceeds the '
+                        f'9-character .MON column width'
+                    )
+                fields.append(cell)
+            fh.write(f'{year:4d}' + ''.join(fields) + '\n')
 
     return ConversionResult(
         rows_written=len(rows),

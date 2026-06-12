@@ -1,5 +1,6 @@
 """Exceedance (flow frequency) analysis algorithm."""
 
+import math
 from dataclasses import dataclass
 
 
@@ -50,8 +51,11 @@ class ExceedanceCalculator:
             value: Flow value to process
         """
         # Determine which interval this value falls into
-        # i = trunc((v - min) / interval) + 1
-        i = int((value - self.min_flow) / self.interval_size) + 1
+        # i = floor((v - min) / interval) + 1
+        # floor, not int(): int() truncates toward zero, so a value below
+        # min by less than one interval would land in interval 1 instead of
+        # count_below (only reachable with a manually-supplied range).
+        i = math.floor((value - self.min_flow) / self.interval_size) + 1
         
         if i < 1:
             self.count_below += 1

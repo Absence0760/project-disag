@@ -17,6 +17,14 @@ Bug 4 — tier day-counts were committed even when a month was replaced by
 Bug 5 — read_monthly_file parsed the year from line.split()[0], so a wet
         October (whose full-width value fuses with the 4-char year)
         crashed int() and the whole hydro-year row was silently dropped.
+Bug 6 — the Bug-5 fix then read the year from a positional slice for *any*
+        line longer than the value span, so a ragged (non-column-aligned)
+        large-value row had its year mis-sliced and the whole row dropped —
+        the same silent-loss failure, shifted to a different input shape.
+Bug 7 — PATCH_CAL's find_patch_year picked a donor matched on volume alone,
+        so a 28-day February could be chosen for a 29-day leap February;
+        the copy loop then read past the donor's last day and silently
+        zeroed Feb 29 while crediting it as a successful patch.
 
 Stdlib only.
 """
@@ -35,6 +43,7 @@ from disag.algorithm import (
     DisagMethod,
     _per_month_distributions,
     disaggregate,
+    find_patch_year,
 )
 from disag.files import DailyRecord, MISSING, read_monthly_file
 
@@ -204,6 +213,76 @@ class Bug5WetOctoberRowParsed(unittest.TestCase):
         res = self._read([(1960, 35.62)])
         self.assertAlmostEqual(res[(1960, 10)], 35.62, places=2)
         self.assertEqual(len(res), 12)
+
+
+class Bug6RaggedLargeRowParsed(unittest.TestCase):
+    """The wet-October fix must not regress ragged (non-fixed-width) rows.
+    A whitespace-separated row of all-large values is longer than the
+    12-field value span, so a positional-first year read mis-slices it."""
+
+    def _read(self, line):
+        hdr = 'File name : x\nUnits : M.m3\n \nYear ...\n----\n'
+        fh = tempfile.NamedTemporaryFile('w', suffix='.MON', delete=False)
+        fh.write(hdr + line + '\n')
+        fh.close()
+        try:
+            return read_monthly_file(fh.name)
+        finally:
+            os.unlink(fh.name)
+
+    def test_ragged_all_large_values_not_dropped(self):
+        # Single-space separated, every month a 5-digit value → line length
+        # exceeds the 108-char value span, so body[:-108] would capture
+        # '2000 14639.120 ' and int() would fail, dropping the whole year.
+        vals = [14639.120, 13670.740, 18500.500, 16000.250, 14000.100,
+                13000.000, 12000.000, 11500.000, 11200.000, 11000.000,
+                10900.000, 10800.000]
+        line = '2000 ' + ' '.join(f'{v:.3f}' for v in vals)
+        self.assertGreater(len(line), 112)             # triggers the slice path
+        res = self._read(line)
+        self.assertEqual(len(res), 12)
+        self.assertAlmostEqual(res[(2000, 10)], 14639.120, places=2)
+        self.assertAlmostEqual(res[(2001, 9)], 10800.000, places=2)
+
+    def test_tab_separated_row_not_dropped(self):
+        vals = [14639.120] * 12
+        line = '2000\t' + '\t'.join(f'{v:.3f}' for v in vals)
+        res = self._read(line)
+        self.assertEqual(len(res), 12)
+        self.assertAlmostEqual(res[(2000, 10)], 14639.120, places=2)
+
+
+class Bug7PatchCalDayCountMatch(unittest.TestCase):
+    """find_patch_year must reject a donor whose month length differs from
+    the target's, so a 29-day leap February is never patched from a 28-day
+    donor (which silently zeroed Feb 29)."""
+
+    def test_nonleap_donor_rejected_for_leap_february(self):
+        gen = {(2000, 2): 50.0, (1999, 2): 50.0}        # identical volume
+        obs = {(1999, 2): _rec(1999, 2, 5.0)}           # complete 28-day Feb
+        # Closest by volume is 1999, but it's the wrong length — must refuse.
+        self.assertIsNone(find_patch_year(2000, 2, gen, obs))
+
+    def test_leap_donor_preferred_over_closer_nonleap(self):
+        gen = {(2000, 2): 50.0, (1999, 2): 50.0, (2004, 2): 60.0}
+        obs = {
+            (1999, 2): _rec(1999, 2, 5.0),              # 28 days, closer vol
+            (2004, 2): _rec(2004, 2, 7.0),              # 29 days, valid donor
+        }
+        self.assertEqual(find_patch_year(2000, 2, gen, obs), 2004)
+
+    def test_leap_feb_29_not_silently_zeroed(self):
+        gen = {(2000, 2): 50.0, (2004, 2): 60.0}
+        # Target Feb 2000 is entirely missing; only a valid 29-day donor
+        # exists. Feb 29 must be shaped by the donor, not clamped to zero.
+        f1 = {
+            (2000, 2): _rec(2000, 2, MISSING),          # 29-day all-gap target
+            (2004, 2): _rec(2004, 2, 7.0),              # 29-day complete donor
+        }
+        records, _ = disaggregate(DisagMethod.PATCH_CAL, gen, [f1], 1)
+        feb = next(r for r in records if (r.year, r.month) == (2000, 2))
+        self.assertEqual(len(feb.v), 29)
+        self.assertGreater(feb.v[28], 0.0)              # Feb 29 carries flow
 
 
 if __name__ == '__main__':
