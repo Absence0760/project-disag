@@ -43,6 +43,12 @@
 	--success: #047857;
 	--success-soft: #d1fae5;
 	--focus-ring: 0 0 0 3px rgb(37 99 235 / 0.35);
+
+	/* Foreground for text/icons sitting on an --accent fill (buttons, chips). */
+	--on-accent: #ffffff;
+	/* Sticky-header height — sticky offsets derive from this so they can't
+	   desync if the header padding changes. */
+	--header-h: 68px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -73,6 +79,19 @@
 *::before,
 *::after {
 	box-sizing: border-box;
+}
+
+/* Respect users who ask for less motion: neutralise the spinner and the
+   skeleton shimmer (both loop indefinitely) and all transitions. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
 }
 
 html,
@@ -165,7 +184,7 @@ select {
 	border-radius: var(--radius-md);
 	border: 1px solid transparent;
 	background: var(--accent);
-	color: white;
+	color: var(--on-accent);
 	font-weight: 550;
 	cursor: pointer;
 	transition:
@@ -201,6 +220,10 @@ select {
 .btn.ghost:hover:not(:disabled) {
 	background: var(--surface-2);
 	color: var(--text);
+}
+.btn.small {
+	padding: var(--space-1) var(--space-3);
+	font-size: 0.85rem;
 }
 
 .card {

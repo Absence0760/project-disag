@@ -702,7 +702,7 @@
 	/* Sticky on-page contents */
 	.toc {
 		position: sticky;
-		top: 76px;
+		top: calc(var(--header-h) + var(--space-2));
 		z-index: 5;
 		display: flex;
 		flex-wrap: wrap;
@@ -729,7 +729,8 @@
 
 	.doc-section {
 		margin: var(--space-8) 0;
-		scroll-margin-top: 140px;
+		/* Clear the sticky header plus the sticky on-page TOC below it. */
+		scroll-margin-top: calc(var(--header-h) + var(--space-8) * 1.5);
 	}
 	.doc-section > p {
 		max-width: 680px;

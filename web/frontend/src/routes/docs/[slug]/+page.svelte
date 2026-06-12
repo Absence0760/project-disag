@@ -57,7 +57,7 @@
 		color: var(--text);
 	}
 	.prose :global(h3) {
-		font-size: 1.12rem;
+		font-size: 1.1rem;
 		margin: var(--space-5) 0 var(--space-2);
 		color: var(--text);
 	}
@@ -99,15 +99,8 @@
 		color: var(--text-muted);
 	}
 
-	/* Inline code + fenced blocks. The shared `code` style in app.css covers
-	   inline; here we handle the <pre> wrapper for multi-line blocks. */
-	.prose :global(code) {
-		font-family: var(--font-mono);
-		font-size: 0.88em;
-		background: var(--surface-2);
-		padding: 0.1em 0.4em;
-		border-radius: var(--radius-sm);
-	}
+	/* Inline code inherits the global `code` rule in app.css; here we only
+	   handle the <pre> wrapper for multi-line fenced blocks. */
 	.prose :global(pre) {
 		background: var(--surface-2);
 		border: 1px solid var(--border);

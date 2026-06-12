@@ -57,7 +57,7 @@
 
 	.docs-side {
 		position: sticky;
-		top: 84px;
+		top: calc(var(--header-h) + var(--space-4));
 	}
 
 	.side-title {

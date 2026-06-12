@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { listRuns } from '$lib/api';
+	import { fmtDateTime } from '$lib/format';
 	import type { RunSummary } from '$lib/types';
 
 	let runs = $state<RunSummary[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	onMount(async () => {
+	async function load() {
+		loading = true;
+		error = null;
 		try {
 			runs = await listRuns();
 		} catch (e) {
@@ -15,22 +18,14 @@
 		} finally {
 			loading = false;
 		}
-	});
+	}
+
+	onMount(load);
 
 	function fmtSize(b: number): string {
 		if (b < 1024) return `${b} B`;
 		if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
 		return `${(b / 1024 / 1024).toFixed(2)} MB`;
-	}
-
-	function fmtDate(iso: string): string {
-		return new Date(iso).toLocaleString(undefined, {
-			year: 'numeric',
-			month: 'short',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
 	}
 </script>
 
@@ -62,6 +57,7 @@
 		<div>
 			<strong>Couldn’t load history.</strong>
 			<p>{error}</p>
+			<button type="button" class="btn small" onclick={load}>Retry</button>
 		</div>
 	</div>
 {:else if runs.length === 0}
@@ -77,7 +73,7 @@
 			/>
 		</svg>
 		<div>
-			<h3>No runs yet</h3>
+			<h2>No runs yet</h2>
 			<p>Submit your first disaggregation or exceedance job to see it here.</p>
 			<a class="btn" href="/run">Start a run →</a>
 		</div>
@@ -97,9 +93,9 @@
 			<tbody>
 				{#each runs as run (run.run_id)}
 					<tr>
-						<td><code>{run.run_id}</code></td>
+						<td><a class="run-link" href={`/run/${run.run_id}`}><code>{run.run_id}</code></a></td>
 						<td><span class="badge">{run.tool}</span></td>
-						<td class="muted">{fmtDate(run.created_at)}</td>
+						<td class="muted">{fmtDateTime(run.created_at)}</td>
 						<td class="num muted">{fmtSize(run.size_bytes)}</td>
 						<td class="row-cta">
 							<a class="btn secondary" href={`/run/${run.run_id}`}>Open →</a>
@@ -163,6 +159,14 @@
 		text-align: right;
 	}
 
+	.run-link {
+		color: var(--text);
+		text-decoration: none;
+	}
+	.run-link:hover {
+		color: var(--accent);
+	}
+
 	.skeleton-row {
 		display: grid;
 		grid-template-columns: 2fr 1fr 2fr 1fr;
@@ -206,7 +210,7 @@
 		color: var(--accent);
 		flex: none;
 	}
-	.empty h3 {
+	.empty h2 {
 		margin-top: 0;
 		color: var(--text);
 	}

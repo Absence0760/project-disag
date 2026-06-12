@@ -12,10 +12,31 @@
 	let { label, accept, file, required = false, hint = '', testid, onchange }: Props = $props();
 
 	let dragging = $state(false);
-	let inputEl: HTMLInputElement;
+	let rejected = $state<string | null>(null);
+
+	const inputId = $derived(`${testid ?? label.replace(/\s+/g, '-')}-input`);
+	const hintId = $derived(`${inputId}-hint`);
+
+	// The native `accept` only filters the browse dialog; drag-and-drop ignores
+	// it. Validate the dropped extension so a wrong file can't slip through and
+	// fail later as an opaque server error.
+	function acceptsExtension(name: string): boolean {
+		const exts = accept
+			.split(',')
+			.map((s) => s.trim().toLowerCase())
+			.filter((s) => s.startsWith('.'));
+		if (exts.length === 0) return true;
+		const lower = name.toLowerCase();
+		return exts.some((ext) => lower.endsWith(ext));
+	}
 
 	function handleFiles(files: FileList | null) {
 		const next = files && files.length > 0 ? files[0] : null;
+		if (next && !acceptsExtension(next.name)) {
+			rejected = `${next.name} isn’t an accepted type (${accept}).`;
+			return;
+		}
+		rejected = null;
 		onchange(next);
 	}
 
@@ -24,44 +45,39 @@
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 		return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 	}
-</script>
 
-<div
-	class="dropzone"
-	class:dragging
-	class:filled={!!file}
-	role="button"
-	tabindex="0"
-	aria-label={label}
-	data-testid={testid}
-	ondragover={(e) => {
-		e.preventDefault();
-		dragging = true;
-	}}
-	ondragleave={() => (dragging = false)}
-	ondrop={(e) => {
+	// Drop handling shared by both states. svelte-ignore: the wrappers carry
+	// drag handlers but are not click/keyboard targets — the <label>/<input>
+	// and the Remove <button> provide the real, accessible interactions.
+	function onDrop(e: DragEvent) {
 		e.preventDefault();
 		dragging = false;
 		handleFiles(e.dataTransfer?.files ?? null);
-	}}
-	onclick={() => inputEl.click()}
-	onkeydown={(e) => {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			inputEl.click();
-		}
-	}}
->
-	<input
-		bind:this={inputEl}
-		type="file"
-		{accept}
-		class="sr-only"
-		data-testid={testid ? `${testid}-input` : undefined}
-		onchange={(e) => handleFiles((e.currentTarget as HTMLInputElement).files)}
-	/>
+	}
+	function onDragOver(e: DragEvent) {
+		e.preventDefault();
+		dragging = true;
+	}
+</script>
 
-	{#if file}
+{#if file}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="dropzone filled"
+		data-testid={testid}
+		ondragover={onDragOver}
+		ondragleave={() => (dragging = false)}
+		ondrop={onDrop}
+	>
+		<input
+			id={inputId}
+			type="file"
+			{accept}
+			class="sr-only"
+			aria-required={required}
+			data-testid={testid ? `${testid}-input` : undefined}
+			onchange={(e) => handleFiles((e.currentTarget as HTMLInputElement).files)}
+		/>
 		<div class="file-meta">
 			<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 				<path
@@ -78,24 +94,45 @@
 			</div>
 			<button
 				type="button"
-				class="btn ghost remove"
-				onclick={(e) => {
-					e.stopPropagation();
-					onchange(null);
-				}}
+				class="btn ghost small remove"
+				onclick={() => onchange(null)}
 				aria-label={`Remove ${file.name}`}
 			>
 				Remove
 			</button>
 		</div>
-	{:else}
-		<div class="empty">
+	</div>
+{:else}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<label
+		class="dropzone"
+		class:dragging
+		data-testid={testid}
+		ondragover={onDragOver}
+		ondragleave={() => (dragging = false)}
+		ondrop={onDrop}
+	>
+		<input
+			id={inputId}
+			type="file"
+			{accept}
+			class="sr-only"
+			aria-required={required}
+			aria-describedby={hint || rejected ? hintId : undefined}
+			data-testid={testid ? `${testid}-input` : undefined}
+			onchange={(e) => handleFiles((e.currentTarget as HTMLInputElement).files)}
+		/>
+		<span class="empty">
 			<strong>{label}{required ? ' *' : ''}</strong>
 			<span>Drop a file or click to browse</span>
-			{#if hint}<span class="hint">{hint}</span>{/if}
-		</div>
-	{/if}
-</div>
+			{#if rejected}
+				<span class="hint reject" id={hintId} role="alert">{rejected}</span>
+			{:else if hint}
+				<span class="hint" id={hintId}>{hint}</span>
+			{/if}
+		</span>
+	</label>
+{/if}
 
 <style>
 	.dropzone {
@@ -111,9 +148,14 @@
 			box-shadow 0.12s;
 	}
 	.dropzone:hover,
-	.dropzone:focus-visible {
+	.dropzone:focus-within {
 		border-color: var(--accent);
 		background: color-mix(in srgb, var(--accent-soft) 50%, var(--surface));
+	}
+	/* Route the focus ring to the visible dropzone (the real <input> is
+	   visually hidden but keyboard-focusable). */
+	.dropzone:focus-within {
+		box-shadow: var(--focus-ring);
 	}
 	.dropzone.dragging {
 		border-color: var(--accent);
@@ -123,12 +165,13 @@
 	.dropzone.filled {
 		border-style: solid;
 		border-color: var(--border);
+		cursor: default;
 	}
 
 	.empty {
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
+		gap: var(--space-1);
 		color: var(--text-muted);
 	}
 	.empty strong {
@@ -137,6 +180,10 @@
 	.hint {
 		font-size: 0.82rem;
 		color: var(--text-subtle);
+	}
+	.hint.reject {
+		color: var(--danger);
+		font-weight: 500;
 	}
 
 	.file-meta {
@@ -158,7 +205,5 @@
 	}
 	.remove {
 		margin-left: auto;
-		font-size: 0.85rem;
-		padding: 0.3rem 0.7rem;
 	}
 </style>

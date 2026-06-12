@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { requestUpload, putToS3, runConvert, runDisag, runExceed } from '$lib/api';
+	import { isSvgOutput, outputLabel } from '$lib/format';
 	import type { DisagMethod, RunResult, SeasonGroup, Tool } from '$lib/types';
 	import FileDrop from '$lib/FileDrop.svelte';
 
@@ -37,6 +39,23 @@
 	let result = $state<RunResult | null>(null);
 	let error = $state<string | null>(null);
 	let stage = $state<'idle' | 'uploading' | 'computing'>('idle');
+	let outcomeEl = $state<HTMLDivElement | null>(null);
+
+	// A previous result describes the inputs that produced it. If the user
+	// changes the tool, method, or any input, drop the stale result/links so
+	// they can't download an output that no longer matches the form.
+	$effect(() => {
+		void tool;
+		void method;
+		void intervals;
+		void seasonalMode;
+		void monthlyFile;
+		void daily1File;
+		void daily2File;
+		void ansFile;
+		result = null;
+		error = null;
+	});
 
 	const methodOptions: Array<{
 		value: DisagMethod;
@@ -144,6 +163,13 @@
 			running = false;
 			stage = 'idle';
 		}
+
+		// Move focus (and scroll) to the result/error so keyboard and
+		// screen-reader users aren't left on the submit button unaware that
+		// the outcome rendered below the form.
+		await tick();
+		outcomeEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		outcomeEl?.focus();
 	}
 
 	function resetForm() {
@@ -155,11 +181,9 @@
 		error = null;
 	}
 
-	function outputLabel(key: string | undefined): string {
-		if (!key) return 'output';
-		const m = key.match(/\.([a-z0-9]+)$/i);
-		if (m && m[1].toLowerCase() === 'svg') return 'curve (.svg)';
-		return m ? `.${m[1].toLowerCase()} output` : 'output';
+	function clampIntervals() {
+		if (!Number.isFinite(intervals)) intervals = 20;
+		else intervals = Math.min(200, Math.max(5, Math.round(intervals)));
 	}
 
 	function toggleSeasonMonth(season: SeasonGroup, month: number) {
@@ -176,7 +200,7 @@
 		seasons = seasons.filter((_, idx) => idx !== i);
 	}
 
-	const isSvg = $derived(!!result?.output_key && /\.svg$/i.test(result.output_key));
+	const isSvg = $derived(isSvgOutput(result?.output_key));
 </script>
 
 <svelte:head>
@@ -213,7 +237,7 @@
 	{#if tool === 'disag'}
 		<section class="card group" aria-label="Method">
 			<h2>Method</h2>
-			<div class="method-grid">
+			<div class="method-grid" role="radiogroup" aria-label="Disaggregation method">
 				{#each methodOptions as opt (opt.value)}
 					<label class="method-card" class:active={method === opt.value}>
 						<input
@@ -235,12 +259,16 @@
 	{:else if tool === 'exceed'}
 		<section class="card group" aria-label="Histogram intervals">
 			<h2>Histogram intervals</h2>
-			<p class="muted">More intervals = finer resolution; fewer = smoother curve.</p>
+			<p class="muted" id="intervals-hint">
+				More intervals = finer resolution; fewer = smoother curve. Allowed range 5–200.
+			</p>
 			<input
 				type="number"
 				min="5"
 				max="200"
 				bind:value={intervals}
+				onblur={clampIntervals}
+				aria-describedby="intervals-hint"
 				class="input"
 				data-testid="intervals-input"
 			/>
@@ -357,23 +385,35 @@
 			{/if}
 		</button>
 		<button type="button" class="btn ghost" onclick={resetForm} disabled={running}> Reset </button>
+		<span class="sr-only" role="status">
+			{#if running}{stage === 'uploading' ? 'Uploading files…' : 'Computing on Lambda…'}{/if}
+		</span>
 	</div>
 </form>
 
 {#if error}
-	<div class="alert error" role="alert" data-testid="run-error">
+	<div class="alert error" role="alert" tabindex="-1" bind:this={outcomeEl} data-testid="run-error">
 		<strong>Couldn’t run:</strong>
 		<span>{error}</span>
 	</div>
 {/if}
 
 {#if result}
-	<div class="alert success card success-card" data-testid="run-success">
+	<div
+		class="alert success card success-card"
+		role="status"
+		tabindex="-1"
+		bind:this={outcomeEl}
+		data-testid="run-success"
+	>
 		<span class="badge success">Done</span>
-		<h3>Run <code>{result.run_id}</code> complete</h3>
+		<h3>
+			Run <a href={`/run/${result.run_id}`}><code>{result.run_id}</code></a> complete
+		</h3>
 		<p>
-			Outputs are stored in S3 under the <code>{result.tool}</code> namespace. Links below are short-lived
-			(1 hour by default).
+			Outputs are stored in S3 under the <code>{result.tool}</code> namespace. Links below are
+			short-lived (1 hour by default) — <a href={`/run/${result.run_id}`}>open this run</a> any time to
+			get fresh links.
 		</p>
 		{#if isSvg && result.output_url}
 			<figure class="curve" data-testid="curve-preview">
@@ -449,7 +489,7 @@
 	.months {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 4px;
+		gap: var(--space-1);
 	}
 
 	.month-chip {
@@ -474,13 +514,8 @@
 	.month-chip.on {
 		background: var(--accent);
 		border-color: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 		font-weight: 600;
-	}
-
-	.btn.small {
-		padding: 4px 10px;
-		font-size: 0.85rem;
 	}
 
 	.curve {
@@ -513,10 +548,11 @@
 
 	.segmented {
 		display: inline-flex;
+		flex-wrap: wrap;
 		background: var(--surface-2);
-		padding: 4px;
+		padding: var(--space-1);
 		border-radius: var(--radius-md);
-		gap: 4px;
+		gap: var(--space-1);
 	}
 
 	.segmented label {
@@ -538,6 +574,10 @@
 		background: var(--surface);
 		color: var(--text);
 		box-shadow: var(--shadow-sm);
+	}
+	/* Route the focus ring to the visible label — the real radio is hidden. */
+	.segmented label:has(input:focus-visible) {
+		box-shadow: var(--focus-ring);
 	}
 
 	.segmented small {
@@ -587,6 +627,10 @@
 			var(--shadow-sm),
 			0 0 0 1px var(--accent) inset;
 		background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface));
+	}
+	/* Route the focus ring to the visible card — the real radio is hidden. */
+	.method-card:has(input:focus-visible) {
+		box-shadow: var(--focus-ring);
 	}
 	.method-card input {
 		position: absolute;

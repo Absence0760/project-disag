@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { getRun } from '$lib/api';
+	import { fmtDateTime, isSvgOutput, outputLabel } from '$lib/format';
 	import type { RunResult } from '$lib/types';
 
 	let result = $state<RunResult | null>(null);
@@ -10,7 +11,9 @@
 
 	const runId = $page.params.run_id as string;
 
-	onMount(async () => {
+	async function load() {
+		loading = true;
+		error = null;
 		try {
 			result = await getRun(runId);
 		} catch (e) {
@@ -18,23 +21,11 @@
 		} finally {
 			loading = false;
 		}
-	});
-
-	function outputLabel(key: string | undefined): string {
-		if (!key) return 'output';
-		const m = key.match(/\.([a-z0-9]+)$/i);
-		return m ? `.${m[1].toLowerCase()} output` : 'output';
 	}
 
-	function fmtDate(iso: string): string {
-		return new Date(iso).toLocaleString(undefined, {
-			year: 'numeric',
-			month: 'short',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
+	onMount(load);
+
+	const isSvg = $derived(isSvgOutput(result?.output_key));
 </script>
 
 <svelte:head>
@@ -66,14 +57,20 @@
 			so a transient error here usually clears with a refresh.
 		</p>
 		<div class="actions">
+			<button type="button" class="btn" onclick={load}>Retry</button>
 			<a class="btn ghost" href="/history">Back to history</a>
 		</div>
 	</div>
 {:else if result}
-	<div class="alert success card success-card" data-testid="run-detail">
+	<div class="alert success card success-card" role="status" data-testid="run-detail">
 		<span class="badge success">{result.tool}</span>
-		<h3>Created {fmtDate(result.created_at)}</h3>
+		<h2>Created {fmtDateTime(result.created_at)}</h2>
 		<p>Download links below are short-lived (1 hour by default).</p>
+		{#if isSvg && result.output_url}
+			<figure class="curve" data-testid="curve-preview">
+				<img src={result.output_url} alt="Flow-frequency exceedance curve" />
+			</figure>
+		{/if}
 		<div class="actions">
 			{#if result.output_url}
 				<a class="btn" href={result.output_url} data-testid="download-output">
@@ -100,6 +97,29 @@
 	}
 	.muted {
 		color: var(--text-muted);
+	}
+
+	.success-card {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	/* Card title, not a page heading — keep it modest despite being an h2. */
+	.success-card h2 {
+		font-size: 1.1rem;
+		margin: var(--space-2) 0;
+	}
+
+	.curve {
+		margin: var(--space-3) 0;
+	}
+	.curve img {
+		width: 100%;
+		max-width: 720px;
+		height: auto;
+		/* SVG curve is authored on a white canvas — keep it white in dark mode. */
+		background: #fff;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
 	}
 
 	.skeleton {
