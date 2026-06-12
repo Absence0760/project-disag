@@ -582,10 +582,25 @@ def _convert_month(
         elif method == DisagMethod.INCREMENTAL:
             dec['note'] = 'disaggregated from file 1 − file 2'
         elif dec['f2'] > 0:
+            # File-2 day values are rescaled to file-1's per-month magnitude
+            # before they enter qD (see the qD loop). Surface that factor on
+            # the row so the reader can see why the file-2 shape was accepted
+            # and by how much it was lifted/dropped onto file-1's scale —
+            # the same factor printed in the header's scale-factor table.
+            f2_scale = (
+                tier2_scale[1].get(month, 1.0)
+                if tier2_scale and len(tier2_scale) > 1 else 1.0
+            )
             if dec['f1'] == 0:
-                dec['note'] = 'disaggregated from file 2 (file 1 fully missing)'
+                dec['note'] = (
+                    'disaggregated from file 2 (file 1 fully missing; '
+                    f'file-2 → file-1 scale ×{f2_scale:.4f})'
+                )
             else:
-                dec['note'] = 'disaggregated from file 1, gaps filled from file 2'
+                dec['note'] = (
+                    'disaggregated from file 1, gaps filled from file 2 '
+                    f'({dec["f2"]} day(s), file-2 → file-1 scale ×{f2_scale:.4f})'
+                )
         else:
             dec['note'] = 'disaggregated from file 1'
     if zero_fill:

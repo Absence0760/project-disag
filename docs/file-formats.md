@@ -166,8 +166,14 @@ row carries:
 - a `result / source` note — `disaggregated from file 1`, `patched from
   similar calendar month YYYY MM` (method 1), `patched from donor:
   file N YYYY MM (exceed% …)` (method 5), `even distribution`, or
-  `MISSING — <reason>`. A month that fell back to an even split because
-  the observed monthly total was ≤ 0 is annotated inline.
+  `MISSING — <reason>`. Method 5 also explains its file-2 fallbacks
+  inline: `disaggregated from file 2 (file 1 fully missing; file-2 →
+  file-1 scale ×N)` when file 1 has no usable day that month, and
+  `disaggregated from file 1, gaps filled from file 2 (K day(s),
+  file-2 → file-1 scale ×N)` when file 2 only patched some days — the
+  `×N` is the per-month rescaling factor from the table above. A month
+  that fell back to an even split because the observed monthly total was
+  ≤ 0 is annotated inline.
 
 Method 5 (PATCH_EXCEED) appends a tier coverage summary; any pre-run
 warnings (zero-target months, sparse/flat distributions, file-2 → file-1

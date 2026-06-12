@@ -327,5 +327,77 @@ class PatchExceedDonorGapTests(unittest.TestCase):
     # additional one here.
 
 
+class PatchExceedRoutineNoteTests(unittest.TestCase):
+    """The decision-log wording for routine (non-donor) PATCH_EXCEED months.
+
+    The note is finalised from the per-source day counts after the qD
+    loop. The subtle case is a month where file 1 is *fully* missing and
+    file 2 covers every day: tier 2 supplies all of them, so file 1
+    contributes nothing. The note must say so plainly ("disaggregated
+    from file 2 (file 1 fully missing)") rather than the mixed-month
+    "disaggregated from file 1, gaps filled from file 2" — the latter
+    implies file 1 contributed days when it contributed none.
+    """
+
+    @staticmethod
+    def _decision_row(log, year, month):
+        for line in log:
+            parts = line.split()
+            if (len(parts) >= 5 and parts[0].isdigit() and parts[1].isdigit()
+                    and int(parts[0]) == year and int(parts[1]) == month):
+                return parts
+        return None
+
+    def test_file1_fully_missing_labelled_as_file2(self):
+        # June 2003: file 1 all-MISSING, file 2 complete → every day tier 2.
+        gen = {(2001, 6): 100.0, (2003, 6): 300.0}
+        f1 = {(2003, 6): DailyRecord(2003, 6, [MISSING] * 30)}
+        f2 = {
+            (2001, 6): DailyRecord(2001, 6, [10.0] * 30),
+            (2003, 6): DailyRecord(2003, 6, [5.0 + d * 0.1 for d in range(30)]),
+        }
+        recs, log = disaggregate(DisagMethod.PATCH_EXCEED, gen, [f1, f2], no_files=2)
+
+        row = self._decision_row(log, 2003, 6)
+        self.assertIsNotNone(row, 'no decision-log row for June 2003')
+        f1_days, f2_days, oth_days = int(row[2]), int(row[3]), int(row[4])
+        note = ' '.join(row[5:])
+        self.assertEqual((f1_days, f2_days, oth_days), (0, 30, 0),
+                         f'all 30 days should come from file 2; row={row}')
+        self.assertTrue(
+            note.startswith('disaggregated from file 2 (file 1 fully missing'),
+            f'unexpected note: {note!r}')
+        self.assertIn('file-2 → file-1 scale ×', note,
+                      f'note should surface the tier-2 scale factor: {note!r}')
+
+        june = next(r for r in recs if (r.year, r.month) == (2003, 6))
+        self.assertTrue(all(v >= 0 for v in june.v),
+                        'June 2003 should be disaggregated, not marked MISSING')
+
+    def test_mixed_month_keeps_gaps_filled_wording(self):
+        # June 2003: file 1 missing one day, file 2 fills it → file 1 still
+        # contributes 29 days, so the mixed-month wording is correct.
+        gen = {(2001, 6): 100.0, (2003, 6): 300.0}
+        f1_vals = [10.0] * 14 + [MISSING] + [10.0] * 15
+        f1 = {(2003, 6): DailyRecord(2003, 6, f1_vals)}
+        f2 = {
+            (2001, 6): DailyRecord(2001, 6, [8.0] * 30),
+            (2003, 6): DailyRecord(2003, 6, [8.0] * 30),
+        }
+        recs, log = disaggregate(DisagMethod.PATCH_EXCEED, gen, [f1, f2], no_files=2)
+
+        row = self._decision_row(log, 2003, 6)
+        self.assertIsNotNone(row, 'no decision-log row for June 2003')
+        f1_days, f2_days = int(row[2]), int(row[3])
+        note = ' '.join(row[5:])
+        self.assertEqual((f1_days, f2_days), (29, 1),
+                         f'29 file-1 days + 1 file-2 fill expected; row={row}')
+        self.assertTrue(
+            note.startswith('disaggregated from file 1, gaps filled from file 2'),
+            f'unexpected note: {note!r}')
+        self.assertIn('file-2 → file-1 scale ×', note,
+                      f'note should surface the tier-2 scale factor: {note!r}')
+
+
 if __name__ == '__main__':
     unittest.main()

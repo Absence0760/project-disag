@@ -195,13 +195,18 @@ It then contains, in order:
    Each row shows the day-count split across the three tiers (`F1` = file
    1 / tier 1, `F2` = file 2 / tier 2, `OTH` = donor / tier 3) and a
    `result / source` note. Tier-3 patched months name the donor and the
-   matched percentiles; dropped months carry the reason inline:
+   matched percentiles; tier-2 months show the file-2 → file-1 scale
+   factor that was applied (the same factor from the table above), so
+   each row explains both what was used and why; dropped months carry
+   the reason inline:
 
    ```
    Decision log (one row per month):
    YYYY MM   F1  F2  OTH   result / source
    2003  6    0   0  30   patched from donor: file 1 2004  6 (exceed% target=33.3 donor=25.0)
    2003  7   31   0   0   disaggregated from file 1
+   2003  8    0  31   0   disaggregated from file 2 (file 1 fully missing; file-2 → file-1 scale ×3.4012)
+   2003  9   28   2   0   disaggregated from file 1, gaps filled from file 2 (2 day(s), file-2 → file-1 scale ×3.2887)
    ...
    ```
 
