@@ -11,7 +11,7 @@ data at one time resolution but needs analysis at another.
 ### The setup
 
 Long streamflow records are usually available as **monthly totals** in
-Mm³/month (megalitres × 10⁶ per month). Common sources:
+Mm³/month (million cubic metres, 10⁶ m³, per month). Common sources:
 
 - Stochastic monthly streamflow models (e.g., the WRYM / WRSM family used
   in Southern Africa).

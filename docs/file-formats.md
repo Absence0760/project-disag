@@ -49,9 +49,11 @@ Each day value occupies exactly **7 characters**, right-justified:
 - 2 decimal places for values 100–999 or any negative (missing)
 - 1 decimal place for values > 999
 
-A missing-day sentinel (`-99.99`) fills the full 7 characters with no leading
-space, so consecutive sentinels run together (`-99.990-99.990`) — never
-`.split()` a daily line; slice it in fixed 7-char columns.
+Values are right-justified into their 7-char fields with no separator between
+them, so a value that fills the whole field abuts its neighbour (e.g. two
+`12345.6`-style readings become `12345.612345.6`) — never `.split()` a daily
+line; slice it in fixed 7-char columns. The missing-day sentinel `-99.99` is
+only 6 characters, so it renders as ` -99.99` (one leading space).
 
 Days 1–28 appear on four lines of 7 values each (49 characters per line).
 

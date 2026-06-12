@@ -129,8 +129,10 @@ parser is [disag/files.py:read_daily_file](disag/files.py) — it reads each
 daily value as a 7-character right-justified column. **Do not** try to
 `.split()` data lines:
 
-- Negative sentinels are written without separators: `-99.990-99.990-99.990`
-  → `.split()` produces one unparsable token.
+- Values that fill the whole 7-char field abut their neighbour with no
+  separator (e.g. `12345.612345.6`) → `.split()` can produce unparsable
+  tokens. (The `-99.99` missing sentinel itself renders as ` -99.99`, but
+  slice by column anyway — don't rely on whitespace.)
 - Year fields are sometimes 2-digit (`51`) and sometimes 4-digit (`2019`).
   Use `if year < 1900: year += 1900` to normalise.
 - The first line of each record is `YYY MM TOTAL` — the `TOTAL` is a monthly

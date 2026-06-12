@@ -51,7 +51,8 @@ Mind the off-by-one when computing year boundaries.
 ### Daily file fixed-width parsing
 
 Daily values are 7-char right-justified columns, not whitespace-separated.
-Negatives are written without separators (`-99.990-99.990`). The first line
+A value that fills the field abuts its neighbour (e.g. `12345.612345.6`); the
+`-99.99` sentinel renders as ` -99.99` — slice by column, don't `.split()`. The first line
 of each record is `YYY MM TOTAL` — `TOTAL` is the monthly summary, not a
 daily value. See [../docs/file-formats.md](../docs/file-formats.md).
 

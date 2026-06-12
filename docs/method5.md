@@ -286,9 +286,10 @@ the only place to see how much tier-2 fired.
 ## See also
 
 - [examples/method5_demo/](../examples/method5_demo/) — runnable demo
-  with three scenarios (Tier 1 only, Tier 1 + 3, Tier 1 + 2 + 3) on
-  small mock data. Includes a generator script, the generated files,
-  and a step-by-step walkthrough.
+  with five scenarios (Tier 1 only; Tier 1 + 2; Tier 1 + 2 + 3;
+  Tier 1 + 3; and all three tiers within a single month) on small mock
+  data. Includes a generator script, the generated files, and a
+  step-by-step walkthrough.
 - [algorithm.md](algorithm.md) — the per-method specification, with
   Method 5's implementation details.
 - [problem.md](problem.md) — the high-level "what does this project
