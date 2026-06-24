@@ -10,15 +10,17 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
-    # sops decrypts web/infra/secrets.enc.yaml at plan/apply time using
-    # the active AWS profile's KMS access. Edit secrets via:
-    #   sops web/infra/secrets.enc.yaml
-    # Read in Terraform via:
-    #   data "sops_file" "secrets" { source_file = "secrets.enc.yaml" }
+    # Prod secrets live ENCRYPTED in the private ../infra-secrets repo
+    # (this repo is public), under disag/prod.sops.yaml, keyed by
+    # alias/disag-sops. Edit them from THAT repo: `sops disag/prod.sops.yaml`.
+    # When the first real secret lands, read it in Terraform via:
+    #   data "sops_file" "secrets" {
+    #     source_file = "${path.module}/../../../infra-secrets/disag/prod.sops.yaml"
+    #   }
     #   ... = data.sops_file.secrets.data["allowed_origin_prod"]
-    # Nothing's encrypted today (all current values are public), so
-    # the data source is intentionally omitted — uncomment when the
-    # first real secret lands.
+    # sops decrypts in-memory at plan/apply using the active AWS profile's
+    # KMS access. Nothing's encrypted today (all current values are public),
+    # so the data source is intentionally omitted — uncomment when needed.
     sops = {
       source  = "carlpett/sops"
       version = "~> 1.2"

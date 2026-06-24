@@ -41,9 +41,7 @@ web/
 | `pnpm tf:init` / `tf:plan` / `tf:apply` / `tf:destroy` | Terraform lifecycle. |
 | `pnpm tf:outputs` | Dump terraform outputs as JSON (function name, buckets, role ARN, etc.). |
 | `pnpm tf:export-vars` | Push Terraform outputs into GitHub repo variables so `deploy.yml` can read them. |
-| `pnpm sops:bootstrap` | Replace the `REPLACE_ME` account-id placeholder in `.sops.yaml` with the active AWS account (via `aws sts get-caller-identity`). Idempotent. |
-| `pnpm sops:edit` | `sops web/infra/secrets.enc.yaml` — edit in `$EDITOR`, re-encrypt on save. |
-| `pnpm sops:rotate` | Re-encrypt with the keys in `.sops.yaml` after a key rotation. |
+| _(secrets)_ | Prod secrets live in the private `../infra-secrets` repo, not here — see "Editing sensitive infra config" below. |
 | `pnpm deploy` | Local one-shot deploy: build → `terraform apply` → sync site → invalidate. |
 | `pnpm deploy:web` | Just resync the static site + invalidate (no backend redeploy). |
 
@@ -148,9 +146,9 @@ $EDITOR web/infra/terraform.tfvars
 #    the tfstate bucket name from bootstrap (locking uses S3 conditional
 #    writes — `use_lockfile = true` — no DynamoDB needed).
 
-# 4. Rewrite .sops.yaml's REPLACE_ME placeholder with the project account
-#    ID. `pnpm sops:bootstrap` does this automatically by calling
-#    `aws sts get-caller-identity` against the active AWS profile.
+# 4. (Only when a real secret exists.) Add a `disag/` entry to the private
+#    ../infra-secrets repo — see "Editing sensitive infra config" below.
+#    No sops config lives in this repo.
 
 # 5. Apply this repo's Terraform (creates the CloudFront distribution on
 #    its default cloudfront.net domain, three S3 buckets, Lambda + API
@@ -170,24 +168,32 @@ to be live first.
 
 ### Editing sensitive infra config
 
+**Prod secrets do NOT live in this repo.** This repo is public; secrets
+live encrypted in the private sibling repo `../infra-secrets`, one
+subdirectory per project (`disag/`), keyed by `alias/disag-sops` in the
+disag AWS account. Only the public placeholders in `variables.tf` live
+here.
+
 Nothing in `variables.tf` today needs encrypting — every value is
 public. When that changes (custom-domain ACM ARN, private origin,
-third-party API key, etc.), put it in `web/infra/secrets.enc.yaml`:
+third-party API key, etc.), add it in the private repo, not here:
 
 ```bash
-# First time:
-cp web/infra/secrets.enc.yaml.example web/infra/secrets.enc.yaml
-sops -e -i web/infra/secrets.enc.yaml
+cd ../infra-secrets             # private, sibling of this repo under ~/github/
+aws sso login --profile disag   # KMS principal for alias/disag-sops
 
-# Edit any time:
-pnpm sops:edit                  # sops handles decrypt → $EDITOR → re-encrypt
+# First secret: seed disag/prod.sops.yaml from the template, fill, save ENCRYPTED.
+$EDITOR disag/prod.sops.yaml.example   # define the flat key shape (see other projects)
+sops disag/prod.sops.yaml              # sops decrypt → $EDITOR → re-encrypt on save
+# then commit disag/prod.sops.yaml (+ the disag rule in .sops.yaml) THERE.
 ```
 
-Then uncomment the `data "sops_file"` block sketched in
-`versions.tf` and reference values as
-`data.sops_file.secrets.data["key_name"]`. The file is decrypted on
-each `terraform plan`/`apply` using the active AWS profile's KMS
-access — `pnpm tf:login` first if creds are stale.
+Then uncomment the `data "sops_file"` block sketched in `versions.tf`
+(its `source_file` points at `../../../infra-secrets/disag/prod.sops.yaml`)
+and reference values as `data.sops_file.secrets.data["key_name"]`. The
+file is decrypted in-memory on each `terraform plan`/`apply` using the
+active AWS profile's KMS access — `pnpm tf:login` first if creds are
+stale.
 
 ### Hand off to CI
 

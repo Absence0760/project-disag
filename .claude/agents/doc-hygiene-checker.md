@@ -11,7 +11,7 @@ This repo's doc set lives in three places:
 
 - `docs/` — domain documentation: `algorithm.md`, `method5.md` (the PATCH_EXCEED deep-dive), `exceed.md`, `file-formats.md`, `problem.md`, `building.md` (the PyInstaller / per-OS build guide).
 - `CLAUDE.md` files — operator notes at the repo root, in `disag/`, in `exceed/`, and in `web/` (as `web/README.md`).
-- E2E and infra READMEs — `web/frontend/e2e/README.md`, `web/infra/`'s tfvars example, `.sops.yaml`.
+- E2E and infra READMEs — `web/frontend/e2e/README.md`, `web/infra/`'s tfvars example. (Prod secrets and their `.sops.yaml` live in the private `../infra-secrets` repo, not here.)
 
 There is no `docs/conventions.md`, `docs/decisions.md`, or `docs/roadmap.md` in this repo today — don't propose them unless the user has explicitly asked for one.
 
@@ -59,7 +59,7 @@ For each classification, list the docs that the rule says to touch:
 | File-format | `docs/file-formats.md`, and the warning blocks in `disag/CLAUDE.md` / `exceed/CLAUDE.md` if parser gotchas changed |
 | Web / API contract | `web/README.md` (the routes table + flow diagram), `web/frontend/e2e/README.md` if the test contract changed |
 | Frontend behaviour | `web/README.md` "What's wired" section if a route added; `web/frontend/e2e/README.md` if a spec was renamed |
-| Infra | `web/README.md` "Provisioning" + "Releasing" sections; `web/infra/terraform.tfvars.example` for new vars; `.sops.yaml` if creation rules changed |
+| Infra | `web/README.md` "Provisioning" + "Releasing" sections; `web/infra/terraform.tfvars.example` for new vars; `../infra-secrets/disag/` (private repo) if a secret was added |
 | Convention | The closest `CLAUDE.md` to the change — root for repo-wide, `disag/CLAUDE.md` / `exceed/CLAUDE.md` for package-local, `web/README.md` for web-specific |
 | Operator-facing process | `web/README.md` Scripts table; root `CLAUDE.md` if it's a session-level gotcha; `scripts/export-tf-vars.sh` header comment if the var set changed |
 | Decision / trade-off | The relevant `CLAUDE.md` ("Gotchas already hit" or per-package equivalent) |

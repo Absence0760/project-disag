@@ -44,10 +44,7 @@
     "tf:outputs": "cd web/infra && terraform output -json",
     "tf:export-vars": "scripts/export-tf-vars.sh",
 
-    "//-- sops --": "Edit sensitive infra config encrypted under .sops.yaml. Decryption needs the SSO-active KMS principal — `pnpm tf:login` first.",
-    "sops:bootstrap": "scripts/sops-bootstrap.sh",
-    "sops:edit": "sops web/infra/secrets.enc.yaml",
-    "sops:rotate": "sops updatekeys web/infra/secrets.enc.yaml",
+    "//-- sops --": "Prod secrets live ENCRYPTED in the private ../infra-secrets repo (disag/prod.sops.yaml), NOT here — this repo is public. Edit/rotate from that repo: `sops disag/prod.sops.yaml`. Terraform reads the sibling file via the carlpett/sops provider; decryption needs the SSO-active KMS principal — `pnpm tf:login` first.",
 
     "//-- deploy --": "Local one-shot deploy. CI handles release-gated deploys via .github/workflows/deploy.yml. deploy:api uses `update-function-code` because lambda.tf has `ignore_changes = [filename, source_code_hash]` (to avoid drift from CI-pushed code), so `tf:apply` rebuilds the zip but never uploads it.",
     "deploy": "pnpm build && pnpm tf:apply && pnpm deploy:api && pnpm deploy:web",

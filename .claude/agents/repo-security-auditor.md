@@ -30,7 +30,7 @@ Every finding maps to one of these four boundaries:
 
 Cross-cutting:
 
-- **Secrets are SOPS-encrypted with AWS KMS.** Encrypted file: `web/infra/secrets.enc.yaml` (committed); plaintext siblings `web/infra/secrets.yaml` and `web/infra/secrets.json` are gitignored. `.sops.yaml` declares the KMS key + `encrypted_regex` — flag if a sensitive key shape isn't covered.
+- **Secrets are SOPS-encrypted with AWS KMS, and kept OUT of this public repo.** Prod secrets live in the private sibling repo `../infra-secrets`, under `disag/prod.sops.yaml`, keyed by `alias/disag-sops`; the `.sops.yaml` creation rules live in that repo too. This repo carries NO `.sops.yaml` and NO `secrets.enc.yaml` — flag any sops-encrypted file, plaintext `secrets.yaml`/`secrets.json`, or `.sops.yaml` that appears in this tree as a convention violation (secrets belong in `../infra-secrets`).
 - **Static frontend constraint.** `adapter-static` is non-negotiable — the S3 + CloudFront deploy depends on it. Any new SSR adapter, `+page.server.ts` load function, or `$env/static/private` reference from a client path is a finding (it implies an SSR adapter snuck in or secrets are about to leak into the bundle).
 - **stdlib-only Python.** `disag/` and `exceed/` are stdlib-only by repo policy. The Lambda runtime ships `boto3`; do not add new pip dependencies to `web/backend/`. `web/backend/requirements-dev.txt` is for the local dev shim only and must NOT be included in the Lambda zip.
 - **No emojis, no comments, no preemptive abstractions** — the house rules in the root `CLAUDE.md` apply to anything you write.
@@ -41,7 +41,7 @@ The `/audit/*` slash commands invoke you. Their prompt tells you which area to f
 
 | Area | What you look for | Starting points |
 |---|---|---|
-| `secrets` | `web/infra/secrets.enc.yaml` actually encrypted; plaintext `secrets.yaml`/`secrets.json` absent from git history; server-only env vars never referenced from a non-server frontend path; GitHub Actions `env:` blocks reference `${{ secrets.X }}` / `${{ vars.X }}` not literals; no AWS access keys anywhere; `.sops.yaml` placeholders resolved | `web/infra/secrets.enc.yaml`, `.sops.yaml`, `.github/workflows/`, `web/frontend/src/`, `web/backend/build.sh` |
+| `secrets` | no sops file / `.sops.yaml` / plaintext `secrets.yaml`/`secrets.json` present in THIS repo (prod secrets belong in private `../infra-secrets/disag/`); none of those in git history; server-only env vars never referenced from a non-server frontend path; GitHub Actions `env:` blocks reference `${{ secrets.X }}` / `${{ vars.X }}` not literals; no AWS access keys anywhere | `.github/workflows/`, `web/frontend/src/`, `web/backend/build.sh`, and a tree/history scan for stray sops/secret files |
 | `xss` | Svelte `{@html}` without sanitisation; user-supplied file names / error strings flowing into the DOM as HTML; dynamic `href` / `src` values that could carry `javascript:` / `data:` schemes; SVG content rendered inline rather than via `<img>` | Grep `web/frontend/src/` for `{@html`, `<a href={...}>`, `<img src={...}>` |
 | `deps` | `pnpm audit` findings (moderate+); GitHub Actions floating refs (`@v6`, `@main`) on deploy workflows that touch secrets; Dependabot config covers `web/frontend` + `web/infra` + GitHub Actions | `web/frontend/package.json`, `.github/dependabot.yml`, `.github/workflows/` |
 | `infra` | OIDC `:sub` conditions; S3 PAB; CloudFront response headers / OAC; KMS rotation; SOPS file encryption status; Lambda IAM least-privilege (per-bucket-ARN, not `s3:*`); CloudWatch log retention; budget alarm + SNS topic in `web/infra/alarms.tf`; WAF rate-limit in `web/infra/waf.tf` | `web/infra/*.tf`, `web/README.md` |
@@ -61,7 +61,7 @@ Findings format:
 Severity rubric:
 
 - **Critical** — known-exploited or trivially-exploitable; fix before next deploy. (Examples: secret in git history, OIDC `:sub` wildcard, S3 bucket policy with `Principal: "*"`, a route returns another client's `X-Client-Id` data, `s3:*` wildcard on the Lambda role.)
-- **High** — regression-guard test removed, SSR adapter added, CORS opened to `*` in prod, log retention infinite, AWS budget missing entirely, new sensitive key shape not covered by `.sops.yaml`'s `encrypted_regex`.
+- **High** — regression-guard test removed, SSR adapter added, CORS opened to `*` in prod, log retention infinite, AWS budget missing entirely, a sops-encrypted / plaintext secret or `.sops.yaml` committed into this public repo instead of the private `../infra-secrets`.
 - **Medium** — overscoped policy / missing input validation / overscoped grant. No concrete leak today but the principle of least privilege is violated. (Examples: CORS list includes a localhost origin in prod, GitHub Action pinned to `@v6` on a deploy workflow, `lifecycle.ignore_changes` missing on a CI-mutated field.)
 - **Low** — undocumented intent, missing comment on a security-relevant function, defence-in-depth weakness behind a working primary control, no API Gateway throttling configured.
 

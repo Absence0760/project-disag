@@ -48,7 +48,7 @@ These are the ones a generic reviewer misses. Cite the source when flagging.
 - **Mocked vs integration** (`web/frontend/e2e/README.md`). Mocked specs use `page.route()`; integration specs use `APIRequestContext` and the helpers in `e2e/integration/_fixtures.ts`. Flag a real-backend test in the mocked tree, or vice versa.
 - **Demo fixtures are generated.** Files under `examples/methodN_demo/data/` come from the sibling `generate.py`. Editing the data by hand is almost always wrong — flag direct edits.
 - **Per-resource IAM** (`web/infra/oidc.tf`, `web/infra/iam.tf`). Policies should target the specific Lambda function ARN, the specific S3 bucket ARN, the specific CloudFront distribution ARN. Wildcards on `*` Resources need a written justification.
-- **No plaintext secrets in tfvars or git.** Sensitive infra config goes through `web/infra/secrets.enc.yaml` (sops + KMS); see `.sops.yaml`. Flag any new tfvars value that smells like a credential, cert ARN, private domain, or third-party API key sitting in cleartext.
+- **No secrets in this repo at all.** This repo is public; prod secrets live encrypted in the private `../infra-secrets` repo (`disag/prod.sops.yaml`, sops + KMS). Flag any new tfvars value that smells like a credential, cert ARN, private domain, or third-party API key sitting in cleartext — AND flag any sops-encrypted file or `.sops.yaml` added to this tree (it belongs in `../infra-secrets`).
 - **No long-lived AWS credentials.** CI uses OIDC via the role in `web/infra/oidc.tf`. Flag any new workflow step using static AWS access keys or hardcoded `AWS_SECRET_ACCESS_KEY`-style env vars.
 
 ### House style (root `CLAUDE.md`, web/README.md, user's global preferences)

@@ -199,13 +199,14 @@ gh api repos/:owner/:repo/environments/production --silent
 
 #### 4h. sops file is well-formed (if it exists)
 
-If `web/infra/secrets.enc.yaml` exists, verify it decrypts cleanly:
+Prod secrets live in the private sibling repo `../infra-secrets`, not here.
+If `../infra-secrets/disag/prod.sops.yaml` exists, verify it decrypts cleanly:
 
 ```
-sops -d web/infra/secrets.enc.yaml >/dev/null
+sops -d ../infra-secrets/disag/prod.sops.yaml >/dev/null
 ```
 
-Exit 0 → green. Failure → red ("sops decrypt failing — SSO creds for the KMS key may be expired (`pnpm tf:login`), or the file is corrupted").
+Exit 0 → green. Failure → red ("sops decrypt failing — SSO creds for the KMS key may be expired (`pnpm tf:login`), or the file is corrupted"). Skip (not red) if the sibling repo isn't checked out — it's a separate private repo.
 
 ### 5. Build the report
 

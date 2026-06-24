@@ -39,8 +39,11 @@ web/infra/*.tfvars
 web/infra/backend.config
 !web/infra/backend.config.example
 
-# Populated by `pnpm sops:bootstrap` from .sops.yaml.example. Holds
-# the active AWS account ID in the KMS ARN — never commit. The
-# example file is the only one that lives in source control.
+# Prod secrets and their sops config live in the private ../infra-secrets
+# repo, NOT here (this repo is public). Nothing sops-related is tracked in
+# this repo; guard against an accidental copy landing in the tree.
 .sops.yaml
-!.sops.yaml.example
+secrets.enc.yaml
+web/infra/secrets.enc.yaml
+web/infra/secrets.yaml
+web/infra/secrets.json

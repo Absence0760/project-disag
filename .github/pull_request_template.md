@@ -40,7 +40,7 @@
 
 - [ ] `X-Client-Id` is treated as a scoping bucket, not as authentication — no route returns another client's runs
 - [ ] Pre-signed URLs keep their TTL + size-condition limits; no `s3:*` wildcard slipped into the Lambda IAM policy
-- [ ] No secret has a hardcoded fallback (`os.environ.get('X', '...')`); secrets stay in `web/infra/secrets.enc.yaml` (sops + KMS)
+- [ ] No secret has a hardcoded fallback (`os.environ.get('X', '...')`); prod secrets stay in the private `../infra-secrets` repo (`disag/prod.sops.yaml`, sops + KMS), never in this public repo
 - [ ] No new SSR adapter or `+page.server.ts` (`adapter-static` is non-negotiable for the S3 + CloudFront deploy)
 - [ ] CORS, WAF rate limit, CloudWatch log retention, and budget alarms all still bounded after any infra change
 

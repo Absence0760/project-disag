@@ -3,12 +3,12 @@
 *.tfstate.backup
 *.tfvars
 !*.tfvars.example
-# Plaintext secrets must never land in git; the encrypted file
-# (secrets.enc.yaml) is committed by design.
+# Secrets — encrypted OR plaintext — never land in this (public) repo.
+# Prod secrets live in the private ../../infra-secrets/disag/ repo. These
+# globs guard against an accidental copy being staged here.
 secrets.yaml
 secrets.json
-!*.enc.yaml
-!*.enc.yaml.example
+*.enc.yaml
 crash.log
 crash.*.log
 override.tf

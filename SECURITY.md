@@ -58,7 +58,8 @@ Automated controls already in place:
   published to <https://scorecard.dev>.
 - Dependabot for npm, terraform, and github-actions
   (`.github/dependabot.yml`), with minor/patch auto-merge gated on CI.
-- sops + AWS KMS for infra secrets (`.sops.yaml`,
-  `web/infra/secrets.enc.yaml`).
+- sops + AWS KMS for infra secrets. Prod secrets are kept ENCRYPTED in
+  the private `infra-secrets` repo (`disag/prod.sops.yaml`), never in
+  this public repo — only public placeholders live in `web/infra`.
 - GitHub Actions OIDC for deploys — no long-lived AWS access keys
   in the repo (`web/infra/oidc.tf`).

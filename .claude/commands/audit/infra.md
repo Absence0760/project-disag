@@ -24,8 +24,7 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
 - `oidc.tf` — looks up the bootstrap-created deploy role (`data "aws_iam_role" "github_deploy"`) and attaches this repo's per-resource deploy policy to it. The OIDC provider itself and the role's trust policy are created by the cross-project bootstrap, not here.
 - `waf.tf` — WAFv2 Web ACL (CloudFront scope, us-east-1 aliased provider) — per-IP rate limit
 - `alarms.tf` — SNS topic + AWS Budget + per-resource CloudWatch alarms (Lambda errors/throttles/duration, CloudFront 5xx, API Gateway 5xx)
-- `.sops.yaml` (repo root) — KMS creation rules
-- `web/infra/secrets.enc.yaml.example` — sops shape; encrypted sibling is `web/infra/secrets.enc.yaml` (gitignored as a plaintext name; the `.enc.yaml` variant is explicitly allow-listed)
+- Secrets are NOT in this repo — prod secrets live encrypted in the private sibling `../infra-secrets/disag/prod.sops.yaml` (creation rules in `../infra-secrets/.sops.yaml`). This tree should carry no `.sops.yaml` or `*.enc.yaml`.
 
 ## What to check
 
@@ -107,11 +106,10 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
    - Per-resource `aws_cloudwatch_metric_alarm` for Lambda errors / throttles / duration, CloudFront 5xx rate, API Gateway 5xx rate — all publishing to the same SNS topic. Missing any of these is Medium.
    - SNS topic policy permits both `cloudwatch.amazonaws.com` and `budgets.amazonaws.com` to publish. Flag if either is dropped.
 
-10. **sops alignment (`.sops.yaml` + `web/infra/secrets.enc.yaml.example`).**
-    - `.sops.yaml` `creation_rules` includes a regex covering `web/infra/.*\.enc\.yaml$` and a real KMS ARN (not the `REPLACE_ME` placeholder). **Medium** if placeholder.
-    - `encrypted_regex` covers `^(data|stringData|password|secret|token|key|.*_key|.*_secret)$` — adding a new sensitive key name not matching the regex means it leaks in plaintext inside the file (the YAML envelope is encrypted at the named-leaf level). **High** if a new key shape that should be secret isn't covered.
-    - The Terraform `sops_file` data source is currently commented in `versions.tf` notes; uncommenting requires the secret to actually exist. If a `data.sops_file` reference shows up referencing a path that's not present, `terraform plan` fails — Medium.
-    - `web/infra/secrets.enc.yaml` (the encrypted form) should be allow-listed in `web/infra/.gitignore` while `web/infra/secrets.yaml` and `.json` (plaintext siblings) stay ignored. Verify with `git check-ignore`.
+10. **sops alignment (secrets live in the private `../infra-secrets` repo).**
+    - Prod secrets are NOT in this public repo — they live encrypted in `../infra-secrets/disag/prod.sops.yaml`, keyed by `alias/disag-sops`, with the creation rule in `../infra-secrets/.sops.yaml`. This repo should carry NO `.sops.yaml` or `*.enc.yaml`. Any present → **High** (convention violation).
+    - The Terraform `sops_file` data source is currently commented in `versions.tf` notes; when uncommented its `source_file` must point at `${path.module}/../../../infra-secrets/disag/prod.sops.yaml` and the secret must actually exist, or `terraform plan` fails — Medium.
+    - `web/infra/.gitignore` should ignore `*.enc.yaml`, `secrets.yaml`, and `secrets.json` (no allow-list exception). Verify with `git check-ignore web/infra/secrets.enc.yaml`.
 
 11. **Tagging (`providers.tf` default_tags).**
     - The AWS provider sets `default_tags = { project, environment, managed-by = "terraform", component = "web" }` on **both** providers (default region + `us_east_1` alias used by WAF / future ACM). Cost-attribution and audit-trail depend on these. Flag if either provider block drops one.
@@ -128,8 +126,8 @@ Every `.tf` file under `web/infra/`, plus the sops machinery:
 ## Report
 
 - **Critical** — OIDC `:sub` wildcarded on the bootstrap-owned role, `var.bootstrap_slug` doesn't match what the bootstrap was run with (data lookup fails), IAM policy with `*` resources or `iam:*`/`sts:*` actions, S3 bucket policy with `Principal: "*"`, public-access-block disabled, `/api/*` cache policy not `CachingDisabled`, `aws_budgets_budget` missing entirely, WAF not attached to CloudFront.
-- **High** — bucket versioning off on `outputs`, missing PAB on any bucket, `allowed_origin = "*"` in prod, new sensitive key shape not covered by `.sops.yaml` `encrypted_regex`, log retention infinite on Lambda / API Gateway / WAF, AWS budget exists but no `FORECASTED` notification.
-- **Medium** — `.sops.yaml` still has `REPLACE_ME` ARN, plaintext sensitive value in `terraform.tfvars`, missing `lifecycle.ignore_changes` on a CI-mutated field, `PriceClass_All` without justification, provider pins too loose (`~> X` alone), missing `default_tags` entry, WAF declared but not attached to CloudFront, `aws_sns_topic_subscription` skipped because `budget_alert_email` empty in prod, `reserved_concurrent_executions` unset on the Lambda, API Gateway throttling unbounded on `$default`.
+- **High** — bucket versioning off on `outputs`, missing PAB on any bucket, `allowed_origin = "*"` in prod, a sops/secret file committed into this public repo instead of `../infra-secrets`, log retention infinite on Lambda / API Gateway / WAF, AWS budget exists but no `FORECASTED` notification.
+- **Medium** — plaintext sensitive value in `terraform.tfvars`, `data.sops_file` pointing at a path that doesn't resolve to `../infra-secrets/disag/`, missing `lifecycle.ignore_changes` on a CI-mutated field, `PriceClass_All` without justification, provider pins too loose (`~> X` alone), missing `default_tags` entry, WAF declared but not attached to CloudFront, `aws_sns_topic_subscription` skipped because `budget_alert_email` empty in prod, `reserved_concurrent_executions` unset on the Lambda, API Gateway throttling unbounded on `$default`.
 - **Low** — suggesting `use_lockfile = true` over legacy DynamoDB locking, undocumented `lifecycle` choice, missing per-resource CloudWatch alarm in `alarms.tf`.
 
 For each finding: file:line + the concrete change to make. Don't apply fixes without explicit confirmation.
@@ -141,7 +139,7 @@ For each finding: file:line + the concrete change to make. Don't apply fixes wit
 - `web/infra/cloudfront.tf` + `web/infra/s3.tf` — the user-facing surface
 - `web/infra/alarms.tf` — cost / availability guardrails
 - `web/infra/waf.tf` — per-IP rate limit
-- `.sops.yaml` — KMS recipient + creation rules
+- `../infra-secrets/.sops.yaml` — KMS recipient + creation rules (private sibling repo; secrets do not live here)
 
 ## Delegate to
 
