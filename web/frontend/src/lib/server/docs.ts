@@ -98,10 +98,20 @@ function rewriteHref(href: string): string {
 // parse — see DOCS below; parsing is synchronous so there's no interleaving.
 let headingSlugs = new Map<string, number>();
 
+// Strip HTML tags, looping until stable so overlapping/nested angle brackets
+// (e.g. `<<b>b>`) can't leave a `<tag>` behind after a single pass.
+function stripTags(text: string): string {
+	let prev: string;
+	let out = text;
+	do {
+		prev = out;
+		out = out.replace(/<[^>]+>/g, '');
+	} while (out !== prev);
+	return out;
+}
+
 function slugify(text: string): string {
-	const base = text
-		.toLowerCase()
-		.replace(/<[^>]+>/g, '')
+	const base = stripTags(text.toLowerCase())
 		.replace(/[^\w\s-]/g, '')
 		.trim()
 		.replace(/\s+/g, '-')
