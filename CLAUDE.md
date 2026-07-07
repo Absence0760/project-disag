@@ -41,9 +41,10 @@ python3 -m disag --no-gui --method 0 \
     --daily1  testfiles/RUKOKI-l.DAY \
     --output  /tmp/out.day --report /tmp/out.rep
 
-# Method 5 with whole-month donor replacement: when >= 50% of a month's
-# days would need a synthetic donor, use one coherent donor month instead
-# of grafting donor days onto real data (default is day-by-day splice).
+# Method 5 with whole-month replacement: when >= 50% of a month's days are
+# missing from file 1, rebuild the whole month from one coherent source
+# (file 2 if complete, else the exceedance donor) instead of splicing
+# sources day-by-day (default is day-by-day splice).
 python3 -m disag --no-gui --method 5 --whole-month-donor-fraction 0.5 \
     --monthly testfiles/SINDILA.MON \
     --daily1  testfiles/RUKOKI-l.DAY \
@@ -214,3 +215,7 @@ testfiles/          Sample input files (gitignored)
 - When touching `disag/files.py`, run both `python3 -m disag --no-gui …` and
   `python3 -m exceed --no-gui …` against the fixtures — exceed depends on
   this reader.
+
+## Merging & branch protection
+
+`main` follows the estate "sealed main + CI gate" standard: every change reaches `origin/main` through a PR — **no direct pushes** (enforced on admins, including the owner). Merging requires a green **`CI gate`** status check — the single required check, an aggregator job present in each functional CI workflow that `needs:` that workflow's jobs. There are **0 required approvals** — a green CI is the merge gate, not a human sign-off. Force-pushes, branch deletion, and unresolved conversations are blocked; history is linear. Commit locally per-piece, but land via a CI-gated PR.
