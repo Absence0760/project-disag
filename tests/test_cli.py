@@ -152,6 +152,62 @@ class HappyPathRunTests(unittest.TestCase):
                     os.unlink(p)
 
 
+class WholeMonthDonorFractionCliTests(unittest.TestCase):
+    """The --whole-month-donor-fraction flag: validation, note, and effect."""
+
+    def _reject(self, value):
+        return _run_cli(
+            '--method', '5', '--whole-month-donor-fraction', value,
+            '--monthly', 'x', '--daily1', 'y', '--output', 'z', '--report', 'w',
+            expect_success=False,
+        )
+
+    def test_fraction_above_one_rejected(self):
+        res = self._reject('1.5')
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn('(0, 1]', res.stderr)
+
+    def test_fraction_zero_rejected(self):
+        self.assertNotEqual(self._reject('0').returncode, 0)
+
+    def test_fraction_non_numeric_rejected(self):
+        res = self._reject('half')
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn('not a number', res.stderr)
+
+    def test_note_when_used_on_non_method5(self):
+        out, rep = _tmp('.day'), _tmp('.rep')
+        try:
+            res = _run_cli(
+                '--method', '0', '--whole-month-donor-fraction', '0.5',
+                '--monthly', _demo('method5_demo', 'data', 'target.MON'),
+                '--daily1',  _demo('method5_demo', 'data', 'gauge_a_complete.DAY'),
+                '--output',  out, '--report', rep,
+            )
+            self.assertIn('only affects Method 5', res.stderr)
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_whole_month_replacement_appears_in_report(self):
+        out, rep = _tmp('.day'), _tmp('.rep')
+        try:
+            _run_cli(
+                '--method', '5', '--whole-month-donor-fraction', '0.5',
+                '--monthly', _demo('method5_demo', 'data', 'target.MON'),
+                '--daily1',  _demo('method5_demo', 'data', 'gauge_a_with_gaps.DAY'),
+                '--output',  out, '--report', rep,
+            )
+            with open(rep) as f:
+                content = f.read()
+            self.assertIn('whole-month donor replacement', content)
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+
 class HighMissingWarningTests(unittest.TestCase):
     """The warning that fires when method 0 leaves a lot of months missing."""
 

@@ -106,6 +106,25 @@ test.describe('Run page', () => {
 		await expect(page.getByTestId('drop-daily2')).not.toBeVisible();
 	});
 
+	test('method 5 reveals whole-month donor options; the toggle gates the percent input', async ({
+		page
+	}) => {
+		await page.goto('/run');
+
+		await expect(page.getByTestId('whole-month-options')).not.toBeVisible();
+		await page.getByTestId('method-5').check();
+		await expect(page.getByTestId('whole-month-options')).toBeVisible();
+
+		// The percent input only appears once the option is enabled.
+		await expect(page.getByTestId('whole-month-percent')).not.toBeVisible();
+		await page.getByTestId('whole-month-toggle').check();
+		await expect(page.getByTestId('whole-month-percent')).toBeVisible();
+
+		// Switching to another method hides the whole block again.
+		await page.getByTestId('method-0').check();
+		await expect(page.getByTestId('whole-month-options')).not.toBeVisible();
+	});
+
 	test('switching to exceed swaps method picker for intervals input', async ({ page }) => {
 		await page.goto('/run');
 

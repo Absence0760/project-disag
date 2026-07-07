@@ -5,12 +5,22 @@
 from __future__ import annotations
 
 import os
-from tkinter import IntVar, StringVar, Tk, filedialog, messagebox, ttk
+from tkinter import (
+    BooleanVar,
+    IntVar,
+    StringVar,
+    Tk,
+    Toplevel,
+    filedialog,
+    messagebox,
+    ttk,
+)
 
 from .algorithm import (
     METHOD_LABELS,
     METHOD_NAMES,
     NO_FILES,
+    DisagConfig,
     DisagMethod,
     count_coverage,
     disaggregate,
@@ -85,6 +95,16 @@ class DisagApp(Tk):
                 command=self._on_method_change,
             )
             rb.grid(row=i, column=0, sticky='w', padx=8, pady=2)
+
+        # Method-5 whole-month donor replacement (off by default = splice).
+        # The state lives on the app; the Options… dialog edits it.
+        self._wm_enabled = BooleanVar(value=False)
+        self._wm_percent = IntVar(value=50)
+        self._btn_options = ttk.Button(
+            method_frame, text='Options…', command=self._open_options,
+        )
+        self._btn_options.grid(
+            row=len(METHOD_LABELS), column=0, sticky='e', padx=8, pady=(4, 2))
 
         # ── Status bar ────────────────────────────────────────────────
         self._status_var = StringVar(value='Select files to begin.')
@@ -198,6 +218,71 @@ class DisagApp(Tk):
         messagebox.showinfo('Conversion complete', msg)
 
     # ------------------------------------------------------------------
+    # Method-5 options dialog
+    # ------------------------------------------------------------------
+
+    def _open_options(self):
+        dlg = Toplevel(self)
+        dlg.title('Method 5 Options')
+        dlg.resizable(False, False)
+        dlg.transient(self)
+
+        # Edit copies; OK commits, Cancel discards.
+        enabled = BooleanVar(value=self._wm_enabled.get())
+        percent = IntVar(value=self._wm_percent.get())
+
+        frm = ttk.Frame(dlg, padding=12)
+        frm.grid(sticky='nsew')
+
+        ttk.Checkbutton(
+            frm, variable=enabled,
+            text='Replace the whole month with one donor month',
+        ).grid(row=0, column=0, columnspan=3, sticky='w')
+
+        ttk.Label(frm, text='when ≥').grid(
+            row=1, column=0, sticky='e', padx=(20, 2), pady=(4, 0))
+        spin = ttk.Spinbox(frm, from_=1, to=100, width=5, textvariable=percent)
+        spin.grid(row=1, column=1, sticky='w', pady=(4, 0))
+        ttk.Label(frm, text='% of days would need a donor').grid(
+            row=1, column=2, sticky='w', padx=(2, 0), pady=(4, 0))
+
+        ttk.Label(
+            frm, foreground='#555',
+            text='(instead of grafting donor days onto real data)',
+        ).grid(row=2, column=0, columnspan=3, sticky='w',
+               padx=(20, 0), pady=(2, 8))
+
+        def _sync(*_):
+            spin.config(state='normal' if enabled.get() else 'disabled')
+        enabled.trace_add('write', _sync)
+        _sync()
+
+        btns = ttk.Frame(frm)
+        btns.grid(row=3, column=0, columnspan=3, sticky='e')
+        ttk.Button(btns, text='Cancel', command=dlg.destroy).pack(
+            side='left', padx=(0, 6))
+
+        def _ok():
+            try:
+                p = int(percent.get())
+            except Exception:
+                p = self._wm_percent.get()
+            self._wm_percent.set(max(1, min(100, p)))
+            self._wm_enabled.set(enabled.get())
+            dlg.destroy()
+        ttk.Button(btns, text='OK', command=_ok).pack(side='left')
+
+        dlg.grab_set()
+        dlg.wait_window()
+
+    def _whole_month_config(self, method: DisagMethod) -> DisagConfig:
+        """Build the run config from the current Method-5 option state."""
+        fraction = None
+        if method == DisagMethod.PATCH_EXCEED and self._wm_enabled.get():
+            fraction = self._wm_percent.get() / 100.0
+        return DisagConfig(whole_month_donor_fraction=fraction)
+
+    # ------------------------------------------------------------------
     # Method-change callback
     # ------------------------------------------------------------------
 
@@ -218,6 +303,10 @@ class DisagApp(Tk):
             # Entries are readonly but we can visually grey them out
             self._entries[key].config(
                 style='TEntry' if enabled else 'Disabled.TEntry')
+
+        # Whole-month options only apply to Method 5
+        self._btn_options.config(
+            state='normal' if method == DisagMethod.PATCH_EXCEED else 'disabled')
 
         # Clear the status bar so a stale "Done — N/M" from a previous run
         # doesn't look like it applies to the now-selected method.
@@ -276,7 +365,9 @@ class DisagApp(Tk):
                 obs_daily[1] = read_daily_file(self._vars['day2'].get())
 
             self._set_status('Disaggregating…')
-            records, report_lines = disaggregate(method, gen_monthly, obs_daily, no_files)
+            config = self._whole_month_config(method)
+            records, report_lines = disaggregate(
+                method, gen_monthly, obs_daily, no_files, config=config)
 
             self._set_status('Writing output file…')
             header_info = {

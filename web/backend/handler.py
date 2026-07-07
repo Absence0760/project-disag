@@ -63,6 +63,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from disag.algorithm import (  # noqa: E402
     METHOD_NAMES,
     NO_FILES,
+    DisagConfig,
     DisagMethod,
     disaggregate,
 )
@@ -332,6 +333,21 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise _ClientError(400, f'Invalid method: {method_id}') from exc
 
+    # Method-5 whole-month donor replacement (optional). Validate at the
+    # boundary so an out-of-range value is a 400, not a 500 from DisagConfig.
+    fraction = body.get('whole_month_donor_fraction')
+    config = None
+    if fraction is not None:
+        # Pass the raw JSON value straight to DisagConfig so its own
+        # type/range checks run — do NOT float() first, or a JSON `true`
+        # would coerce to 1.0 and slip past the bool rejection.
+        try:
+            config = DisagConfig(whole_month_donor_fraction=fraction)
+        except (TypeError, ValueError) as exc:
+            raise _ClientError(
+                400, f'Invalid whole_month_donor_fraction: {fraction}'
+            ) from exc
+
     min_files = NO_FILES[dm]
 
     if not body.get('monthly_key'):
@@ -372,7 +388,9 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
             daily2_path = _download(daily2_key, workdir)
             obs_daily[1] = read_daily_file(str(daily2_path))
 
-        records, report_lines = disaggregate(dm, gen_monthly, obs_daily, no_files)
+        records, report_lines = disaggregate(
+            dm, gen_monthly, obs_daily, no_files, config=config
+        )
 
         output_path = workdir / 'output.day'
         report_path = workdir / 'output.rep'

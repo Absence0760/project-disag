@@ -16,6 +16,7 @@ Unit conversion at the end: Mm3/day → m3/s  (×1e6 / 86400)
 from __future__ import annotations
 
 import calendar
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import Optional
 
@@ -64,6 +65,38 @@ NO_FILES = {
     DisagMethod.EVEN:         0,
     DisagMethod.PATCH_EXCEED: 1,
 }
+
+
+# ---------------------------------------------------------------------------
+# Run configuration
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class DisagConfig:
+    """Optional per-run knobs. Defaults reproduce the historic behaviour.
+
+    ``whole_month_donor_fraction`` (PATCH_EXCEED only):
+      * ``None`` — splice months day-by-day (file 1 → file 2 → donor).
+      * ``f`` in ``(0, 1]`` — when the fraction of days that would need a
+        synthetic donor reaches ``f``, replace the *whole* month with a
+        single coherent donor month instead of grafting donor days onto
+        real data. Ignored by every method other than PATCH_EXCEED.
+    """
+
+    whole_month_donor_fraction: Optional[float] = None
+
+    def __post_init__(self):
+        f = self.whole_month_donor_fraction
+        if f is None:
+            return
+        if not isinstance(f, (int, float)) or isinstance(f, bool):
+            raise ValueError(
+                'whole_month_donor_fraction must be None or a number in (0, 1]'
+            )
+        if not (0 < f <= 1):
+            raise ValueError(
+                f'whole_month_donor_fraction must be in (0, 1], got {f!r}'
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +422,7 @@ def _convert_month(
     donor_dists: Optional[list] = None,
     tier2_scale: Optional[list] = None,
     tier_counters: Optional[dict] = None,
+    whole_month_fraction: Optional[float] = None,
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
@@ -431,6 +465,7 @@ def _convert_month(
     exceed_donor: Optional[DailyRecord] = None
     exceed_donor_file_idx: int = 0
     pending_match: Optional[tuple] = None
+    whole_month_donor = False
 
     if method == DisagMethod.EVEN:
         pass  # never missing
@@ -519,11 +554,35 @@ def _convert_month(
                         )
                         missing = True
                     else:
-                        dec['note'] = (
-                            f'patched from donor: file {file_idx + 1}'
-                            f' {donor_year:4d}{month:3d}'
-                            f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
-                        )
+                        # Whole-month replacement: when the synthetic share
+                        # reaches the configured fraction, and the donor covers
+                        # *every* day of the month, discard the real days and
+                        # take one coherent donor month rather than grafting
+                        # donor days onto real data. If the fraction isn't met
+                        # (or the donor is somehow short) this falls through to
+                        # the normal splice — never worse than the default.
+                        n_needed = len(needs_donor_days)
+                        if (whole_month_fraction is not None
+                                and n_needed / dim >= whole_month_fraction
+                                and len(exceed_donor.v) >= dim
+                                and all(_day_val(exceed_donor, d) >= 0
+                                        for d in range(dim))):
+                            whole_month_donor = True
+                            dec['note'] = (
+                                f'whole-month donor replacement: '
+                                f'{n_needed}/{dim} day(s) needed a donor '
+                                f'(>= {whole_month_fraction:.0%}); replaced '
+                                f'{dim - n_needed} real day(s) with donor '
+                                f'file {file_idx + 1} {donor_year:4d}{month:3d} '
+                                f'(exceed% target={p_target:.1f} '
+                                f'donor={p_donor:.1f})'
+                            )
+                        else:
+                            dec['note'] = (
+                                f'patched from donor: file {file_idx + 1}'
+                                f' {donor_year:4d}{month:3d}'
+                                f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
+                            )
                         # Staged, not committed: a month selected here can
                         # still be overridden by the zero-observed even-fill
                         # below, in which case the donor shape is discarded
@@ -545,6 +604,18 @@ def _convert_month(
         # even-filled month would be miscredited to file 1 / file 2 / a
         # donor that didn't actually shape its output.
         local_t1 = local_t2 = local_t3 = 0
+        # Cross-river rescale for donor day values (tier 3 and whole-month
+        # replacement): when the donor comes from file 2, its values are
+        # lifted to file-1's per-month scale before entering qD, else a mixed
+        # tier-1/tier-3 month gets a distorted shape. The factor is constant
+        # across the month, so for whole-month fills it cancels in the disag
+        # formula's ratio — applying it unconditionally is safe.
+        donor_scale = (
+            tier2_scale[exceed_donor_file_idx].get(month, 1.0)
+            if (exceed_donor is not None and tier2_scale
+                and exceed_donor_file_idx < len(tier2_scale))
+            else 1.0
+        )
         qD = []
         for d in range(dim):
             f1 = _day_val(rec1, d)
@@ -577,7 +648,12 @@ def _convert_month(
                     dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_EXCEED:
-                if f1 >= 0:
+                if whole_month_donor:
+                    # Every day comes from the one coherent donor month.
+                    val = _day_val(exceed_donor, d) * donor_scale
+                    dec['oth'] += 1
+                    local_t3 += 1
+                elif f1 >= 0:
                     val = f1
                     dec['f1'] += 1
                     local_t1 += 1
@@ -593,19 +669,6 @@ def _convert_month(
                     dec['f2'] += 1
                     local_t2 += 1
                 elif exceed_donor is not None and d < len(exceed_donor.v):
-                    # Same cross-river rescale as tier 2: when the donor
-                    # comes from file 2, its day values must be brought
-                    # up to file-1's scale before they enter qD, otherwise
-                    # a mixed tier-1 / tier-3 month gets a distorted shape.
-                    # For whole-month tier-3 fills the scale is constant
-                    # across days so it cancels in the disag formula's
-                    # ratio — applying it unconditionally is safe.
-                    donor_scale = (
-                        tier2_scale[exceed_donor_file_idx].get(month, 1.0)
-                        if (tier2_scale
-                            and exceed_donor_file_idx < len(tier2_scale))
-                        else 1.0
-                    )
                     val = _day_val(exceed_donor, d) * donor_scale
                     dec['oth'] += 1
                     local_t3 += 1
@@ -691,6 +754,7 @@ def disaggregate(
     gen_monthly: dict,      # {(year, month): float}  Mm3/month
     obs_daily: list,        # list of dicts {(year, month): DailyRecord}
     no_files: int,
+    config: Optional[DisagConfig] = None,
 ) -> tuple:
     """
     Disaggregate monthly flows to daily flows.
@@ -701,6 +765,8 @@ def disaggregate(
     gen_monthly : {(year, month): Mm3/month value}
     obs_daily   : list of dicts; obs_daily[0] = file 1, obs_daily[1] = file 2
     no_files    : number of daily files actually supplied (0, 1, or 2)
+    config      : optional DisagConfig; None reproduces the historic
+                  behaviour. Only PATCH_EXCEED reads any of its fields.
 
     Returns
     -------
@@ -708,6 +774,9 @@ def disaggregate(
     """
     if not gen_monthly:
         raise ValueError('Monthly input file is empty or could not be read.')
+
+    config = config or DisagConfig()
+    whole_month_fraction = config.whole_month_donor_fraction
 
     # --- Determine processing window ---
     # Run window = full span of gen_monthly for every method.  Months
@@ -857,6 +926,7 @@ def disaggregate(
             donor_dists=donor_dists,
             tier2_scale=tier2_scale,
             tier_counters=tier_counters,
+            whole_month_fraction=whole_month_fraction,
         )
         output_records.append(rec)
         year, month = _inc_month(year, month)

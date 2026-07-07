@@ -174,6 +174,30 @@ their respective distributions, so the comparison `|p_donor − p_target|`
 is well-defined. This is independent of the binned exceedance computation
 in the `exceed` tool and avoids interval-edge artefacts.
 
+**Whole-month donor replacement (optional).** By default a month is
+spliced day-by-day: real days from tier 1/2 are kept and only the
+still-missing days are copied from the donor. Passing a
+`DisagConfig(whole_month_donor_fraction=f)` to `disaggregate` (with
+`f` in `(0, 1]`) changes this for PATCH_EXCEED only: when the fraction
+of days that would need a synthetic donor — days missing from **all**
+supplied daily files — reaches `f`, the **entire** month is taken from
+one coherent donor month instead of grafting donor days onto real data.
+This preserves the donor's day-to-day correlation across the whole
+month, at the cost of discarding the real observations that were
+present. The measure is the tier-3 (synthetic) day count, so with a
+single daily file it equals the file-1 gap fraction; with two files it
+counts only days missing from both.
+
+If the fraction trips but no eligible donor exists, the month
+**degrades to the normal day-by-day splice** — enabling the option
+never makes a month worse than the default would. The decision-log row
+names the discarded-real-day count and the donor, e.g.
+`whole-month donor replacement: 18/30 day(s) needed a donor (>= 50%);
+replaced 12 real day(s) with donor file 1 2004  6 (exceed% target=33.3
+donor=25.0)`. Replaced days count as tier 3 in the coverage summary, so
+the real-vs-borrowed split stays honest. The default (`None`) leaves
+output byte-for-byte identical to before the option existed.
+
 **Run window.** Every method (0–5) iterates over the full hydro-year
 span of `gen_monthly` — the daily files do **not** clamp the window
 on either end. Output length therefore always equals `gen_monthly`'s

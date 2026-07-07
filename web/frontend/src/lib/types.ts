@@ -19,6 +19,12 @@ export interface DisagRequest {
 	monthly_key: string;
 	daily1_key?: string | null;
 	daily2_key?: string | null;
+	/**
+	 * Method 5 only. When ≥ this fraction (0–1] of a month's days would need a
+	 * synthetic donor, replace the whole month with one donor month instead of
+	 * splicing donor days onto real data. null/omitted = day-by-day splice.
+	 */
+	whole_month_donor_fraction?: number | null;
 }
 
 export interface SeasonGroup {

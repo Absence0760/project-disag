@@ -348,6 +348,68 @@ class DisagValidationTests(HandlerTestBase):
         )
         self.assertEqual(resp['statusCode'], 400)
 
+    def test_whole_month_fraction_out_of_range_returns_400(self):
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'whole_month_donor_fraction': 1.5,
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('whole_month_donor_fraction', _body(resp)['error'])
+
+    def test_whole_month_fraction_non_numeric_returns_400(self):
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'whole_month_donor_fraction': 'half',
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+
+    def test_whole_month_fraction_bool_true_returns_400(self):
+        # JSON `true` must not coerce to 1.0 and slip past validation.
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'whole_month_donor_fraction': True,
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('whole_month_donor_fraction', _body(resp)['error'])
+
+    def test_valid_whole_month_fraction_passes_that_gate(self):
+        # A valid fraction must not be what trips the 400 — the request then
+        # fails later on the missing monthly_key, proving the gate accepted it.
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={'method': 5, 'whole_month_donor_fraction': 0.5},
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('monthly_key', _body(resp)['error'])
+
     def test_foreign_monthly_key_returns_403(self):
         resp = handler.lambda_handler(
             _make_event(

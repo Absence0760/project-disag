@@ -41,6 +41,14 @@ python3 -m disag --no-gui --method 0 \
     --daily1  testfiles/RUKOKI-l.DAY \
     --output  /tmp/out.day --report /tmp/out.rep
 
+# Method 5 with whole-month donor replacement: when >= 50% of a month's
+# days would need a synthetic donor, use one coherent donor month instead
+# of grafting donor days onto real data (default is day-by-day splice).
+python3 -m disag --no-gui --method 5 --whole-month-donor-fraction 0.5 \
+    --monthly testfiles/SINDILA.MON \
+    --daily1  testfiles/RUKOKI-l.DAY \
+    --output  /tmp/out.day --report /tmp/out.rep
+
 # Convert a Pitman .ANS monthly file into the NinhamShand .MON layout
 python3 -m disag.convert path/to/PUNRQ6.ANS path/to/PUNRQ6.MON
 

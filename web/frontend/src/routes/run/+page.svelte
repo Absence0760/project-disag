@@ -25,6 +25,9 @@
 	const queryTool = page.url.searchParams.get('tool');
 	let tool = $state<Tool>(VALID_TOOLS.includes(queryTool as Tool) ? (queryTool as Tool) : 'disag');
 	let method = $state<DisagMethod>(0);
+	// Method-5 whole-month donor replacement (off by default = day-by-day splice).
+	let wholeMonthEnabled = $state(false);
+	let wholeMonthPercent = $state(50);
 	let intervals = $state(20);
 	let seasonalMode = $state(false);
 	let seasons = $state<SeasonGroup[]>([
@@ -47,6 +50,8 @@
 	$effect(() => {
 		void tool;
 		void method;
+		void wholeMonthEnabled;
+		void wholeMonthPercent;
 		void intervals;
 		void seasonalMode;
 		void monthlyFile;
@@ -133,7 +138,15 @@
 				const daily1_key = await uploadIfPresent(daily1File);
 				const daily2_key = await uploadIfPresent(daily2File);
 				stage = 'computing';
-				result = await runDisag({ method, monthly_key, daily1_key, daily2_key });
+				const whole_month_donor_fraction =
+					method === 5 && wholeMonthEnabled ? wholeMonthPercent / 100 : null;
+				result = await runDisag({
+					method,
+					monthly_key,
+					daily1_key,
+					daily2_key,
+					whole_month_donor_fraction
+				});
 			} else if (tool === 'exceed') {
 				if (!monthlyFile && !daily1File) {
 					throw new Error('Exceed needs at least one of a monthly or daily file.');
@@ -184,6 +197,11 @@
 	function clampIntervals() {
 		if (!Number.isFinite(intervals)) intervals = 20;
 		else intervals = Math.min(200, Math.max(5, Math.round(intervals)));
+	}
+
+	function clampWholeMonthPercent() {
+		if (!Number.isFinite(wholeMonthPercent)) wholeMonthPercent = 50;
+		else wholeMonthPercent = Math.min(100, Math.max(1, Math.round(wholeMonthPercent)));
 	}
 
 	function toggleSeasonMonth(season: SeasonGroup, month: number) {
@@ -255,6 +273,39 @@
 					</label>
 				{/each}
 			</div>
+			{#if method === 5}
+				<div class="method-options" data-testid="whole-month-options">
+					<label class="check">
+						<input
+							type="checkbox"
+							bind:checked={wholeMonthEnabled}
+							data-testid="whole-month-toggle"
+						/>
+						<span>Replace the whole month with one donor month</span>
+					</label>
+					{#if wholeMonthEnabled}
+						<div class="method-option-row">
+							<span>when ≥</span>
+							<input
+								type="number"
+								min="1"
+								max="100"
+								bind:value={wholeMonthPercent}
+								onblur={clampWholeMonthPercent}
+								class="input pct"
+								aria-label="Whole-month donor threshold, percent of days"
+								aria-describedby="whole-month-hint"
+								data-testid="whole-month-percent"
+							/>
+							<span>% of a month’s days would need a donor</span>
+						</div>
+						<p class="muted" id="whole-month-hint">
+							Instead of grafting donor days onto real data. Preserves the donor’s day-to-day
+							pattern across the whole month, but discards the real days that were present.
+						</p>
+					{/if}
+				</div>
+			{/if}
 		</section>
 	{:else if tool === 'exceed'}
 		<section class="card group" aria-label="Histogram intervals">
@@ -465,6 +516,26 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
+	}
+
+	.method-options {
+		margin-top: var(--space-3);
+		padding-top: var(--space-3);
+		border-top: 1px solid var(--border);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.method-option-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.input.pct {
+		width: 5rem;
 	}
 
 	.seasons {

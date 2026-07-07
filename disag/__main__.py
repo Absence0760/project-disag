@@ -29,6 +29,19 @@ import re
 import sys
 
 
+def _donor_fraction(value):
+    """argparse type for --whole-month-donor-fraction: a float in (0, 1]."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(f'not a number: {value!r}')
+    if not (0 < f <= 1):
+        raise argparse.ArgumentTypeError(
+            f'must be in (0, 1], got {f!r}'
+        )
+    return f
+
+
 def _parse_tier_coverage(report_lines):
     """Pull tier-1/2/3 day counts out of the .rep coverage summary.
 
@@ -67,6 +80,13 @@ def main():
     parser.add_argument('--daily2',   help='Daily reference file 2 (.day)')
     parser.add_argument('--output', '-o', help='Output daily file (.day)')
     parser.add_argument('--report', '-r', help='Report file (.rep)')
+    parser.add_argument(
+        '--whole-month-donor-fraction', type=_donor_fraction, metavar='F',
+        help='Method 5 only: when >= F of a month\'s days would need a '
+             'synthetic donor (F in (0, 1]), replace the whole month with '
+             'one donor month instead of grafting donor days onto real data '
+             '(default: splice day-by-day)',
+    )
 
     args = parser.parse_args()
 
@@ -95,6 +115,7 @@ def main():
 
     # ── CLI mode ──────────────────────────────────────────────────────
     from .algorithm import (
+        DisagConfig,
         DisagMethod,
         METHOD_NAMES,
         NO_FILES,
@@ -106,6 +127,17 @@ def main():
 
     method = DisagMethod(args.method)
     min_files = NO_FILES[method]
+
+    if (args.whole_month_donor_fraction is not None
+            and method != DisagMethod.PATCH_EXCEED):
+        print(
+            'Note: --whole-month-donor-fraction only affects Method 5 '
+            '(PATCH_EXCEED); it is ignored for this method.',
+            file=sys.stderr,
+        )
+    config = DisagConfig(
+        whole_month_donor_fraction=args.whole_month_donor_fraction
+    )
 
     required = {'monthly': args.monthly, 'output': args.output, 'report': args.report}
     if min_files >= 1:
@@ -136,7 +168,9 @@ def main():
         obs_daily[1] = read_daily_file(args.daily2)
 
     print('Disaggregating…')
-    records, report_lines = disaggregate(method, gen_monthly, obs_daily, no_files)
+    records, report_lines = disaggregate(
+        method, gen_monthly, obs_daily, no_files, config=config
+    )
 
     header_info = {
         'monthly_file': os.path.basename(args.monthly),

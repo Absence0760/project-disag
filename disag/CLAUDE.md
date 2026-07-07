@@ -32,6 +32,13 @@ for the file layout.
 Number of required daily files is in `NO_FILES[method]` — use this rather
 than hardcoding.
 
+Method 5 has one optional knob, `DisagConfig(whole_month_donor_fraction=f)`
+(also `--whole-month-donor-fraction f` on the CLI): when the fraction of a
+month's days needing a synthetic donor reaches `f`, replace the whole month
+with one coherent donor month instead of splicing donor days onto real data.
+Default `None` = day-by-day splice (unchanged). See
+[../docs/method5.md](../docs/method5.md#whole-month-donor-replacement-optional).
+
 ## Things to watch
 
 ### The Delphi backfill bug
