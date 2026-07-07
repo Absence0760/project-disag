@@ -82,10 +82,10 @@ def main():
     parser.add_argument('--report', '-r', help='Report file (.rep)')
     parser.add_argument(
         '--whole-month-donor-fraction', type=_donor_fraction, metavar='F',
-        help='Method 5 only: when >= F of a month\'s days would need a '
-             'synthetic donor (F in (0, 1]), replace the whole month with '
-             'one donor month instead of grafting donor days onto real data '
-             '(default: splice day-by-day)',
+        help='Method 5 only: when >= F of a month\'s days are missing from '
+             'file 1 (F in (0, 1]), rebuild the whole month from one coherent '
+             'source (file 2 if complete, else the exceedance donor) instead '
+             'of splicing sources day-by-day (default: splice day-by-day)',
     )
 
     args = parser.parse_args()

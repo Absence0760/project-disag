@@ -103,17 +103,18 @@ independent of the binned exceedance computation in the
 [`exceed/`](exceed.md) tool, and avoids interval-edge artefacts that
 would bite when n is small.
 
-## Whole-month donor replacement (optional)
+## Whole-month replacement (optional)
 
 By default Method 5 **splices**: for a partly-gappy month it keeps the
 real days (tier 1/2) and copies the donor only into the still-missing
 days. That mixes sources inside one month — real observations butted
-against synthetic donor days, with the day-to-day correlation broken at
-the seam. Across rivers this seam is where the borrowed shape is least
+against a borrowed shape, with the day-to-day correlation broken at each
+seam. Across rivers those seams are where the grafted shape is least
 trustworthy.
 
-The optional **whole-month donor replacement** removes the seam. Pass a
-config to `disaggregate`:
+The optional **whole-month replacement** removes the seams: once file 1
+is gappy enough, it throws away the day-by-day splice and rebuilds the
+month from a **single coherent source**. Pass a config to `disaggregate`:
 
 ```python
 from disag.algorithm import DisagConfig, DisagMethod, disaggregate
@@ -131,45 +132,55 @@ python3 -m disag --no-gui --method 5 --whole-month-donor-fraction 0.5 \
     --output out.day --report out.rep
 ```
 
-**What it does.** When the fraction of days that would need a synthetic
-donor reaches `f`, the *whole* month is taken from one coherent donor
-month instead of grafting donor days onto the real ones. "Days needing
-a donor" = days missing from **all** supplied daily files — the tier-3
-day count. So:
+**The trigger.** The fraction `f` is measured against **file 1's gaps** —
+the days file 1 cannot supply on its own (the "needs a patch" count).
+When a month is missing ≥ `f` of its days from file 1, whole-month
+replacement kicks in for that month. It is a fraction, so it's
+month-length-robust (Feb vs March); `0.5` reads as "if file 1 is missing
+more than half the month, don't splice — rebuild it from one source."
+`1.0` fires only when file 1 is missing the entire month.
 
-- **One daily file** → the measure is exactly the file-1 gap fraction.
-- **Two daily files** → it counts only days missing from *both*; the two
-  real gauges still splice freely below the threshold. It targets the
-  real↔synthetic seam specifically, not the (scale-corrected) file-1↔
-  file-2 seam.
+**The source, by tier priority.** When it fires, the whole month is taken
+from the first source that can supply *every* day, in the same order the
+per-day splice prefers its sources:
 
-Because a tripped month by definition has days missing from every file,
-file 2 cannot be complete there, so the whole-month source is always a
-single donor month — the same percentile-matched donor tier 3 would have
-picked, applied to every day.
+1. **File 1** — a complete file-1 month has no gaps, so it can never trip
+   a positive `f`. This tier is the trivial "nothing to replace" case; a
+   tripped month never lands here.
+2. **File 2** — if file 2 covers the whole month (every day present), the
+   month is taken wholesale from file 2, lifted to file 1's per-month
+   scale (the same cross-river factor the tier-2 splice uses). This is the
+   meaningful new behaviour: rather than keep file 1's minority of real
+   days and graft file 2 onto the gaps, take file 2's *coherent* month.
+3. **Exceedance donor** — if neither file covers the whole month, the
+   month is taken from the single percentile-matched donor month (tier 3),
+   applied to every day.
 
-**Choosing `f`.** It's a fraction, so it's month-length-robust (Feb vs
-March). `0.5` reads as "if more than half the month is guesswork, use
-one coherent donor month rather than a half-real, half-synthetic
-splice." Smaller values are more aggressive (discard real data sooner);
-`1.0` replaces only fully-synthetic months.
+**Degrade-to-splice guarantee.** If the fraction trips but neither file 2
+nor a donor can supply a *complete* month, the month falls back to the
+ordinary day-by-day splice. Enabling the option **never** makes a month
+worse (never adds a `MISSING`) than the default would produce — its own
+sources are validated for full coverage before they're used.
 
-**Degrade-to-splice guarantee.** If the fraction trips but no eligible
-donor exists, the month falls back to the ordinary day-by-day splice —
-enabling the option **never** makes a month worse (never adds a
-`MISSING`) than the default would produce.
-
-**What the report shows.** A replaced month's decision-log row is
-explicit about the real data discarded:
+**What the report shows.** A replaced month's decision-log row names the
+file-1 gap that triggered it and the single source it used. File-2
+replacement (`F1/F2/OTH = 0 30 0`, every day credited to file 2):
 
 ```
-2003  6    0   0  30   whole-month donor replacement: 18/30 day(s) needed a donor (>= 50%); replaced 12 real day(s) with donor file 1 2004  6 (exceed% target=33.3 donor=25.0)
+2003  6    0  30   0   whole-month file-2 replacement: file 1 missing 20/30 day(s) (>= 50%); whole month taken from file 2 2003  6
 ```
 
-`F1/F2/OTH` go all-or-nothing (`0 0 30`), and the replaced days count as
-tier 3 in the coverage summary — so "how much was real vs borrowed"
-stays honest. The default (`whole_month_donor_fraction=None`) leaves
-output byte-for-byte identical to splice mode.
+Donor replacement (`F1/F2/OTH = 0 0 30`, every day credited to tier 3):
+
+```
+2003  6    0   0  30   whole-month donor replacement: file 1 missing 20/30 day(s) (>= 50%); whole month taken from donor file 1 2004  6 (exceed% target=33.3 donor=25.0)
+```
+
+`F1/F2/OTH` go all-or-nothing, and the replaced days are credited to the
+source that actually shaped them (file 2 → tier 2, donor → tier 3) in the
+coverage summary — so "how much was real vs borrowed" stays honest. The
+default (`whole_month_donor_fraction=None`) leaves output byte-for-byte
+identical to splice mode.
 
 ## How it differs from Method 1 (`PATCH_CAL`)
 

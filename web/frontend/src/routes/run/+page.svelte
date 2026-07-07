@@ -293,15 +293,16 @@
 								bind:value={wholeMonthPercent}
 								onblur={clampWholeMonthPercent}
 								class="input pct"
-								aria-label="Whole-month donor threshold, percent of days"
+								aria-label="Whole-month threshold, percent of days missing from file 1"
 								aria-describedby="whole-month-hint"
 								data-testid="whole-month-percent"
 							/>
-							<span>% of a month’s days would need a donor</span>
+							<span>% of a month’s days are missing from file 1</span>
 						</div>
 						<p class="muted" id="whole-month-hint">
-							Instead of grafting donor days onto real data. Preserves the donor’s day-to-day
-							pattern across the whole month, but discards the real days that were present.
+							Rebuilds the month from one coherent source — file 2 if it covers the whole month,
+							otherwise the exceedance-matched donor — instead of splicing sources day-by-day.
+							Discards the real days that were present.
 						</p>
 					{/if}
 				</div>

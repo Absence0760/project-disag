@@ -34,10 +34,12 @@ than hardcoding.
 
 Method 5 has one optional knob, `DisagConfig(whole_month_donor_fraction=f)`
 (also `--whole-month-donor-fraction f` on the CLI): when the fraction of a
-month's days needing a synthetic donor reaches `f`, replace the whole month
-with one coherent donor month instead of splicing donor days onto real data.
+month's days **missing from file 1** reaches `f`, rebuild the whole month
+from one coherent source instead of splicing sources day-by-day. Source
+priority mirrors the per-day tiers: file 1 (complete → never trips), else
+file 2 if it covers the whole month, else the exceedance-matched donor.
 Default `None` = day-by-day splice (unchanged). See
-[../docs/method5.md](../docs/method5.md#whole-month-donor-replacement-optional).
+[../docs/method5.md](../docs/method5.md#whole-month-replacement-optional).
 
 ## Things to watch
 

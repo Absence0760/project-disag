@@ -243,12 +243,12 @@ class DisagApp(Tk):
             row=1, column=0, sticky='e', padx=(20, 2), pady=(4, 0))
         spin = ttk.Spinbox(frm, from_=1, to=100, width=5, textvariable=percent)
         spin.grid(row=1, column=1, sticky='w', pady=(4, 0))
-        ttk.Label(frm, text='% of days would need a donor').grid(
+        ttk.Label(frm, text='% of days are missing from file 1').grid(
             row=1, column=2, sticky='w', padx=(2, 0), pady=(4, 0))
 
         ttk.Label(
             frm, foreground='#555',
-            text='(instead of grafting donor days onto real data)',
+            text='(rebuild from file 2 if complete, else the exceedance donor)',
         ).grid(row=2, column=0, columnspan=3, sticky='w',
                padx=(20, 0), pady=(2, 8))
 

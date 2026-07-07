@@ -20,9 +20,10 @@ export interface DisagRequest {
 	daily1_key?: string | null;
 	daily2_key?: string | null;
 	/**
-	 * Method 5 only. When ≥ this fraction (0–1] of a month's days would need a
-	 * synthetic donor, replace the whole month with one donor month instead of
-	 * splicing donor days onto real data. null/omitted = day-by-day splice.
+	 * Method 5 only. When ≥ this fraction (0–1] of a month's days are missing
+	 * from file 1, rebuild the whole month from one coherent source instead of
+	 * splicing sources day-by-day. Source priority: file 2 if it covers the
+	 * whole month, else the exceedance-matched donor. null/omitted = splice.
 	 */
 	whole_month_donor_fraction?: number | null;
 }
