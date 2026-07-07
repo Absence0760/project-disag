@@ -1,8 +1,10 @@
-"""Tests for the Method-5 whole-month donor-replacement option (DisagConfig).
+"""Tests for the Method-5 whole-month replacement option (DisagConfig).
 
 When ``whole_month_donor_fraction`` is set, a PATCH_EXCEED month whose
-synthetic-donor share reaches the fraction is replaced wholesale by one
-coherent donor month instead of grafting donor days onto real data.
+file-1 gap share reaches the fraction is rebuilt from ONE coherent source
+instead of being spliced source-by-source. The source is chosen by tier
+priority: file 1 (a complete file-1 month never trips), else file 2 if it
+covers the whole month, else the exceedance-matched donor month.
 
 Stdlib only; ``python3 -m unittest discover tests`` runs these.
 """
@@ -77,7 +79,7 @@ class DisagConfigValidationTests(unittest.TestCase):
             .whole_month_donor_fraction, 0.5)
 
     def test_upper_bound_inclusive(self):
-        # 1.0 is valid (replace only when the whole month is synthetic)
+        # 1.0 is valid — replace only when file 1 is missing the entire month.
         self.assertEqual(
             DisagConfig(whole_month_donor_fraction=1.0)
             .whole_month_donor_fraction, 1.0)
@@ -104,72 +106,85 @@ class DisagConfigValidationTests(unittest.TestCase):
             DisagConfig(whole_month_donor_fraction=True)
 
 
-class ThresholdBoundaryTests(unittest.TestCase):
-    """A month with exactly half its days needing a donor sits on the 0.5 edge."""
+class TriggerIsFile1GapsTests(unittest.TestCase):
+    """The trigger measures the fraction of days file 1 is missing.
 
-    def _run(self, fraction):
+    With a single daily file there is no file 2, so the only reachable
+    whole-month source is the exceedance donor.
+    """
+
+    def _run(self, fraction, n_gaps=15):
         gen, obs1, _ = _scenario()
-        obs1[(2003, 6)] = _rec(2003, 6, range(15))   # 15 of 30 days missing
+        obs1[(2003, 6)] = _rec(2003, 6, range(n_gaps))
         cfg = DisagConfig(whole_month_donor_fraction=fraction)
-        recs, log = disaggregate(
+        return disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1, config=cfg)
-        return recs, log
 
-    def test_at_threshold_replaces_whole_month(self):
+    def test_at_threshold_replaces_whole_month_from_donor(self):
         _, log = self._run(0.5)          # 15/30 == 0.5 → trips
-        f1, f2, oth = _counts(log, 2003, 6)
-        self.assertEqual((f1, f2, oth), (0, 0, 30))
+        self.assertEqual(_counts(log, 2003, 6), (0, 0, 30))
         row = _row(log, 2003, 6)
         self.assertIn('whole-month donor replacement', row)
-        self.assertIn('15/30 day(s) needed a donor', row)
-        self.assertIn('replaced 15 real day(s)', row)
+        self.assertIn('file 1 missing 15/30 day(s)', row)
+        self.assertIn('whole month taken from donor', row)
 
     def test_just_below_threshold_splices(self):
         _, log = self._run(0.6)          # 15/30 == 0.5 < 0.6 → splice
-        f1, f2, oth = _counts(log, 2003, 6)
-        self.assertEqual((f1, f2, oth), (15, 0, 15))
+        self.assertEqual(_counts(log, 2003, 6), (15, 0, 15))
         row = _row(log, 2003, 6)
         self.assertNotIn('whole-month', row)
         self.assertIn('patched from donor', row)
 
-
-class SingleFileMeasureTests(unittest.TestCase):
-    """With one daily file, the donor fraction is exactly the file-1 gap fraction."""
-
-    def test_measure_equals_file1_gaps(self):
-        gen, obs1, _ = _scenario()
-        obs1[(2003, 6)] = _rec(2003, 6, range(10))   # 10 of 30 gaps
-        cfg = DisagConfig(whole_month_donor_fraction=10 / 30)
-        _, log = disaggregate(
-            DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1, config=cfg)
-        row = _row(log, 2003, 6)
-        self.assertIn('10/30 day(s) needed a donor', row)
+    def test_measure_is_file1_gap_fraction(self):
+        _, log = self._run(10 / 30, n_gaps=10)   # 10/30 file-1 gaps
+        self.assertIn('file 1 missing 10/30 day(s)', _row(log, 2003, 6))
         self.assertEqual(_counts(log, 2003, 6), (0, 0, 30))
 
 
-class TwoFileMeasureTests(unittest.TestCase):
-    """days-needing-a-donor counts only days missing from BOTH files."""
+class WholeMonthSourcePriorityTests(unittest.TestCase):
+    """Source priority when the trigger fires: file 1 → file 2 → exceedance.
 
-    def _run(self, fraction):
+    A complete file 1 has no gaps and never trips, so the reachable order
+    is file 2 (if it covers every day) then the exceedance donor.
+    """
+
+    def test_file2_complete_wins_over_donor(self):
         gen, obs1, obs2 = _scenario()
-        # File 1 missing days 0-19; file 2 covers days 0-9 → both-missing = 10-19.
-        obs1[(2003, 6)] = _rec(2003, 6, range(20))
-        obs2[(2003, 6)] = _rec(2003, 6, range(10, 30))
-        cfg = DisagConfig(whole_month_donor_fraction=fraction)
-        return disaggregate(
+        obs1[(2003, 6)] = _rec(2003, 6, range(20))   # 20/30 file-1 gaps → trips
+        # obs2[(2003, 6)] stays complete → whole month taken from file 2.
+        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        _, log = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2, config=cfg)
+        self.assertEqual(_counts(log, 2003, 6), (0, 30, 0))
+        row = _row(log, 2003, 6)
+        self.assertIn('whole-month file-2 replacement', row)
+        self.assertIn('file 1 missing 20/30 day(s)', row)
+        self.assertIn('whole month taken from file 2 2003  6', row)
+
+    def test_file2_incomplete_falls_through_to_donor(self):
+        gen, obs1, obs2 = _scenario()
+        obs1[(2003, 6)] = _rec(2003, 6, range(20))   # 20/30 file-1 gaps → trips
+        obs2[(2003, 6)] = _rec(2003, 6, [25])        # file 2 short one day → not whole
+        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        _, log = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2, config=cfg)
+        self.assertEqual(_counts(log, 2003, 6), (0, 0, 30))
+        row = _row(log, 2003, 6)
+        self.assertIn('whole-month donor replacement', row)
+        self.assertIn('whole month taken from donor', row)
 
     def test_below_threshold_splices_three_ways(self):
-        _, log = self._run(0.5)          # 10/30 == 0.33 < 0.5 → splice
-        self.assertEqual(_counts(log, 2003, 6), (10, 10, 10))
-
-    def test_at_threshold_replaces_and_discards_both_real_sources(self):
-        _, log = self._run(0.3)          # 10/30 == 0.33 >= 0.3 → whole month
-        self.assertEqual(_counts(log, 2003, 6), (0, 0, 30))
-        row = _row(log, 2003, 6)
-        self.assertIn('10/30 day(s) needed a donor', row)
-        # 20 real days (10 file-1 + 10 file-2) are discarded
-        self.assertIn('replaced 20 real day(s)', row)
+        gen, obs1, obs2 = _scenario()
+        # File 1 missing 0-11 (12/30 gaps); file 2 covers 0-5 but not 6-11 →
+        # both-missing 6-11 (donor). 12/30 < 0.5, so no whole-month.
+        obs1[(2003, 6)] = _rec(2003, 6, range(12))
+        obs2[(2003, 6)] = _rec(2003, 6, range(6, 12))
+        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        _, log = disaggregate(
+            DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2, config=cfg)
+        # days 12-29 file 1 (18); days 0-5 file 2 (6); days 6-11 donor (6)
+        self.assertEqual(_counts(log, 2003, 6), (18, 6, 6))
+        self.assertNotIn('whole-month', _row(log, 2003, 6))
 
 
 class DegradeToSpliceTests(unittest.TestCase):
@@ -184,7 +199,7 @@ class DegradeToSpliceTests(unittest.TestCase):
         recs_splice, _ = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1)
         cfg = DisagConfig(whole_month_donor_fraction=0.5)
-        recs_whole, log_whole = disaggregate(
+        recs_whole, _ = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1, config=cfg)
 
         # Same month is missing in both modes — degrade, not a worse outcome.
@@ -198,10 +213,10 @@ class DegradeToSpliceTests(unittest.TestCase):
         self.assertEqual(miss_whole, miss_splice)
 
     def test_donor_incomplete_over_whole_month_falls_back_to_splice(self):
-        # Defensive path: the donor covers every *needed* day but is missing
-        # a day the target has real data for, so a whole-month replacement is
-        # impossible. It must splice (keep real days, donor the gaps), not
-        # blow the whole month away as MISSING.
+        # Neither file 2 (absent) nor a complete donor exists: the donor covers
+        # every *needed* day but is missing a day the target has real data for,
+        # so no single source spans the month. It must splice (keep real days,
+        # donor the gaps), not blow the whole month away as MISSING.
         gen, obs1, _ = _scenario()
         obs1[(2003, 6)] = _rec(2003, 6, range(20))     # 20/30 gaps → 0.5 trips
         obs1[(2004, 6)] = _rec(2004, 6, [20])          # donor short on day 20

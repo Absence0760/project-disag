@@ -77,10 +77,15 @@ class DisagConfig:
 
     ``whole_month_donor_fraction`` (PATCH_EXCEED only):
       * ``None`` — splice months day-by-day (file 1 → file 2 → donor).
-      * ``f`` in ``(0, 1]`` — when the fraction of days that would need a
-        synthetic donor reaches ``f``, replace the *whole* month with a
-        single coherent donor month instead of grafting donor days onto
-        real data. Ignored by every method other than PATCH_EXCEED.
+      * ``f`` in ``(0, 1]`` — when the fraction of a month's days that file 1
+        is missing reaches ``f``, rebuild the *whole* month from one coherent
+        source instead of splicing sources day-by-day. The source is chosen by
+        tier priority: file 1 (a complete file-1 month has no gaps, so it never
+        trips a positive fraction), else file 2 if it covers every day, else
+        the exceedance-matched donor month. If neither file 2 nor a donor can
+        supply a complete month the month degrades to the ordinary day-by-day
+        splice — never worse than the default. Ignored by every method other
+        than PATCH_EXCEED.
     """
 
     whole_month_donor_fraction: Optional[float] = None
@@ -466,6 +471,7 @@ def _convert_month(
     exceed_donor_file_idx: int = 0
     pending_match: Optional[tuple] = None
     whole_month_donor = False
+    whole_month_file2 = False
 
     if method == DisagMethod.EVEN:
         pass  # never missing
@@ -509,86 +515,119 @@ def _convert_month(
                 dec['note'] = 'MISSING — file-1 gap, no complete similar month'
 
     elif method == DisagMethod.PATCH_EXCEED:
-        # Tier 1+2: any day missing in BOTH files triggers tier 3.
-        # Collect the day indices that need a donor so we can validate
-        # the donor's coverage at those positions below — find_exceed_donor
-        # picks by monthly-volume percentile and doesn't check day-level
-        # completeness, so a donor month could itself be short or have
-        # gaps on the exact days we need.
-        needs_donor_days = []
-        for d in range(dim):
-            if _day_val(rec1, d) < 0 and _day_val(rec2, d) < 0:
-                needs_donor_days.append(d)
+        # Days file 1 cannot supply on its own (tier-1 gaps). This "needs a
+        # patch" count drives whole-month replacement: when a large enough
+        # share of the month is missing from file 1, the month is rebuilt from
+        # ONE coherent source instead of being spliced source-by-source.
+        f1_missing = [d for d in range(dim) if _day_val(rec1, d) < 0]
+        # Days missing from BOTH files still need a tier-3 donor for the
+        # ordinary day-by-day splice.
+        needs_donor_days = [d for d in f1_missing if _day_val(rec2, d) < 0]
 
-        if needs_donor_days:
+        whole_month_trip = (
+            whole_month_fraction is not None
+            and dim > 0
+            and len(f1_missing) / dim >= whole_month_fraction
+        )
+
+        # Resolve an exceedance donor when the splice needs one (some day
+        # missing from both files) OR when a whole-month trip might fall
+        # through to the exceedance tier. find_exceed_donor ranks by monthly
+        # percentile and ignores day-level coverage, so validate it below.
+        donor = None
+        if needs_donor_days or whole_month_trip:
             donor = find_exceed_donor(
                 year, month, gen_monthly, obs_totals or [],
                 target_dists=target_dists, donor_dists=donor_dists,
             )
-            if donor is None:
-                dec['note'] = 'MISSING — no exceedance donor available'
-                missing = True
-            else:
+            if donor is not None:
                 file_idx, donor_year, p_target, p_donor = donor
                 exceed_donor = obs_daily[file_idx].get((donor_year, month))
                 exceed_donor_file_idx = file_idx
-                if exceed_donor is None:
-                    dec['note'] = 'MISSING — exceedance donor record vanished'
+
+        # The day-by-day splice can only fill days missing from BOTH files
+        # with a donor; if that donor is absent or itself gappy on those days
+        # the month is MISSING. Enabling whole-month replacement never rescues
+        # a month that would be MISSING under the default, and never creates a
+        # new one (its own sources are validated for full coverage below).
+        if needs_donor_days:
+            if exceed_donor is None:
+                dec['note'] = (
+                    'MISSING — no exceedance donor available'
+                    if donor is None else
+                    'MISSING — exceedance donor record vanished'
+                )
+                missing = True
+            else:
+                # Without this check a short/gappy donor would fall through to
+                # `val = -999.0`, clamp to 0, and emit synthetic zero-flow days
+                # no audit line ever announced.
+                bad = [
+                    d for d in needs_donor_days
+                    if _day_val(exceed_donor, d) < 0
+                ]
+                if bad:
+                    dec['note'] = (
+                        f'MISSING — donor file {exceed_donor_file_idx + 1}'
+                        f' {donor_year:4d}{month:3d}'
+                        f' missing day(s) {",".join(str(d + 1) for d in bad)}'
+                    )
                     missing = True
-                else:
-                    # Validate the donor covers every still-missing day with
-                    # a non-missing value. Without this check, a short donor
-                    # record (truncated file) or a donor month with its own
-                    # gaps would silently fall through to `val = -999.0` in
-                    # the qD loop, get clamped to 0, and emit synthetic
-                    # zero-flow days no audit line ever announced.
-                    bad = [
-                        d for d in needs_donor_days
-                        if _day_val(exceed_donor, d) < 0
-                    ]
-                    if bad:
-                        dec['note'] = (
-                            f'MISSING — donor file {file_idx + 1}'
-                            f' {donor_year:4d}{month:3d}'
-                            f' missing day(s) {",".join(str(d + 1) for d in bad)}'
-                        )
-                        missing = True
-                    else:
-                        # Whole-month replacement: when the synthetic share
-                        # reaches the configured fraction, and the donor covers
-                        # *every* day of the month, discard the real days and
-                        # take one coherent donor month rather than grafting
-                        # donor days onto real data. If the fraction isn't met
-                        # (or the donor is somehow short) this falls through to
-                        # the normal splice — never worse than the default.
-                        n_needed = len(needs_donor_days)
-                        if (whole_month_fraction is not None
-                                and n_needed / dim >= whole_month_fraction
-                                and len(exceed_donor.v) >= dim
-                                and all(_day_val(exceed_donor, d) >= 0
-                                        for d in range(dim))):
-                            whole_month_donor = True
-                            dec['note'] = (
-                                f'whole-month donor replacement: '
-                                f'{n_needed}/{dim} day(s) needed a donor '
-                                f'(>= {whole_month_fraction:.0%}); replaced '
-                                f'{dim - n_needed} real day(s) with donor '
-                                f'file {file_idx + 1} {donor_year:4d}{month:3d} '
-                                f'(exceed% target={p_target:.1f} '
-                                f'donor={p_donor:.1f})'
-                            )
-                        else:
-                            dec['note'] = (
-                                f'patched from donor: file {file_idx + 1}'
-                                f' {donor_year:4d}{month:3d}'
-                                f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
-                            )
-                        # Staged, not committed: a month selected here can
-                        # still be overridden by the zero-observed even-fill
-                        # below, in which case the donor shape is discarded
-                        # and must not count toward tier-3 stats.
-                        pending_match = (year, month, p_target, p_donor,
-                                         file_idx, donor_year)
+
+        # --- Whole-month replacement: one coherent source, by tier ---
+        # Priority: file 1 (complete) → file 2 (complete) → exceedance donor.
+        # A complete file 1 has no tier-1 gaps and cannot trip a positive
+        # fraction, so among tripped months the reachable choice is file 2 (if
+        # it covers every day) then the donor (if it covers every day). If
+        # neither can, the month falls through to the ordinary splice below —
+        # never worse than the default.
+        if whole_month_trip and not missing and f1_missing:
+            n_patch = len(f1_missing)
+            f2_full = (
+                rec2 is not None and len(rec2.v) >= dim
+                and all(_day_val(rec2, d) >= 0 for d in range(dim))
+            )
+            donor_full = (
+                exceed_donor is not None and len(exceed_donor.v) >= dim
+                and all(_day_val(exceed_donor, d) >= 0 for d in range(dim))
+            )
+            if f2_full:
+                whole_month_file2 = True
+                dec['note'] = (
+                    f'whole-month file-2 replacement: file 1 missing '
+                    f'{n_patch}/{dim} day(s) (>= {whole_month_fraction:.0%}); '
+                    f'whole month taken from file 2 {year:4d}{month:3d}'
+                )
+            elif donor_full:
+                whole_month_donor = True
+                dec['note'] = (
+                    f'whole-month donor replacement: file 1 missing '
+                    f'{n_patch}/{dim} day(s) (>= {whole_month_fraction:.0%}); '
+                    f'whole month taken from donor file '
+                    f'{exceed_donor_file_idx + 1} {donor_year:4d}{month:3d} '
+                    f'(exceed% target={p_target:.1f} donor={p_donor:.1f})'
+                )
+
+        # Ordinary day-by-day splice note: a donor genuinely shaped some day
+        # and the month was not wholesale-replaced above.
+        if (needs_donor_days and not missing
+                and not whole_month_file2 and not whole_month_donor):
+            dec['note'] = (
+                f'patched from donor: file {exceed_donor_file_idx + 1}'
+                f' {donor_year:4d}{month:3d}'
+                f' (exceed% target={p_target:.1f} donor={p_donor:.1f})'
+            )
+
+        # Stage the tier-3 donor match for the quality stats only when the
+        # donor actually shapes output — a splice that used it, or a whole-
+        # month donor replacement. A whole-month file-2 replacement discards
+        # the donor, so it is not credited. Staged, not committed: the zero-
+        # observed even-fill below can still discard the shape.
+        if (exceed_donor is not None and not missing
+                and (whole_month_donor
+                     or (needs_donor_days and not whole_month_file2))):
+            pending_match = (year, month, p_target, p_donor,
+                             exceed_donor_file_idx, donor_year)
 
     if missing:
         return DailyRecord(year=year, month=month, v=[MISSING] * dim)
@@ -615,6 +654,13 @@ def _convert_month(
             if (exceed_donor is not None and tier2_scale
                 and exceed_donor_file_idx < len(tier2_scale))
             else 1.0
+        )
+        # File-2 day values (per-day tier-2 fills and whole-month file-2
+        # replacement) are lifted to file-1's per-month scale before entering
+        # qD, so a cross-river file-2 shape isn't distorted.
+        f2_scale = (
+            tier2_scale[1].get(month, 1.0)
+            if tier2_scale and len(tier2_scale) > 1 else 1.0
         )
         qD = []
         for d in range(dim):
@@ -648,7 +694,13 @@ def _convert_month(
                     dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_EXCEED:
-                if whole_month_donor:
+                if whole_month_file2:
+                    # Every day comes from file 2's coherent month (lifted to
+                    # file-1's scale) — the tier-2 whole-month replacement.
+                    val = f2 * f2_scale
+                    dec['f2'] += 1
+                    local_t2 += 1
+                elif whole_month_donor:
                     # Every day comes from the one coherent donor month.
                     val = _day_val(exceed_donor, d) * donor_scale
                     dec['oth'] += 1
@@ -661,11 +713,7 @@ def _convert_month(
                     # Rescale file-2 day to file-1's per-month scale so a
                     # mixed file-1/file-2 month doesn't get a distorted shape
                     # when the two gauges sit on different rivers.
-                    scale = (
-                        tier2_scale[1].get(month, 1.0)
-                        if tier2_scale and len(tier2_scale) > 1 else 1.0
-                    )
-                    val = f2 * scale
+                    val = f2 * f2_scale
                     dec['f2'] += 1
                     local_t2 += 1
                 elif exceed_donor is not None and d < len(exceed_donor.v):
@@ -713,14 +761,10 @@ def _convert_month(
             dec['note'] = 'disaggregated from file 1 − file 2'
         elif dec['f2'] > 0:
             # File-2 day values are rescaled to file-1's per-month magnitude
-            # before they enter qD (see the qD loop). Surface that factor on
-            # the row so the reader can see why the file-2 shape was accepted
-            # and by how much it was lifted/dropped onto file-1's scale —
-            # the same factor printed in the header's scale-factor table.
-            f2_scale = (
-                tier2_scale[1].get(month, 1.0)
-                if tier2_scale and len(tier2_scale) > 1 else 1.0
-            )
+            # before they enter qD (see the qD loop, `f2_scale` above). Surface
+            # that factor on the row so the reader can see why the file-2 shape
+            # was accepted and by how much it was lifted/dropped onto file-1's
+            # scale — the same factor printed in the header's scale-factor table.
             if dec['f1'] == 0:
                 dec['note'] = (
                     'disaggregated from file 2 (file 1 fully missing; '
