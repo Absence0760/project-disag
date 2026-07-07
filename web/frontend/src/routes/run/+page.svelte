@@ -300,9 +300,9 @@
 							<span>% of a month’s days are missing from file 1</span>
 						</div>
 						<p class="muted" id="whole-month-hint">
-							Rebuilds the month from one coherent source — file 2 if it covers the whole
-							month, otherwise the exceedance-matched donor — instead of splicing sources
-							day-by-day. Discards the real days that were present.
+							Rebuilds the month from one coherent source — file 2 if it covers the whole month,
+							otherwise the exceedance-matched donor — instead of splicing sources day-by-day.
+							Discards the real days that were present.
 						</p>
 					{/if}
 				</div>
