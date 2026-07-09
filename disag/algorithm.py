@@ -75,32 +75,34 @@ NO_FILES = {
 class DisagConfig:
     """Optional per-run knobs. Defaults reproduce the historic behaviour.
 
-    ``whole_month_donor_fraction`` (PATCH_EXCEED only):
-      * ``None`` — splice months day-by-day (file 1 → file 2 → donor).
+    ``whole_month_fraction`` (methods that patch file-1 gaps from a single
+    coherent donor — PATCH_CAL, PATCH_FILE, PATCH_EXCEED):
+      * ``None`` — splice months day-by-day (keep the surviving file-1 days,
+        fill only the gaps from the method's donor source).
       * ``f`` in ``(0, 1]`` — when the fraction of a month's days that file 1
         is missing reaches ``f``, rebuild the *whole* month from one coherent
-        source instead of splicing sources day-by-day. The source is chosen by
-        tier priority: file 1 (a complete file-1 month has no gaps, so it never
-        trips a positive fraction), else file 2 if it covers every day, else
-        the exceedance-matched donor month. If neither file 2 nor a donor can
-        supply a complete month the month degrades to the ordinary day-by-day
-        splice — never worse than the default. Ignored by every method other
-        than PATCH_EXCEED.
+        donor instead of splicing day-by-day. Each method's donor differs:
+        PATCH_CAL takes the matched same-calendar-month year; PATCH_FILE takes
+        file 2; PATCH_EXCEED walks its tier priority (file 2 if it covers every
+        day, else the exceedance-matched donor). If no single source covers the
+        whole month the month degrades to the ordinary day-by-day splice —
+        never worse than the default. Ignored by ONE_FILE, INCREMENTAL, and
+        EVEN, which have no single-donor patch step.
     """
 
-    whole_month_donor_fraction: Optional[float] = None
+    whole_month_fraction: Optional[float] = None
 
     def __post_init__(self):
-        f = self.whole_month_donor_fraction
+        f = self.whole_month_fraction
         if f is None:
             return
         if not isinstance(f, (int, float)) or isinstance(f, bool):
             raise ValueError(
-                'whole_month_donor_fraction must be None or a number in (0, 1]'
+                'whole_month_fraction must be None or a number in (0, 1]'
             )
         if not (0 < f <= 1):
             raise ValueError(
-                f'whole_month_donor_fraction must be in (0, 1], got {f!r}'
+                f'whole_month_fraction must be in (0, 1], got {f!r}'
             )
 
 
@@ -472,6 +474,7 @@ def _convert_month(
     pending_match: Optional[tuple] = None
     whole_month_donor = False
     whole_month_file2 = False
+    whole_month_cal = False
 
     if method == DisagMethod.EVEN:
         pass  # never missing
@@ -491,25 +494,66 @@ def _convert_month(
             dec['note'] = 'MISSING — file 1 or file 2 has a missing day'
 
     elif method == DisagMethod.PATCH_FILE:
-        # Missing only if the same day is absent from BOTH files
-        for d in range(dim):
-            f1 = _day_val(rec1, d)
-            f2 = _day_val(rec2, d)
-            if f1 < 0 and f2 < 0:
-                missing = True
-                dec['note'] = 'MISSING — day absent from both file 1 and file 2'
-                break
+        f1_missing = [d for d in range(dim) if _day_val(rec1, d) < 0]
+        # Whole-month replacement: when file 1 is missing a large enough share
+        # AND file 2 covers every day, rebuild the whole month from file 2
+        # instead of splicing file 2 into file 1's gaps day-by-day. If file 2
+        # can't span the month this falls through to the ordinary splice below,
+        # so the option is never worse than the default.
+        f2_full = (
+            rec2 is not None and len(rec2.v) >= dim
+            and all(_day_val(rec2, d) >= 0 for d in range(dim))
+        )
+        whole_month_trip = (
+            whole_month_fraction is not None
+            and dim > 0
+            and len(f1_missing) / dim >= whole_month_fraction
+        )
+        if whole_month_trip and f1_missing and f2_full:
+            whole_month_file2 = True
+            n_patch = len(f1_missing)
+            dec['note'] = (
+                f'whole-month file-2 replacement: file 1 missing '
+                f'{n_patch}/{dim} day(s) (>= {whole_month_fraction:.0%}); '
+                f'whole month taken from file 2 {year:4d}{month:3d}'
+            )
+        else:
+            # Missing only if the same day is absent from BOTH files
+            for d in range(dim):
+                if _day_val(rec1, d) < 0 and _day_val(rec2, d) < 0:
+                    missing = True
+                    dec['note'] = (
+                        'MISSING — day absent from both file 1 and file 2'
+                    )
+                    break
 
     elif method == DisagMethod.PATCH_CAL:
         # If any day is missing, try to borrow a complete month from another year
-        needs_patch = rec1 is None or any(
-            _day_val(rec1, d) < 0 for d in range(dim))
-        if needs_patch:
+        f1_missing = [d for d in range(dim) if _day_val(rec1, d) < 0]
+        if f1_missing:
             patch_year = find_patch_year(year, month, gen_monthly, obs_daily[0])
             if patch_year is not None:
-                dec['note'] = (
-                    f'patched from similar calendar month {patch_year:4d}{month:3d}'
+                # find_patch_year already guarantees the donor month is complete
+                # and the same length, so it can always supply the whole month.
+                n_patch = len(f1_missing)
+                whole_month_trip = (
+                    whole_month_fraction is not None
+                    and dim > 0
+                    and n_patch / dim >= whole_month_fraction
                 )
+                if whole_month_trip:
+                    whole_month_cal = True
+                    dec['note'] = (
+                        f'whole-month replacement: file 1 missing '
+                        f'{n_patch}/{dim} day(s) (>= {whole_month_fraction:.0%}); '
+                        f'whole month taken from similar calendar month '
+                        f'{patch_year:4d}{month:3d}'
+                    )
+                else:
+                    dec['note'] = (
+                        f'patched from similar calendar month '
+                        f'{patch_year:4d}{month:3d}'
+                    )
             else:
                 missing = True
                 dec['note'] = 'MISSING — file-1 gap, no complete similar month'
@@ -676,7 +720,9 @@ def _convert_month(
                 dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_FILE:
-                if f1 < 0:
+                if whole_month_file2 or f1 < 0:
+                    # whole_month_file2 → every day from file 2's coherent
+                    # month; otherwise file 2 only fills file-1 gaps.
                     val = f2
                     dec['f2'] += 1
                 else:
@@ -684,10 +730,11 @@ def _convert_month(
                     dec['f1'] += 1
 
             elif method == DisagMethod.PATCH_CAL:
-                if f1 < 0 and patch_year is not None:
+                if patch_year is not None and (whole_month_cal or f1 < 0):
+                    # whole_month_cal → every day from the matched calendar
+                    # month; otherwise it only fills file-1 gaps.
                     rec_patch = obs_daily[0].get((patch_year, month))
-                    f3 = _day_val(rec_patch, d)
-                    val = f3
+                    val = _day_val(rec_patch, d)
                     dec['oth'] += 1
                 else:
                     val = f1
@@ -820,7 +867,7 @@ def disaggregate(
         raise ValueError('Monthly input file is empty or could not be read.')
 
     config = config or DisagConfig()
-    whole_month_fraction = config.whole_month_donor_fraction
+    whole_month_fraction = config.whole_month_fraction
 
     # --- Determine processing window ---
     # Run window = full span of gen_monthly for every method.  Months

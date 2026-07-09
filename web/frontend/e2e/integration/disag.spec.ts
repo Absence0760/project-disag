@@ -145,9 +145,7 @@ test.describe('@integration disag', () => {
 		expect(report).toMatch(/Tier 3/);
 	});
 
-	test('method 5 — whole_month_donor_fraction replaces gappy months wholesale', async ({
-		request
-	}) => {
+	test('method 5 — whole_month_fraction replaces gappy months wholesale', async ({ request }) => {
 		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
 		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
 
@@ -155,16 +153,32 @@ test.describe('@integration disag', () => {
 			method: 5,
 			monthly_key: monthlyKey,
 			daily1_key: daily1Key,
-			whole_month_donor_fraction: 0.5
+			whole_month_fraction: 0.5
 		});
 
 		const report = await fetchText(request, result.report_url);
 		expect(report).toContain('whole-month donor replacement');
 	});
 
-	test('method 5 — out-of-range whole_month_donor_fraction is rejected with 400', async ({
+	test('method 1 — whole_month_fraction replaces gappy months from the calendar donor', async ({
 		request
 	}) => {
+		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
+		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
+
+		const result = await runDisag(request, {
+			method: 1,
+			monthly_key: monthlyKey,
+			daily1_key: daily1Key,
+			whole_month_fraction: 0.5
+		});
+
+		const report = await fetchText(request, result.report_url);
+		expect(report).toContain('whole-month replacement');
+		expect(report).toContain('similar calendar month');
+	});
+
+	test('method 5 — out-of-range whole_month_fraction is rejected with 400', async ({ request }) => {
 		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
 		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
 
@@ -173,7 +187,7 @@ test.describe('@integration disag', () => {
 				method: 5,
 				monthly_key: monthlyKey,
 				daily1_key: daily1Key,
-				whole_month_donor_fraction: 1.5
+				whole_month_fraction: 1.5
 			},
 			headers: { 'x-client-id': CLIENT_ID }
 		});

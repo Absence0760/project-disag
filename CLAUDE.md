@@ -41,11 +41,12 @@ python3 -m disag --no-gui --method 0 \
     --daily1  testfiles/RUKOKI-l.DAY \
     --output  /tmp/out.day --report /tmp/out.rep
 
-# Method 5 with whole-month replacement: when >= 50% of a month's days are
-# missing from file 1, rebuild the whole month from one coherent source
-# (file 2 if complete, else the exceedance donor) instead of splicing
-# sources day-by-day (default is day-by-day splice).
-python3 -m disag --no-gui --method 5 --whole-month-donor-fraction 0.5 \
+# Whole-month replacement (methods 1, 2, 5): when >= 50% of a month's days are
+# missing from file 1, rebuild the whole month from one coherent donor instead
+# of splicing sources day-by-day (default is day-by-day splice). The donor is
+# the matched calendar month (method 1), file 2 (method 2), or file 2 then the
+# exceedance donor (method 5).
+python3 -m disag --no-gui --method 1 --whole-month-fraction 0.5 \
     --monthly testfiles/SINDILA.MON \
     --daily1  testfiles/RUKOKI-l.DAY \
     --output  /tmp/out.day --report /tmp/out.rep

@@ -29,8 +29,8 @@ import re
 import sys
 
 
-def _donor_fraction(value):
-    """argparse type for --whole-month-donor-fraction: a float in (0, 1]."""
+def _whole_month_fraction(value):
+    """argparse type for --whole-month-fraction: a float in (0, 1]."""
     try:
         f = float(value)
     except (TypeError, ValueError):
@@ -81,11 +81,12 @@ def main():
     parser.add_argument('--output', '-o', help='Output daily file (.day)')
     parser.add_argument('--report', '-r', help='Report file (.rep)')
     parser.add_argument(
-        '--whole-month-donor-fraction', type=_donor_fraction, metavar='F',
-        help='Method 5 only: when >= F of a month\'s days are missing from '
+        '--whole-month-fraction', type=_whole_month_fraction, metavar='F',
+        help='Methods 1, 2, 5: when >= F of a month\'s days are missing from '
              'file 1 (F in (0, 1]), rebuild the whole month from one coherent '
-             'source (file 2 if complete, else the exceedance donor) instead '
-             'of splicing sources day-by-day (default: splice day-by-day)',
+             'donor instead of splicing sources day-by-day. The donor is the '
+             'matched calendar month (method 1), file 2 (method 2), or file 2 '
+             'then the exceedance donor (method 5). Default: splice day-by-day',
     )
 
     args = parser.parse_args()
@@ -128,15 +129,20 @@ def main():
     method = DisagMethod(args.method)
     min_files = NO_FILES[method]
 
-    if (args.whole_month_donor_fraction is not None
-            and method != DisagMethod.PATCH_EXCEED):
+    _WHOLE_MONTH_METHODS = (
+        DisagMethod.PATCH_CAL,
+        DisagMethod.PATCH_FILE,
+        DisagMethod.PATCH_EXCEED,
+    )
+    if (args.whole_month_fraction is not None
+            and method not in _WHOLE_MONTH_METHODS):
         print(
-            'Note: --whole-month-donor-fraction only affects Method 5 '
-            '(PATCH_EXCEED); it is ignored for this method.',
+            'Note: --whole-month-fraction only affects Methods 1, 2 and 5; '
+            'it is ignored for this method.',
             file=sys.stderr,
         )
     config = DisagConfig(
-        whole_month_donor_fraction=args.whole_month_donor_fraction
+        whole_month_fraction=args.whole_month_fraction
     )
 
     required = {'monthly': args.monthly, 'output': args.output, 'report': args.report}

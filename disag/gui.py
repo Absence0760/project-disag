@@ -96,7 +96,7 @@ class DisagApp(Tk):
             )
             rb.grid(row=i, column=0, sticky='w', padx=8, pady=2)
 
-        # Method-5 whole-month donor replacement (off by default = splice).
+        # Whole-month replacement (methods 1/2/5; off by default = splice).
         # The state lives on the app; the Options… dialog edits it.
         self._wm_enabled = BooleanVar(value=False)
         self._wm_percent = IntVar(value=50)
@@ -218,12 +218,12 @@ class DisagApp(Tk):
         messagebox.showinfo('Conversion complete', msg)
 
     # ------------------------------------------------------------------
-    # Method-5 options dialog
+    # Whole-month replacement options dialog (methods 1/2/5)
     # ------------------------------------------------------------------
 
     def _open_options(self):
         dlg = Toplevel(self)
-        dlg.title('Method 5 Options')
+        dlg.title('Whole-month replacement')
         dlg.resizable(False, False)
         dlg.transient(self)
 
@@ -246,11 +246,17 @@ class DisagApp(Tk):
         ttk.Label(frm, text='% of days are missing from file 1').grid(
             row=1, column=2, sticky='w', padx=(2, 0), pady=(4, 0))
 
-        ttk.Label(
-            frm, foreground='#555',
-            text='(rebuild from file 2 if complete, else the exceedance donor)',
-        ).grid(row=2, column=0, columnspan=3, sticky='w',
-               padx=(20, 0), pady=(2, 8))
+        donor_hint = {
+            DisagMethod.PATCH_CAL:
+                '(rebuild from the matched same-calendar-month year)',
+            DisagMethod.PATCH_FILE:
+                '(rebuild from file 2 when it covers the whole month)',
+            DisagMethod.PATCH_EXCEED:
+                '(rebuild from file 2 if complete, else the exceedance donor)',
+        }.get(DisagMethod(self._method_var.get()), '')
+        ttk.Label(frm, foreground='#555', text=donor_hint).grid(
+            row=2, column=0, columnspan=3, sticky='w',
+            padx=(20, 0), pady=(2, 8))
 
         def _sync(*_):
             spin.config(state='normal' if enabled.get() else 'disabled')
@@ -275,12 +281,20 @@ class DisagApp(Tk):
         dlg.grab_set()
         dlg.wait_window()
 
+    # Methods that patch file-1 gaps from a single coherent donor, so the
+    # whole-month replacement option applies to them (see DisagConfig).
+    _WHOLE_MONTH_METHODS = (
+        DisagMethod.PATCH_CAL,
+        DisagMethod.PATCH_FILE,
+        DisagMethod.PATCH_EXCEED,
+    )
+
     def _whole_month_config(self, method: DisagMethod) -> DisagConfig:
-        """Build the run config from the current Method-5 option state."""
+        """Build the run config from the current whole-month option state."""
         fraction = None
-        if method == DisagMethod.PATCH_EXCEED and self._wm_enabled.get():
+        if method in self._WHOLE_MONTH_METHODS and self._wm_enabled.get():
             fraction = self._wm_percent.get() / 100.0
-        return DisagConfig(whole_month_donor_fraction=fraction)
+        return DisagConfig(whole_month_fraction=fraction)
 
     # ------------------------------------------------------------------
     # Method-change callback
@@ -304,9 +318,10 @@ class DisagApp(Tk):
             self._entries[key].config(
                 style='TEntry' if enabled else 'Disabled.TEntry')
 
-        # Whole-month options only apply to Method 5
+        # Whole-month options apply to the single-donor patch methods (1/2/5)
         self._btn_options.config(
-            state='normal' if method == DisagMethod.PATCH_EXCEED else 'disabled')
+            state='normal' if method in self._WHOLE_MONTH_METHODS
+            else 'disabled')
 
         # Clear the status bar so a stale "Done — N/M" from a previous run
         # doesn't look like it applies to the now-selected method.

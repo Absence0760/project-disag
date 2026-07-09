@@ -356,13 +356,13 @@ class DisagValidationTests(HandlerTestBase):
                 body={
                     'method': 5,
                     'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
-                    'whole_month_donor_fraction': 1.5,
+                    'whole_month_fraction': 1.5,
                 },
             ),
             None,
         )
         self.assertEqual(resp['statusCode'], 400)
-        self.assertIn('whole_month_donor_fraction', _body(resp)['error'])
+        self.assertIn('whole_month_fraction', _body(resp)['error'])
 
     def test_whole_month_fraction_non_numeric_returns_400(self):
         resp = handler.lambda_handler(
@@ -372,7 +372,7 @@ class DisagValidationTests(HandlerTestBase):
                 body={
                     'method': 5,
                     'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
-                    'whole_month_donor_fraction': 'half',
+                    'whole_month_fraction': 'half',
                 },
             ),
             None,
@@ -388,13 +388,13 @@ class DisagValidationTests(HandlerTestBase):
                 body={
                     'method': 5,
                     'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
-                    'whole_month_donor_fraction': True,
+                    'whole_month_fraction': True,
                 },
             ),
             None,
         )
         self.assertEqual(resp['statusCode'], 400)
-        self.assertIn('whole_month_donor_fraction', _body(resp)['error'])
+        self.assertIn('whole_month_fraction', _body(resp)['error'])
 
     def test_valid_whole_month_fraction_passes_that_gate(self):
         # A valid fraction must not be what trips the 400 — the request then
@@ -403,7 +403,7 @@ class DisagValidationTests(HandlerTestBase):
             _make_event(
                 method='POST',
                 path='/disag',
-                body={'method': 5, 'whole_month_donor_fraction': 0.5},
+                body={'method': 5, 'whole_month_fraction': 0.5},
             ),
             None,
         )

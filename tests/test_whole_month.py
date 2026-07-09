@@ -1,10 +1,12 @@
-"""Tests for the Method-5 whole-month replacement option (DisagConfig).
+"""Tests for the whole-month replacement option (DisagConfig).
 
-When ``whole_month_donor_fraction`` is set, a PATCH_EXCEED month whose
-file-1 gap share reaches the fraction is rebuilt from ONE coherent source
-instead of being spliced source-by-source. The source is chosen by tier
-priority: file 1 (a complete file-1 month never trips), else file 2 if it
-covers the whole month, else the exceedance-matched donor month.
+When ``whole_month_fraction`` is set, a month whose file-1 gap share reaches
+the fraction is rebuilt from ONE coherent donor instead of being spliced
+day-by-day. The donor differs per method: PATCH_CAL takes the matched
+same-calendar-month year, PATCH_FILE takes file 2, and PATCH_EXCEED walks its
+tier priority (file 2 if complete, else the exceedance-matched donor). If no
+single source covers the whole month the month degrades to the ordinary
+splice — never worse than the default.
 
 Stdlib only; ``python3 -m unittest discover tests`` runs these.
 """
@@ -68,42 +70,42 @@ def _counts(log, cy, hm):
 
 class DisagConfigValidationTests(unittest.TestCase):
     def test_none_is_valid(self):
-        self.assertIsNone(DisagConfig().whole_month_donor_fraction)
+        self.assertIsNone(DisagConfig().whole_month_fraction)
         self.assertIsNone(
-            DisagConfig(whole_month_donor_fraction=None)
-            .whole_month_donor_fraction)
+            DisagConfig(whole_month_fraction=None)
+            .whole_month_fraction)
 
     def test_mid_range_valid(self):
         self.assertEqual(
-            DisagConfig(whole_month_donor_fraction=0.5)
-            .whole_month_donor_fraction, 0.5)
+            DisagConfig(whole_month_fraction=0.5)
+            .whole_month_fraction, 0.5)
 
     def test_upper_bound_inclusive(self):
         # 1.0 is valid — replace only when file 1 is missing the entire month.
         self.assertEqual(
-            DisagConfig(whole_month_donor_fraction=1.0)
-            .whole_month_donor_fraction, 1.0)
+            DisagConfig(whole_month_fraction=1.0)
+            .whole_month_fraction, 1.0)
 
     def test_zero_rejected(self):
         with self.assertRaises(ValueError):
-            DisagConfig(whole_month_donor_fraction=0)
+            DisagConfig(whole_month_fraction=0)
 
     def test_above_one_rejected(self):
         with self.assertRaises(ValueError):
-            DisagConfig(whole_month_donor_fraction=1.5)
+            DisagConfig(whole_month_fraction=1.5)
 
     def test_negative_rejected(self):
         with self.assertRaises(ValueError):
-            DisagConfig(whole_month_donor_fraction=-0.1)
+            DisagConfig(whole_month_fraction=-0.1)
 
     def test_non_numeric_rejected(self):
         with self.assertRaises(ValueError):
-            DisagConfig(whole_month_donor_fraction='x')
+            DisagConfig(whole_month_fraction='x')
 
     def test_bool_rejected(self):
         # bool is an int subclass — reject it so True/False can't sneak in
         with self.assertRaises(ValueError):
-            DisagConfig(whole_month_donor_fraction=True)
+            DisagConfig(whole_month_fraction=True)
 
 
 class TriggerIsFile1GapsTests(unittest.TestCase):
@@ -116,7 +118,7 @@ class TriggerIsFile1GapsTests(unittest.TestCase):
     def _run(self, fraction, n_gaps=15):
         gen, obs1, _ = _scenario()
         obs1[(2003, 6)] = _rec(2003, 6, range(n_gaps))
-        cfg = DisagConfig(whole_month_donor_fraction=fraction)
+        cfg = DisagConfig(whole_month_fraction=fraction)
         return disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1, config=cfg)
 
@@ -152,7 +154,7 @@ class WholeMonthSourcePriorityTests(unittest.TestCase):
         gen, obs1, obs2 = _scenario()
         obs1[(2003, 6)] = _rec(2003, 6, range(20))   # 20/30 file-1 gaps → trips
         # obs2[(2003, 6)] stays complete → whole month taken from file 2.
-        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        cfg = DisagConfig(whole_month_fraction=0.5)
         _, log = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2, config=cfg)
         self.assertEqual(_counts(log, 2003, 6), (0, 30, 0))
@@ -165,7 +167,7 @@ class WholeMonthSourcePriorityTests(unittest.TestCase):
         gen, obs1, obs2 = _scenario()
         obs1[(2003, 6)] = _rec(2003, 6, range(20))   # 20/30 file-1 gaps → trips
         obs2[(2003, 6)] = _rec(2003, 6, [25])        # file 2 short one day → not whole
-        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        cfg = DisagConfig(whole_month_fraction=0.5)
         _, log = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2, config=cfg)
         self.assertEqual(_counts(log, 2003, 6), (0, 0, 30))
@@ -179,7 +181,7 @@ class WholeMonthSourcePriorityTests(unittest.TestCase):
         # both-missing 6-11 (donor). 12/30 < 0.5, so no whole-month.
         obs1[(2003, 6)] = _rec(2003, 6, range(12))
         obs2[(2003, 6)] = _rec(2003, 6, range(6, 12))
-        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        cfg = DisagConfig(whole_month_fraction=0.5)
         _, log = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, obs2], 2, config=cfg)
         # days 12-29 file 1 (18); days 0-5 file 2 (6); days 6-11 donor (6)
@@ -198,7 +200,7 @@ class DegradeToSpliceTests(unittest.TestCase):
 
         recs_splice, _ = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1)
-        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        cfg = DisagConfig(whole_month_fraction=0.5)
         recs_whole, _ = disaggregate(
             DisagMethod.PATCH_EXCEED, gen, [obs1, {}], 1, config=cfg)
 
@@ -220,7 +222,7 @@ class DegradeToSpliceTests(unittest.TestCase):
         gen, obs1, _ = _scenario()
         obs1[(2003, 6)] = _rec(2003, 6, range(20))     # 20/30 gaps → 0.5 trips
         obs1[(2004, 6)] = _rec(2004, 6, [20])          # donor short on day 20
-        cfg = DisagConfig(whole_month_donor_fraction=0.5)
+        cfg = DisagConfig(whole_month_fraction=0.5)
         with patch('disag.algorithm.find_exceed_donor',
                    return_value=(0, 2004, 66.7, 62.5)):
             recs, log = disaggregate(
@@ -229,6 +231,86 @@ class DegradeToSpliceTests(unittest.TestCase):
         self.assertFalse(all(v == MISSING for v in june.v))
         self.assertEqual(_counts(log, 2003, 6), (10, 0, 20))  # spliced, not 0/0/30
         self.assertIn('patched from donor', _row(log, 2003, 6))
+        self.assertNotIn('whole-month', _row(log, 2003, 6))
+
+
+class Method1WholeMonthTests(unittest.TestCase):
+    """PATCH_CAL rebuilds a mostly-missing month from the matched calendar
+    month instead of splicing surviving file-1 days onto the donor's shape."""
+
+    def _run(self, fraction, n_gaps=20):
+        gen, obs1, _ = _scenario()
+        obs1[(2003, 6)] = _rec(2003, 6, range(n_gaps))
+        cfg = DisagConfig(whole_month_fraction=fraction)
+        return disaggregate(DisagMethod.PATCH_CAL, gen, [obs1, {}], 1, config=cfg)
+
+    def test_at_threshold_replaces_whole_month(self):
+        _, log = self._run(0.5)          # 20/30 >= 0.5 → trips
+        self.assertEqual(_counts(log, 2003, 6), (0, 0, 30))
+        row = _row(log, 2003, 6)
+        self.assertIn('whole-month replacement', row)
+        self.assertIn('file 1 missing 20/30 day(s)', row)
+        self.assertIn('similar calendar month', row)
+
+    def test_below_threshold_splices(self):
+        _, log = self._run(0.8)          # 20/30 < 0.8 → splice
+        # 10 surviving file-1 days kept; 20 gap days from the calendar donor.
+        self.assertEqual(_counts(log, 2003, 6), (10, 0, 20))
+        row = _row(log, 2003, 6)
+        self.assertNotIn('whole-month', row)
+        self.assertIn('patched from similar calendar month', row)
+
+    def test_no_similar_month_is_missing_either_way(self):
+        # Only one June survives in gen_monthly → find_patch_year has no donor,
+        # so the month is MISSING with or without the option (degrade, never
+        # worse than the default splice).
+        gen, obs1, _ = _scenario(sparse_june=True)
+        obs1[(2001, 6)] = _rec(2001, 6, range(20))
+        base, _ = disaggregate(DisagMethod.PATCH_CAL, gen, [obs1, {}], 1)
+        cfg = DisagConfig(whole_month_fraction=0.5)
+        whole, _ = disaggregate(
+            DisagMethod.PATCH_CAL, gen, [obs1, {}], 1, config=cfg)
+        j_base = next(r for r in base if (r.year, r.month) == (2001, 6))
+        j_whole = next(r for r in whole if (r.year, r.month) == (2001, 6))
+        self.assertTrue(all(v == MISSING for v in j_base.v))
+        self.assertEqual(j_whole.v, j_base.v)
+
+
+class Method2WholeMonthTests(unittest.TestCase):
+    """PATCH_FILE rebuilds a mostly-missing month from file 2 when file 2
+    covers every day; otherwise it degrades to the day-by-day splice."""
+
+    def test_at_threshold_replaces_whole_month_from_file2(self):
+        gen, obs1, obs2 = _scenario()
+        obs1[(2003, 6)] = _rec(2003, 6, range(20))   # 20/30 → trips
+        cfg = DisagConfig(whole_month_fraction=0.5)
+        _, log = disaggregate(
+            DisagMethod.PATCH_FILE, gen, [obs1, obs2], 2, config=cfg)
+        self.assertEqual(_counts(log, 2003, 6), (0, 30, 0))
+        row = _row(log, 2003, 6)
+        self.assertIn('whole-month file-2 replacement', row)
+        self.assertIn('file 1 missing 20/30 day(s)', row)
+        self.assertIn('whole month taken from file 2 2003  6', row)
+
+    def test_file2_incomplete_falls_through_to_splice(self):
+        gen, obs1, obs2 = _scenario()
+        obs1[(2003, 6)] = _rec(2003, 6, range(20))   # 20/30 file-1 gaps
+        obs2[(2003, 6)] = _rec(2003, 6, [25])        # file 2 short a day → not whole
+        cfg = DisagConfig(whole_month_fraction=0.5)
+        _, log = disaggregate(
+            DisagMethod.PATCH_FILE, gen, [obs1, obs2], 2, config=cfg)
+        # Day 25 is present in file 1 (gaps are 0-19), so no both-missing day:
+        # 20 file-2 days (0-19), 10 file-1 days (20-29). Spliced, not wholesale.
+        self.assertEqual(_counts(log, 2003, 6), (10, 20, 0))
+        self.assertNotIn('whole-month', _row(log, 2003, 6))
+
+    def test_below_threshold_splices(self):
+        gen, obs1, obs2 = _scenario()
+        obs1[(2003, 6)] = _rec(2003, 6, range(10))   # 10/30 < 0.5 → splice
+        cfg = DisagConfig(whole_month_fraction=0.5)
+        _, log = disaggregate(
+            DisagMethod.PATCH_FILE, gen, [obs1, obs2], 2, config=cfg)
+        self.assertEqual(_counts(log, 2003, 6), (20, 10, 0))
         self.assertNotIn('whole-month', _row(log, 2003, 6))
 
 
@@ -245,7 +327,7 @@ class RegressionTests(unittest.TestCase):
 
     def test_none_config_matches_omitting_config(self):
         base_recs, base_log = self._demo(None)
-        for cfg in (None, DisagConfig(), DisagConfig(whole_month_donor_fraction=None)):
+        for cfg in (None, DisagConfig(), DisagConfig(whole_month_fraction=None)):
             recs, log = self._demo(cfg)
             self.assertEqual(log, base_log)
             self.assertEqual([r.v for r in recs], [r.v for r in base_recs])

@@ -177,12 +177,14 @@ in the `exceed` tool and avoids interval-edge artefacts.
 **Whole-month replacement (optional).** By default a month is spliced
 day-by-day: real days from tier 1/2 are kept and only the still-missing
 days are copied from the donor. Passing a
-`DisagConfig(whole_month_donor_fraction=f)` to `disaggregate` (with
-`f` in `(0, 1]`) changes this for PATCH_EXCEED only: when the fraction
-of a month's days that **file 1** is missing reaches `f`, the **entire**
-month is rebuilt from one coherent source instead of splicing sources
-day-by-day. The source is chosen by the same tier priority the per-day
-splice uses:
+`DisagConfig(whole_month_fraction=f)` to `disaggregate` (with `f` in
+`(0, 1]`) changes this: when the fraction of a month's days that **file 1**
+is missing reaches `f`, the **entire** month is rebuilt from one coherent
+donor instead of splicing sources day-by-day. The same knob works for every
+single-donor patch method — **PATCH_CAL** (donor = the matched
+same-calendar-month year), **PATCH_FILE** (donor = file 2), and
+**PATCH_EXCEED**. For PATCH_EXCEED the source is chosen by the same tier
+priority the per-day splice uses:
 
 1. **file 1** — a complete file-1 month has no gaps, so it never trips a
    positive `f` (the trivial "nothing to replace" arm);

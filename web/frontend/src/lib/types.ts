@@ -20,12 +20,13 @@ export interface DisagRequest {
 	daily1_key?: string | null;
 	daily2_key?: string | null;
 	/**
-	 * Method 5 only. When ≥ this fraction (0–1] of a month's days are missing
-	 * from file 1, rebuild the whole month from one coherent source instead of
-	 * splicing sources day-by-day. Source priority: file 2 if it covers the
-	 * whole month, else the exceedance-matched donor. null/omitted = splice.
+	 * Methods 1, 2 and 5. When ≥ this fraction (0–1] of a month's days are
+	 * missing from file 1, rebuild the whole month from one coherent donor
+	 * instead of splicing sources day-by-day. The donor is the matched
+	 * calendar month (method 1), file 2 (method 2), or file 2 then the
+	 * exceedance-matched donor (method 5). null/omitted = splice.
 	 */
-	whole_month_donor_fraction?: number | null;
+	whole_month_fraction?: number | null;
 }
 
 export interface SeasonGroup {
