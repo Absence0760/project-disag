@@ -32,12 +32,15 @@ for the file layout.
 Number of required daily files is in `NO_FILES[method]` — use this rather
 than hardcoding.
 
-Method 5 has one optional knob, `DisagConfig(whole_month_donor_fraction=f)`
-(also `--whole-month-donor-fraction f` on the CLI): when the fraction of a
-month's days **missing from file 1** reaches `f`, rebuild the whole month
-from one coherent source instead of splicing sources day-by-day. Source
-priority mirrors the per-day tiers: file 1 (complete → never trips), else
-file 2 if it covers the whole month, else the exceedance-matched donor.
+The single-donor patch methods (1, 2, 5) share one optional knob,
+`DisagConfig(whole_month_fraction=f)` (also `--whole-month-fraction f` on the
+CLI): when the fraction of a month's days **missing from file 1** reaches `f`,
+rebuild the whole month from one coherent donor instead of splicing sources
+day-by-day. Each method's donor differs — PATCH_CAL takes the matched
+same-calendar-month year, PATCH_FILE takes file 2, PATCH_EXCEED walks its
+tiers (file 2 if complete, else the exceedance-matched donor). If no single
+source covers the whole month it degrades to the ordinary splice (never worse
+than the default). Ignored by methods 0, 3, 4 (no single-donor patch step).
 Default `None` = day-by-day splice (unchanged). See
 [../docs/method5.md](../docs/method5.md#whole-month-replacement-optional).
 

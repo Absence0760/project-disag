@@ -333,19 +333,19 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise _ClientError(400, f'Invalid method: {method_id}') from exc
 
-    # Method-5 whole-month donor replacement (optional). Validate at the
+    # Whole-month replacement (methods 1/2/5, optional). Validate at the
     # boundary so an out-of-range value is a 400, not a 500 from DisagConfig.
-    fraction = body.get('whole_month_donor_fraction')
+    fraction = body.get('whole_month_fraction')
     config = None
     if fraction is not None:
         # Pass the raw JSON value straight to DisagConfig so its own
         # type/range checks run — do NOT float() first, or a JSON `true`
         # would coerce to 1.0 and slip past the bool rejection.
         try:
-            config = DisagConfig(whole_month_donor_fraction=fraction)
+            config = DisagConfig(whole_month_fraction=fraction)
         except (TypeError, ValueError) as exc:
             raise _ClientError(
-                400, f'Invalid whole_month_donor_fraction: {fraction}'
+                400, f'Invalid whole_month_fraction: {fraction}'
             ) from exc
 
     min_files = NO_FILES[dm]

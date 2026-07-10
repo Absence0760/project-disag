@@ -119,7 +119,7 @@ month from a **single coherent source**. Pass a config to `disaggregate`:
 ```python
 from disag.algorithm import DisagConfig, DisagMethod, disaggregate
 
-cfg = DisagConfig(whole_month_donor_fraction=0.5)   # 0 < f <= 1
+cfg = DisagConfig(whole_month_fraction=0.5)   # 0 < f <= 1
 records, report = disaggregate(
     DisagMethod.PATCH_EXCEED, gen_monthly, obs_daily, no_files, config=cfg)
 ```
@@ -127,10 +127,18 @@ records, report = disaggregate(
 or on the CLI:
 
 ```bash
-python3 -m disag --no-gui --method 5 --whole-month-donor-fraction 0.5 \
+python3 -m disag --no-gui --method 5 --whole-month-fraction 0.5 \
     --monthly target.MON --daily1 gauge.DAY \
     --output out.day --report out.rep
 ```
+
+The same `whole_month_fraction` knob works on the other single-donor patch
+methods: **Method 1 (`PATCH_CAL`)** rebuilds the whole month from its matched
+same-calendar-month year, and **Method 2 (`PATCH_FILE`)** rebuilds it from
+file 2 (when file 2 covers every day). The trigger and the
+degrade-to-splice guarantee below are identical; only the donor source
+differs. The rest of this section describes Method 5's tier-priority source
+selection specifically.
 
 **The trigger.** The fraction `f` is measured against **file 1's gaps** —
 the days file 1 cannot supply on its own (the "needs a patch" count).
@@ -179,7 +187,7 @@ Donor replacement (`F1/F2/OTH = 0 0 30`, every day credited to tier 3):
 `F1/F2/OTH` go all-or-nothing, and the replaced days are credited to the
 source that actually shaped them (file 2 → tier 2, donor → tier 3) in the
 coverage summary — so "how much was real vs borrowed" stays honest. The
-default (`whole_month_donor_fraction=None`) leaves output byte-for-byte
+default (`whole_month_fraction=None`) leaves output byte-for-byte
 identical to splice mode.
 
 ## How it differs from Method 1 (`PATCH_CAL`)

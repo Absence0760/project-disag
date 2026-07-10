@@ -152,12 +152,12 @@ class HappyPathRunTests(unittest.TestCase):
                     os.unlink(p)
 
 
-class WholeMonthDonorFractionCliTests(unittest.TestCase):
-    """The --whole-month-donor-fraction flag: validation, note, and effect."""
+class WholeMonthFractionCliTests(unittest.TestCase):
+    """The --whole-month-fraction flag: validation, note, and effect."""
 
     def _reject(self, value):
         return _run_cli(
-            '--method', '5', '--whole-month-donor-fraction', value,
+            '--method', '5', '--whole-month-fraction', value,
             '--monthly', 'x', '--daily1', 'y', '--output', 'z', '--report', 'w',
             expect_success=False,
         )
@@ -175,16 +175,16 @@ class WholeMonthDonorFractionCliTests(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn('not a number', res.stderr)
 
-    def test_note_when_used_on_non_method5(self):
+    def test_note_when_used_on_method_without_donor(self):
         out, rep = _tmp('.day'), _tmp('.rep')
         try:
             res = _run_cli(
-                '--method', '0', '--whole-month-donor-fraction', '0.5',
+                '--method', '0', '--whole-month-fraction', '0.5',
                 '--monthly', _demo('method5_demo', 'data', 'target.MON'),
                 '--daily1',  _demo('method5_demo', 'data', 'gauge_a_complete.DAY'),
                 '--output',  out, '--report', rep,
             )
-            self.assertIn('only affects Method 5', res.stderr)
+            self.assertIn('only affects Methods 1, 2 and 5', res.stderr)
         finally:
             for p in (out, rep):
                 if os.path.exists(p):
@@ -194,7 +194,7 @@ class WholeMonthDonorFractionCliTests(unittest.TestCase):
         out, rep = _tmp('.day'), _tmp('.rep')
         try:
             _run_cli(
-                '--method', '5', '--whole-month-donor-fraction', '0.5',
+                '--method', '5', '--whole-month-fraction', '0.5',
                 '--monthly', _demo('method5_demo', 'data', 'target.MON'),
                 '--daily1',  _demo('method5_demo', 'data', 'gauge_a_with_gaps.DAY'),
                 '--output',  out, '--report', rep,
@@ -202,6 +202,26 @@ class WholeMonthDonorFractionCliTests(unittest.TestCase):
             with open(rep) as f:
                 content = f.read()
             self.assertIn('whole-month donor replacement', content)
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_method1_whole_month_replacement_appears_in_report(self):
+        # The flag now drives Method 1 too: a mostly-missing month is rebuilt
+        # from the matched same-calendar-month year rather than spliced.
+        out, rep = _tmp('.day'), _tmp('.rep')
+        try:
+            _run_cli(
+                '--method', '1', '--whole-month-fraction', '0.5',
+                '--monthly', _demo('method5_demo', 'data', 'target.MON'),
+                '--daily1',  _demo('method5_demo', 'data', 'gauge_a_with_gaps.DAY'),
+                '--output',  out, '--report', rep,
+            )
+            with open(rep) as f:
+                content = f.read()
+            self.assertIn('whole-month replacement', content)
+            self.assertIn('similar calendar month', content)
         finally:
             for p in (out, rep):
                 if os.path.exists(p):

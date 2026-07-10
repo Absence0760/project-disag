@@ -106,22 +106,27 @@ test.describe('Run page', () => {
 		await expect(page.getByTestId('drop-daily2')).not.toBeVisible();
 	});
 
-	test('method 5 reveals whole-month donor options; the toggle gates the percent input', async ({
+	test('single-donor methods (1/2/5) reveal whole-month options; the toggle gates the percent input', async ({
 		page
 	}) => {
 		await page.goto('/run');
 
+		// Method 0 has no single donor → no whole-month option.
 		await expect(page.getByTestId('whole-month-options')).not.toBeVisible();
-		await page.getByTestId('method-5').check();
-		await expect(page.getByTestId('whole-month-options')).toBeVisible();
+
+		// Methods 1, 2 and 5 each patch from one coherent donor → option shown.
+		for (const m of [1, 2, 5]) {
+			await page.getByTestId(`method-${m}`).check();
+			await expect(page.getByTestId('whole-month-options')).toBeVisible();
+		}
 
 		// The percent input only appears once the option is enabled.
 		await expect(page.getByTestId('whole-month-percent')).not.toBeVisible();
 		await page.getByTestId('whole-month-toggle').check();
 		await expect(page.getByTestId('whole-month-percent')).toBeVisible();
 
-		// Switching to another method hides the whole block again.
-		await page.getByTestId('method-0').check();
+		// Switching to a method without a single donor (3) hides the block again.
+		await page.getByTestId('method-3').check();
 		await expect(page.getByTestId('whole-month-options')).not.toBeVisible();
 	});
 

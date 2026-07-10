@@ -25,7 +25,7 @@
 	const queryTool = page.url.searchParams.get('tool');
 	let tool = $state<Tool>(VALID_TOOLS.includes(queryTool as Tool) ? (queryTool as Tool) : 'disag');
 	let method = $state<DisagMethod>(0);
-	// Method-5 whole-month donor replacement (off by default = day-by-day splice).
+	// Whole-month replacement, methods 1/2/5 (off by default = day-by-day splice).
 	let wholeMonthEnabled = $state(false);
 	let wholeMonthPercent = $state(50);
 	let intervals = $state(20);
@@ -112,6 +112,19 @@
 	const daily2Visible = $derived(tool === 'disag' && (minFiles[method] >= 2 || method === 5));
 	const daily2Required = $derived(tool === 'disag' && minFiles[method] >= 2);
 
+	// Whole-month replacement applies to the single-donor patch methods.
+	const wholeMonthApplies = $derived(
+		tool === 'disag' && (method === 1 || method === 2 || method === 5)
+	);
+	// Per-method description of where the replacement month is sourced from.
+	const wholeMonthDonorHint = $derived(
+		method === 1
+			? 'the matched same-calendar-month year'
+			: method === 2
+				? 'file 2 when it covers the whole month'
+				: 'file 2 if it covers the whole month, otherwise the exceedance-matched donor'
+	);
+
 	async function uploadIfPresent(file: File | null): Promise<string | null> {
 		if (!file) return null;
 		const target = await requestUpload(file.name);
@@ -138,14 +151,14 @@
 				const daily1_key = await uploadIfPresent(daily1File);
 				const daily2_key = await uploadIfPresent(daily2File);
 				stage = 'computing';
-				const whole_month_donor_fraction =
-					method === 5 && wholeMonthEnabled ? wholeMonthPercent / 100 : null;
+				const whole_month_fraction =
+					wholeMonthApplies && wholeMonthEnabled ? wholeMonthPercent / 100 : null;
 				result = await runDisag({
 					method,
 					monthly_key,
 					daily1_key,
 					daily2_key,
-					whole_month_donor_fraction
+					whole_month_fraction
 				});
 			} else if (tool === 'exceed') {
 				if (!monthlyFile && !daily1File) {
@@ -273,7 +286,7 @@
 					</label>
 				{/each}
 			</div>
-			{#if method === 5}
+			{#if wholeMonthApplies}
 				<div class="method-options" data-testid="whole-month-options">
 					<label class="check">
 						<input
@@ -300,9 +313,8 @@
 							<span>% of a month’s days are missing from file 1</span>
 						</div>
 						<p class="muted" id="whole-month-hint">
-							Rebuilds the month from one coherent source — file 2 if it covers the whole month,
-							otherwise the exceedance-matched donor — instead of splicing sources day-by-day.
-							Discards the real days that were present.
+							Rebuilds the month from one coherent source — {wholeMonthDonorHint} — instead of splicing
+							sources day-by-day. Discards the real days that were present.
 						</p>
 					{/if}
 				</div>
