@@ -28,6 +28,12 @@ resource "aws_s3_bucket" "outputs" {
   # A stray `terraform destroy` in prod would lose every history page
   # the moment versioning's noncurrent retention expires (7 days),
   # well before the operator notices.
+  #
+  # Knowingly inconsistent with force_destroy above: Terraform only
+  # accepts a literal here (no `var.environment != "prod"`), so this
+  # guard applies in every workspace. Running `pnpm tf:destroy` in a
+  # non-prod workspace requires manually flipping this line (and the
+  # frontend bucket's) to false first.
   lifecycle {
     prevent_destroy = true
   }
@@ -39,7 +45,8 @@ resource "aws_s3_bucket" "frontend" {
 
   # Re-creating the frontend bucket changes its name (random_id suffix
   # is stable, but the bucket policy + CloudFront OAC binding both
-  # have to be reapplied). Same prevent_destroy rationale as outputs.
+  # have to be reapplied). Same prevent_destroy rationale — and same
+  # literal-only caveat — as outputs above.
   lifecycle {
     prevent_destroy = true
   }
