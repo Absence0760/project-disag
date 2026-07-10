@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256">
+  <!-- Disag-MD mark: monthly volume bars disaggregating into a daily flow
+       curve — the bars are the .mon input, the line is the .day output. -->
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <rect x="11" y="26" width="8" height="24" rx="2" fill="#fff" opacity=".38"/>
+  <rect x="23" y="34" width="8" height="16" rx="2" fill="#fff" opacity=".38"/>
+  <rect x="35" y="40" width="8" height="10" rx="2" fill="#fff" opacity=".38"/>
+  <rect x="47" y="44" width="8" height="6" rx="2" fill="#fff" opacity=".38"/>
+  <path fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"
+        d="M9 33 C13 20 17 16 21 24 S27 40 33 38 S41 30 47 38 S53 45 56 45"/>
+</svg>
