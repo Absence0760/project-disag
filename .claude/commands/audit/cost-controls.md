@@ -16,9 +16,9 @@ The whole stack is small and the legitimate traffic is low. A finding is anythin
 
 - The rule exists and the limit is the value of `var.waf_rate_limit_per_ip` (AWS minimum 100, evaluated over a rolling 5-minute window).
 - The ACL is actually attached to the distribution (`cloudfront.tf` references `aws_wafv2_web_acl.site.arn`). A WAF that exists but isn't attached is the most common misconfig.
-- `default_action = allow` (the rule is the gate; without an attached managed rule set the WAF is otherwise permissive — that's deliberate at this scale).
+- `default_action = allow` (the rate rule plus the attached `AWSManagedRulesCommonRuleSet` managed rule group do the gating). Verify the managed rule group is still attached — flag if it's ever removed without a documented decision.
 
-WAF costs ~$6/month ($5 base + $1/rule); if the project ever decides that's too much, the rule is also documented as "comment out and delete this file" in the file's header. Surface as a Low / Note if a future audit sees the WAF removed without a documented decision.
+WAF costs ~$7/month ($5 base + $1 × 2 rules); if the project ever decides that's too much, the rule is also documented as "comment out and delete this file" in the file's header. Surface as a Low / Note if a future audit sees the WAF (or its managed rule set) removed without a documented decision.
 
 ### 2. API Gateway throttling
 
@@ -32,7 +32,7 @@ WAF costs ~$6/month ($5 base + $1/rule); if the project ever decides that's too 
 The cost-defence file is `web/infra/alarms.tf` (single file carrying SNS topic + Budget + per-resource CloudWatch alarms). Verify:
 
 - **`aws_budgets_budget`** declared with a monthly limit (currently `var.budget_monthly_usd`, default $50). Confirm the limit is in the low-tens-of-dollars range for a hobby-scale deployment — anything materially higher should have a documented reason.
-- **Three notifications minimum**: `ACTUAL > 50 %`, `ACTUAL > 100 %`, `FORECASTED > 100 %`. Forecasted is the only one that catches a runaway *during* the month — actual lags by up to 24h. Missing forecasted → High.
+- **Three notifications minimum**: `ACTUAL > 50 %`, `ACTUAL > 100 %`, and a `FORECASTED` notification at ≤ 100 % (currently `> 90 %` — stricter thresholds pass). Forecasted is the only one that catches a runaway *during* the month — actual lags by up to 24h. Missing forecasted → High.
 - **`aws_sns_topic` + `aws_sns_topic_subscription`** wired to `var.budget_alert_email`. The subscription is `count = 0` when the var is empty (alarms still fire visibly but no one gets paged) — that's tolerable in dev, flag as Medium if it ships to prod without a real email.
 - **Per-resource CloudWatch alarms** (Lambda errors / throttles / duration, CloudFront 5xx rate, API Gateway 5xx rate) all publish to the same SNS topic. Missing any of these is Medium — they catch a problem before the budget alarm does.
 
@@ -56,16 +56,16 @@ Missing retention on any of these → High.
 
 `web/infra/lambda.tf`:
 
-- `memory_size` ≤ 10240 (Lambda hard cap); default 4096 per `variables.tf`. The handler is sized this way because Method 5 (`PATCH_EXCEED`) on a large monthly file gets CPU-bound; flag a memory increase above the var without a documented reason.
-- `timeout` ≤ 900 (Lambda hard cap); default 300 per `variables.tf`. Past 5 min, `web/README.md` suggests switching to Fargate.
-- `reserved_concurrent_executions` — if unset, the function shares the account-wide concurrency pool (1000 by default). A runaway loop on a 4 GB × 5 min function can clear $1k/day at full concurrency. Setting `reserved_concurrent_executions` to a low number (e.g. 20) bounds the worst case. Flag as Medium if unset on prod.
+- `memory_size` ≤ 10240 (Lambda hard cap); default 3008 per `variables.tf` (the max a fresh AWS account can allocate without a Service Quotas increase). The handler is sized this way because Method 5 (`PATCH_EXCEED`) on a large monthly file gets CPU-bound; flag a memory increase above the var without a documented reason.
+- `timeout` ≤ 900 (Lambda hard cap); default 29 per `variables.tf`, matching API Gateway HTTP API's 30 s integration cap (`apigw.tf`) — anything longer keeps billing after the caller has already seen a 504. Past ~29 s, `web/README.md` says move off the synchronous API path (e.g. Fargate).
+- `reserved_concurrent_executions` — if unset, the function shares the account-wide concurrency pool (1000 by default). A runaway loop on a ~3 GB function can still clear $1k+/day at full concurrency. Setting `reserved_concurrent_executions` to a low number (e.g. 20) bounds the worst case. Flag as Medium if unset on prod.
 
 ### 7. S3 lifecycle on `inputs` and `outputs` buckets
 
 `web/infra/s3.tf`:
 
 - `inputs/` bucket: lifecycle should expire objects after 7 days + `abort_incomplete_multipart_upload`. Presigned PUT URLs that never complete shouldn't accumulate.
-- `outputs/` bucket: lifecycle should expire non-current versions after 90 days (cost guardrail). Versioning enabled on this bucket guards against a Lambda bug silently overwriting a user's report; lifecycle keeps the cost bounded.
+- `outputs/` bucket: lifecycle should bound both current and non-current versions, with expiry at most 90 days for each (currently 30-day current + 7-day noncurrent per `s3.tf` — stricter is fine). Versioning enabled on this bucket guards against a Lambda bug silently overwriting a user's report; lifecycle keeps the cost bounded.
 - `frontend/` bucket: lifecycle on non-current versions; versioning optional.
 
 Missing lifecycle on `inputs/` → High (presigned-POST flood with `abort_incomplete_multipart_upload` disabled is a real DoS vector). Missing lifecycle on `outputs/` non-current → Medium.
@@ -93,7 +93,7 @@ This audit's value depends on the docs being honest:
 - **Critical** — `aws_budgets_budget` missing entirely, WAF not attached to CloudFront, API Gateway throttling unbounded on `$default`, `MAX_UPLOAD_BYTES` unbounded.
 - **High** — log retention infinite anywhere, AWS budget exists but no `FORECASTED` notification, missing lifecycle on `inputs/` bucket, CloudFront `PriceClass_All` without justification.
 - **Medium** — `reserved_concurrent_executions` unset, missing lifecycle on `outputs/` non-current versions, `budget_alert_email` empty in prod, missing per-resource CloudWatch alarm, doc drift between `web/README.md` and `lambda.tf` sizing.
-- **Low** — WAF removed without a documented decision, no documented `lifecycle` choice, alarm exists but the SNS subscription is unconfirmed.
+- **Low** — WAF or its managed rule set removed without a documented decision, no documented `lifecycle` choice, alarm exists but the SNS subscription is unconfirmed.
 
 For each finding: file:line + the concrete change. Don't apply fixes without explicit confirmation.
 

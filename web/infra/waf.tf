@@ -5,9 +5,10 @@
 # in us-east-1. Hence the `provider = aws.us_east_1` alias.
 #
 # Cost: $5/month base for the ACL, plus $1/month per rule
-# ($1 × 1 = $1 here, so $6/month flat), plus $0.60 per million
-# requests. For a low-traffic hydrology tool the per-request slice
-# rounds to zero — call it ~$6/mo. If that's too much for the
+# ($1 × 2 = $2 here — the rate limit plus the deliberately-added
+# AWSManagedRulesCommonRuleSet — so $7/month flat), plus $0.60 per
+# million requests. For a low-traffic hydrology tool the per-request
+# slice rounds to zero — call it ~$7/mo. If that's too much for the
 # project's budget, comment out the cloudfront.tf:web_acl_id line
 # and delete this file.
 

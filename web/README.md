@@ -123,7 +123,10 @@ $EDITOR infra/bootstrap/projects/disag.tfvars        # project=disag, github_rep
 ```
 
 The script prints the new account ID, state bucket, KMS alias, deploy
-role ARN, hosted zone ID, etc. Source of truth:
+role ARN, hosted zone ID, etc. The tfstate bucket it creates carries
+versioning and a Public Access Block by construction (the templates
+repo's project-baseline module), so no extra hardening step is needed
+here. Source of truth:
 [~/repos/templates/infra/bootstrap/README.md](../../templates/infra/bootstrap/README.md).
 
 ### Wire up this repo
