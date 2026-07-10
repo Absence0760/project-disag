@@ -1,8 +1,11 @@
 name: Security
 
-# Static analysis. CodeQL on every push to main, PRs that touch code
-# (docs-only PRs skipped), and weekly to catch CVEs disclosed since
-# the last commit. Findings flow to the GitHub Security tab via SARIF.
+# Static analysis. CodeQL on EVERY push to main (no path filter — the
+# OpenSSF Scorecard SAST check counts unscanned default-branch commits
+# against us, and docs-only merges were the gap), PRs that touch code
+# (docs-only PRs still skip pre-merge; the post-merge push scan covers
+# them), and weekly to catch CVEs disclosed since the last commit.
+# Findings flow to the GitHub Security tab via SARIF.
 #
 # Adapted from project-running/.github/workflows/security.yml for
 # this repo's much smaller surface:
@@ -21,9 +24,6 @@ name: Security
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
   pull_request:
     branches: [main]
     paths-ignore:
