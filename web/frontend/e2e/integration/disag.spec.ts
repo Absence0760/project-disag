@@ -178,6 +178,67 @@ test.describe('@integration disag', () => {
 		expect(report).toContain('similar calendar month');
 	});
 
+	test('method 5 — daily_fdc_mapping + seam_blend reach the algorithm', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
+		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
+		const daily2Key = await uploadFixture(request, 'method5_demo', 'gauge_b_partial.DAY');
+
+		const result = await runDisag(request, {
+			method: 5,
+			monthly_key: monthlyKey,
+			daily1_key: daily1Key,
+			daily2_key: daily2Key,
+			daily_fdc_mapping: true,
+			seam_blend: true
+		});
+
+		const report = await fetchText(request, result.report_url);
+		// The enabled-knob banners prove the flags survived the whole path
+		// (frontend request shape → handler → DisagConfig → report).
+		expect(report).toContain('Daily FDC quantile mapping : enabled');
+		expect(report).toContain('Seam blending : enabled');
+		// This fixture pair trips exactly one audit flag under the linear
+		// factor (see examples/method5_demo/README.md, scenario 3); the
+		// FDC map removes it.
+		expect(report).toMatch(/flagged : 0 of \d+ audited/);
+		expect(report).toContain('FDC-mapped');
+	});
+
+	test('method 5 — spike audit is present without any knobs', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
+		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
+		const daily2Key = await uploadFixture(request, 'method5_demo', 'gauge_b_partial.DAY');
+
+		const result = await runDisag(request, {
+			method: 5,
+			monthly_key: monthlyKey,
+			daily1_key: daily1Key,
+			daily2_key: daily2Key
+		});
+
+		const report = await fetchText(request, result.report_url);
+		// Always-on audit: this fixture pair injects 60 days and exactly
+		// one lands above file 1's June max (gauge B's rescaled flood day).
+		expect(report).toContain('Injected-day spike audit');
+		expect(report).toMatch(/flagged : 1 of 60 audited/);
+	});
+
+	test('method 5 — non-bool daily_fdc_mapping is rejected with 400', async ({ request }) => {
+		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
+		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
+
+		const res = await request.post(`${API}/disag`, {
+			data: {
+				method: 5,
+				monthly_key: monthlyKey,
+				daily1_key: daily1Key,
+				daily_fdc_mapping: 'yes'
+			},
+			headers: { 'x-client-id': CLIENT_ID }
+		});
+		expect(res.status()).toBe(400);
+	});
+
 	test('method 5 — out-of-range whole_month_fraction is rejected with 400', async ({ request }) => {
 		const monthlyKey = await uploadFixture(request, 'method5_demo', 'target.MON');
 		const daily1Key = await uploadFixture(request, 'method5_demo', 'gauge_a_with_gaps.DAY');
