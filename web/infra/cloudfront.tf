@@ -131,9 +131,9 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   ordered_cache_behavior {
-    path_pattern               = "/api/*"
-    target_origin_id           = "api-gw"
-    viewer_protocol_policy     = "redirect-to-https"
+    path_pattern           = "/api/*"
+    target_origin_id       = "api-gw"
+    viewer_protocol_policy = "redirect-to-https"
     # Only what the API actually serves (GET/POST routes + CORS preflight)
     # — PUT/PATCH/DELETE are unused, so don't accept them at the edge.
     allowed_methods            = ["GET", "HEAD", "OPTIONS", "POST"]
