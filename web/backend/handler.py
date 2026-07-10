@@ -333,20 +333,32 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise _ClientError(400, f'Invalid method: {method_id}') from exc
 
-    # Whole-month replacement (methods 1/2/5, optional). Validate at the
-    # boundary so an out-of-range value is a 400, not a 500 from DisagConfig.
+    # Optional algorithm knobs: whole-month replacement (methods 1/2/5),
+    # daily FDC mapping and seam blending (method 5). Validate at the
+    # boundary so a bad value is a 400, not a 500 from DisagConfig.
     fraction = body.get('whole_month_fraction')
+    # JSON null means the same as omitted for the boolean knobs; any other
+    # non-bool (string, number) is rejected by DisagConfig below.
+    fdc_mapping = body.get('daily_fdc_mapping')
+    if fdc_mapping is None:
+        fdc_mapping = False
+    seam_blend = body.get('seam_blend')
+    if seam_blend is None:
+        seam_blend = False
     config = None
-    if fraction is not None:
-        # Pass the raw JSON value straight to DisagConfig so its own
-        # type/range checks run — do NOT float() first, or a JSON `true`
-        # would coerce to 1.0 and slip past the bool rejection.
+    if fraction is not None or fdc_mapping or seam_blend:
+        # Pass the raw JSON values straight to DisagConfig so its own
+        # type/range checks run — do NOT coerce first, or a JSON `true`
+        # fraction would slip past the bool rejection and a truthy string
+        # would silently enable a flag.
         try:
-            config = DisagConfig(whole_month_fraction=fraction)
+            config = DisagConfig(
+                whole_month_fraction=fraction,
+                daily_fdc_mapping=fdc_mapping,
+                seam_blend=seam_blend,
+            )
         except (TypeError, ValueError) as exc:
-            raise _ClientError(
-                400, f'Invalid whole_month_fraction: {fraction}'
-            ) from exc
+            raise _ClientError(400, f'Invalid disag options: {exc}') from exc
 
     min_files = NO_FILES[dm]
 
