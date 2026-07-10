@@ -245,6 +245,26 @@
 	}
 
 	const isSvg = $derived(isSvgOutput(result?.output_key));
+
+	// One-line recap of what Run will actually do, shown next to the submit
+	// button — on the tall method-5 + seasonal forms the button scrolls far
+	// away from the selections it acts on.
+	const recap = $derived.by(() => {
+		if (tool === 'convert') return 'Convert: .ans → .mon';
+		if (tool === 'exceed') {
+			const seasonal = seasonalMode ? ` · ${seasons.length} season(s)` : '';
+			return `Exceed: ${intervals} intervals${seasonal}`;
+		}
+		const opt = methodOptions.find((o) => o.value === method);
+		const extras = [
+			wholeMonthApplies && wholeMonthEnabled ? `whole-month ≥${wholeMonthPercent}%` : null,
+			fillNormApplies && fdcEnabled ? 'FDC mapping' : null,
+			fillNormApplies && seamEnabled ? 'seam blending' : null
+		].filter(Boolean);
+		return (
+			`Disag: method ${method} — ${opt?.title}` + (extras.length ? ` · ${extras.join(' · ')}` : '')
+		);
+	});
 </script>
 
 <svelte:head>
@@ -508,6 +528,7 @@
 			{/if}
 		</button>
 		<button type="button" class="btn ghost" onclick={resetForm} disabled={running}> Reset </button>
+		<span class="run-recap" data-testid="run-recap">{recap}</span>
 		<span class="sr-only" role="status">
 			{#if running}{stage === 'uploading' ? 'Uploading files…' : 'Computing on Lambda…'}{/if}
 		</span>
@@ -707,6 +728,16 @@
 		font-weight: 600;
 	}
 
+	/* On touch devices give the 12 dense month chips a full 44px target —
+	   on pointer devices the compact grid is fine and keeps the seasonal
+	   builder short. */
+	@media (pointer: coarse) {
+		.month-chip {
+			min-height: 44px;
+			min-width: 44px;
+		}
+	}
+
 	.curve {
 		margin: var(--space-3) 0;
 	}
@@ -868,6 +899,11 @@
 		gap: var(--space-3);
 		align-items: center;
 		flex-wrap: wrap;
+	}
+
+	.run-recap {
+		color: var(--text-muted);
+		font-size: 0.85rem;
 	}
 
 	.spinner {

@@ -248,17 +248,18 @@ correction decays to ×1 mid-run); whole-month replacements have no seams
 and are untouched.
 
 **Use it together with `daily_fdc_mapping`.** Ground-truth evaluation on
-synthetic smooth-target/flashy-donor data (three seeds, ~1 250 injected
-days each) showed:
+synthetic smooth-target/flashy-donor data (three seeds, ~1 100–1 300
+injected days each; reproduce with
+[examples/injected_day_eval/](../examples/injected_day_eval/)) showed:
 
 | config | injected-day MAE | seam step error | spike-audit flags |
 |---|---|---|---|
-| linear (default) | 5.4 – 6.8 | 5.4 – 6.6 | 110 – 117 |
-| FDC mapping | 1.9 – 2.2 | 2.5 – 2.7 | 0 |
-| seam blending alone | 5.3 – 6.3 | 3.6 – 4.9 | 102 – 159 |
-| FDC + seam | **1.8 – 2.0** | **1.1 – 1.3** | 4 – 19 |
+| linear (default) | 5.8 – 7.1 | 5.2 – 7.2 | 94 – 117 |
+| FDC mapping | 1.9 – 2.8 | 2.3 – 3.7 | 0 |
+| seam blending alone | 5.7 – 6.8 | 3.2 – 4.2 | 114 – 126 |
+| FDC + seam | **1.8 – 2.4** | **1.0 – 1.3** | 9 – 12 |
 
-FDC mapping is the main win (fill error −60 to −67 %, and the
+FDC mapping is the main win (fill error −60 to −66 %, and the
 contamination of real days in spliced months roughly halves). Seam
 blending **on top of** FDC mapping gives the best overall result; alone
 it can *amplify* mis-scaled fills (the anchor corrections compound the
@@ -486,6 +487,9 @@ mapped, extrapolations, fallback months) and a **seam blending summary**
   Tier 1 + 3; and all three tiers within a single month) on small mock
   data. Includes a generator script, the generated files, and a
   step-by-step walkthrough.
+- [examples/injected_day_eval/](../examples/injected_day_eval/) — the
+  ground-truth evaluation harness behind the injected-day normalisation
+  table above.
 - [algorithm.md](algorithm.md) — the per-method specification, with
   Method 5's implementation details.
 - [problem.md](problem.md) — the high-level "what does this project
