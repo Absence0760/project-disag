@@ -62,7 +62,7 @@ Plus:
 
 8. **Terraform provider versions (`web/infra/versions.tf`).** `required_providers` for `aws`, `random`, `sops` should use `~> X.Y` ranges (allows patches) or exact pins. Loose `~> X` (major-only) is too broad. `.terraform.lock.hcl` is committed.
 
-9. **Local toolchain drift.** Optional but worth flagging if obvious: check whether the local pnpm + node versions match `.tool-versions` and `package.json`'s `engines`. The `update-all` function in the user's `~/.bashrc.d/32-functions-update.sh` covers system tools; if local node/pnpm versions are wildly out of sync with what CI uses, flag it.
+9. **Local toolchain drift.** Optional but worth flagging if obvious: check whether the local pnpm + node versions match `.tool-versions` and `package.json`'s `engines`. The `update-all` function in the user's `~/.zshrc.d/32-functions-update.sh` covers system tools; if local node/pnpm versions are wildly out of sync with what CI uses, flag it. An `.nvmrc` now exists at the repo root, so nvm users get the right version with a bare `nvm use` — check it stays in sync with `.tool-versions` and `engines.node`.
 
 ## Report
 
