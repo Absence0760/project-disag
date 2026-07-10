@@ -11,14 +11,16 @@ overrides:
   # Tightened from `>=0.7.0` to lock the major and avoid an unreviewed
   # 2.x landing transitively.
   cookie: '^1.1.1'
-  # GHSA-w7jw-789q-3m8p, GHSA-p88m-4jfj-68fv, GHSA-vmh5-mc38-953g,
-  # GHSA-vxpw-j846-p89q, GHSA-hm92-r4w5-c3mj, GHSA-pr7r-676h-xcf6,
-  # GHSA-35p6-xmwp-9g52, GHSA-g8m3-5g58-fq7m — undici <7.28.0 (dev-only,
+  # GHSA-p88m-4jfj-68fv, GHSA-vmh5-mc38-953g, GHSA-vxpw-j846-p89q,
+  # GHSA-hm92-r4w5-c3mj, GHSA-pr7r-676h-xcf6, GHSA-35p6-xmwp-9g52,
+  # GHSA-g8m3-5g58-fq7m — undici <7.28.0 (dev-only,
   # via vitest → jsdom) ships a cluster of CVEs patched in 7.28.0. Force
   # the patched 7.x line — jsdom@29 pins undici ^7, so stay below the 8.x
   # major (which drops the internal dispatcher API jsdom loads) while
   # clearing the CVEs (verified 2026-07).
   undici@<7.28.0: '>=7.28.0 <8'
   # GHSA-w7jw-789q-3m8p — shell-quote <1.8.4 quote() fails to escape
-  # newlines (dev-only, via concurrently). Force the patched 1.8.4 line.
+  # newlines (dev-only, via concurrently). Belt-and-braces since the
+  # concurrently 10.x bump (it pins shell-quote 1.8.4 itself); kept so a
+  # future dependency can't reintroduce a vulnerable version.
   shell-quote@<1.8.4: '>=1.8.4'
