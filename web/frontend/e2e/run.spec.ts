@@ -155,6 +155,31 @@ test.describe('Run page', () => {
 		await expect(page.getByTestId('seam-warning')).not.toBeVisible();
 	});
 
+	test('the actions row recaps the selected tool, method, and options', async ({ page }) => {
+		await page.goto('/run');
+
+		await expect(page.getByTestId('run-recap')).toContainText('Disag: method 0 — One file');
+
+		// The recap tracks the method and any enabled algorithm options —
+		// on tall forms the Run button scrolls far from the selections.
+		await page.getByTestId('method-5').check();
+		await page.getByTestId('fdc-toggle').check();
+		await page.getByTestId('whole-month-toggle').check();
+		const recap = page.getByTestId('run-recap');
+		await expect(recap).toContainText('method 5 — Patch (exceedance)');
+		await expect(recap).toContainText('FDC mapping');
+		await expect(recap).toContainText('whole-month ≥50%');
+
+		// Options that don't apply to the selected method drop out of the
+		// recap even though their checkbox state persists.
+		await page.getByTestId('method-0').check();
+		await expect(recap).not.toContainText('FDC mapping');
+		await expect(recap).not.toContainText('whole-month');
+
+		await page.getByTestId('tool-exceed').check();
+		await expect(recap).toContainText('Exceed: 20 intervals');
+	});
+
 	test('switching to exceed swaps method picker for intervals input', async ({ page }) => {
 		await page.goto('/run');
 
