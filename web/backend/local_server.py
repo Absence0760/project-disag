@@ -69,11 +69,20 @@ class _LocalS3:
         on a dev box. boto3 against real S3 treats the key as opaque
         and the issue doesn't exist there; the local stub has to
         re-introduce the guard.
+
+        Two layers: every path segment is validated up front (no '',
+        '.', or '..' — real S3 keys never contain them), then the
+        realpath is required to sit under the root, which also contains
+        any escape routed through a symlink inside the tree.
         """
-        target = (self.root / bucket / key).resolve()
-        if self.root not in target.parents and target != self.root:
-            raise ValueError(f'Refusing path outside LOCAL_S3_ROOT: {key!r}')
-        return target
+        rel = f'{bucket}/{key}'
+        if any(seg in ('', '.', '..') for seg in rel.split('/')):
+            raise ValueError(f'Invalid bucket/key: {rel!r}')
+        root = str(self.root)
+        target = os.path.realpath(os.path.join(root, rel))
+        if not target.startswith(root + os.sep):
+            raise ValueError(f'Refusing path outside LOCAL_S3_ROOT: {rel!r}')
+        return Path(target)
 
     def generate_presigned_url(self, op: str, Params: dict, ExpiresIn: int = 3600) -> str:
         action = 'put' if op == 'put_object' else 'get'

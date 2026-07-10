@@ -25,9 +25,15 @@
 	const queryTool = page.url.searchParams.get('tool');
 	let tool = $state<Tool>(VALID_TOOLS.includes(queryTool as Tool) ? (queryTool as Tool) : 'disag');
 	let method = $state<DisagMethod>(0);
+	// Algorithm options persist across method switches so a setting chosen
+	// under one method is still in force after trying another — only the
+	// methods it applies to actually consume it.
 	// Whole-month replacement, methods 1/2/5 (off by default = day-by-day splice).
 	let wholeMonthEnabled = $state(false);
 	let wholeMonthPercent = $state(50);
+	// Cross-river fill normalisation, method 5 only (both off by default).
+	let fdcEnabled = $state(false);
+	let seamEnabled = $state(false);
 	let intervals = $state(20);
 	let seasonalMode = $state(false);
 	let seasons = $state<SeasonGroup[]>([
@@ -52,6 +58,8 @@
 		void method;
 		void wholeMonthEnabled;
 		void wholeMonthPercent;
+		void fdcEnabled;
+		void seamEnabled;
 		void intervals;
 		void seasonalMode;
 		void monthlyFile;
@@ -116,6 +124,9 @@
 	const wholeMonthApplies = $derived(
 		tool === 'disag' && (method === 1 || method === 2 || method === 5)
 	);
+	// Fill normalisation (FDC mapping / seam blending) is method-5 only —
+	// it reshapes cross-river file-2/donor fills, which no other method has.
+	const fillNormApplies = $derived(tool === 'disag' && method === 5);
 	// Per-method description of where the replacement month is sourced from.
 	const wholeMonthDonorHint = $derived(
 		method === 1
@@ -158,7 +169,9 @@
 					monthly_key,
 					daily1_key,
 					daily2_key,
-					whole_month_fraction
+					whole_month_fraction,
+					daily_fdc_mapping: fillNormApplies && fdcEnabled,
+					seam_blend: fillNormApplies && seamEnabled
 				});
 			} else if (tool === 'exceed') {
 				if (!monthlyFile && !daily1File) {
@@ -286,17 +299,28 @@
 					</label>
 				{/each}
 			</div>
-			{#if wholeMonthApplies}
-				<div class="method-options" data-testid="whole-month-options">
+			<div class="method-options" data-testid="algo-options">
+				<h3>Algorithm options</h3>
+				<p class="muted intro">
+					Settings persist while you compare methods — each method uses the ones it supports.
+				</p>
+
+				<div class="option" class:off={!wholeMonthApplies} data-testid="whole-month-options">
 					<label class="check">
 						<input
 							type="checkbox"
 							bind:checked={wholeMonthEnabled}
+							disabled={!wholeMonthApplies}
 							data-testid="whole-month-toggle"
 						/>
 						<span>Replace the whole month with one donor month</span>
+						<span class="applies">methods 1 · 2 · 5</span>
 					</label>
-					{#if wholeMonthEnabled}
+					{#if !wholeMonthApplies}
+						<p class="option-hint">
+							Not available for this method — it has no single donor source to rebuild a month from.
+						</p>
+					{:else if wholeMonthEnabled}
 						<div class="method-option-row">
 							<span>when ≥</span>
 							<input
@@ -312,13 +336,48 @@
 							/>
 							<span>% of a month’s days are missing from file 1</span>
 						</div>
-						<p class="muted" id="whole-month-hint">
+						<p class="option-hint" id="whole-month-hint">
 							Rebuilds the month from one coherent source — {wholeMonthDonorHint} — instead of splicing
 							sources day-by-day. Discards the real days that were present.
 						</p>
 					{/if}
 				</div>
-			{/if}
+
+				<div class="option" class:off={!fillNormApplies} data-testid="fill-norm-options">
+					<label class="check">
+						<input
+							type="checkbox"
+							bind:checked={fdcEnabled}
+							disabled={!fillNormApplies}
+							data-testid="fdc-toggle"
+						/>
+						<span>Map borrowed days through daily flow-duration curves</span>
+						<span class="applies">method 5</span>
+					</label>
+					<p class="option-hint">
+						Reshapes file-2/donor fills to this river’s own flow distribution, so a flashier donor
+						catchment’s flood days land at plausible magnitudes.
+					</p>
+					<label class="check">
+						<input
+							type="checkbox"
+							bind:checked={seamEnabled}
+							disabled={!fillNormApplies}
+							data-testid="seam-toggle"
+						/>
+						<span>Blend splice seams into neighbouring observed days</span>
+						<span class="applies">method 5</span>
+					</label>
+					<p class="option-hint">
+						Removes the step where borrowed days butt against real observations.
+					</p>
+					{#if fillNormApplies && seamEnabled && !fdcEnabled}
+						<p class="option-warn" data-testid="seam-warning">
+							Seam blending alone can amplify mis-scaled fills — enable flow-duration mapping too.
+						</p>
+					{/if}
+				</div>
+			</div>
 		</section>
 	{:else if tool === 'exceed'}
 		<section class="card group" aria-label="Histogram intervals">
@@ -537,7 +596,52 @@
 		border-top: 1px solid var(--border);
 		display: flex;
 		flex-direction: column;
+		gap: var(--space-3);
+	}
+
+	.method-options h3 {
+		margin: 0;
+		font-size: 0.95rem;
+	}
+
+	.method-options .intro {
+		margin: 0;
+		font-size: 0.85rem;
+	}
+
+	.option {
+		display: flex;
+		flex-direction: column;
 		gap: var(--space-2);
+	}
+
+	/* Options stay visible when they don't apply to the selected method —
+	   greyed out with the reason — so switching methods never makes settings
+	   silently appear and vanish. */
+	.option.off .check span {
+		color: var(--text-subtle);
+	}
+
+	.applies {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		background: var(--surface-2);
+		color: var(--text-muted);
+		padding: 0.1rem 0.45rem;
+		border-radius: var(--radius-sm);
+		white-space: nowrap;
+	}
+
+	.option-hint {
+		margin: 0 0 0 1.6rem;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+
+	.option-warn {
+		margin: 0 0 0 1.6rem;
+		font-size: 0.85rem;
+		color: var(--danger);
 	}
 
 	.method-option-row {
@@ -545,6 +649,7 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-2);
+		margin-left: 1.6rem;
 	}
 
 	.input.pct {
@@ -642,7 +747,9 @@
 	.segmented label {
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		padding: 0.4rem 0.9rem;
+		min-height: 44px;
 		border-radius: calc(var(--radius-md) - 4px);
 		cursor: pointer;
 		color: var(--text-muted);
@@ -682,9 +789,12 @@
 		margin: 0;
 	}
 
+	/* 240px min keeps six cards on a balanced grid (3×2 desktop, 2×3 tablet,
+	   1-col mobile) — the page container is never wide enough to reach a
+	   ragged fourth column. */
 	.method-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 		gap: var(--space-3);
 	}
 
@@ -711,6 +821,11 @@
 			var(--shadow-sm),
 			0 0 0 1px var(--accent) inset;
 		background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface));
+	}
+	/* The requirements pill is accent-soft-on-accent; on the active card that
+	   sits on an accent-soft tint and washes out. Give it a solid surface. */
+	.method-card.active .badge {
+		background: var(--surface);
 	}
 	/* Route the focus ring to the visible card — the real radio is hidden. */
 	.method-card:has(input:focus-visible) {
@@ -770,6 +885,12 @@
 		}
 	}
 
+	/* Separate the outcome from the form so it doesn't butt against the
+	   actions row (the success card carries its own margin below). */
+	.alert.error {
+		margin-top: var(--space-5);
+	}
+
 	.success-card {
 		flex-direction: column;
 		align-items: stretch;
@@ -777,5 +898,19 @@
 	}
 	.success-card h3 {
 		margin: var(--space-2) 0;
+	}
+
+	/* On narrow screens let the primary tool switch fill the width so each
+	   option is a comfortable full-row tap target instead of three cramped
+	   pills that wrap unevenly. */
+	@media (max-width: 620px) {
+		.segmented {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.segmented label {
+			min-width: 0;
+		}
 	}
 </style>

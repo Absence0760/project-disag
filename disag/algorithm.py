@@ -15,7 +15,9 @@ Unit conversion at the end: Mm3/day → m3/s  (×1e6 / 86400)
 # annotations like tuple[int, int] work on Python 3.8.
 from __future__ import annotations
 
+import bisect
 import calendar
+import math
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Optional
@@ -88,22 +90,47 @@ class DisagConfig:
         whole month the month degrades to the ordinary day-by-day splice —
         never worse than the default. Ignored by ONE_FILE, INCREMENTAL, and
         EVEN, which have no single-donor patch step.
+
+    ``daily_fdc_mapping`` (PATCH_EXCEED only):
+      * ``False`` — injected file-2/donor day values are corrected by the
+        linear per-calendar-month mean-ratio scale factor (historic
+        behaviour).
+      * ``True`` — injected day values are instead mapped through the source
+        file's daily flow-duration curve onto file 1's (per calendar month,
+        annual-pool fallback, then the linear factor). A donor day at its own
+        2 %-exceedance maps to file 1's 2 %-exceedance flow, so a flashier
+        donor catchment's flood days land at target-plausible magnitudes
+        instead of carrying the donor's spike-to-baseflow ratio verbatim.
+
+    ``seam_blend`` (PATCH_EXCEED only):
+      * ``False`` — spliced fill days keep their (scaled/mapped) source
+        values; the day-to-day correlation stays broken at each splice seam
+        (historic behaviour).
+      * ``True`` — each contiguous run of injected days is multiplied by a
+        log-interpolated correction anchored to the real observed days at
+        the run's edges (capped at ×3 per anchor), removing step
+        discontinuities at the seams. Runs touching a month boundary blend
+        one-sided; whole-month replacements have no seams and are untouched.
     """
 
     whole_month_fraction: Optional[float] = None
+    daily_fdc_mapping: bool = False
+    seam_blend: bool = False
 
     def __post_init__(self):
         f = self.whole_month_fraction
-        if f is None:
-            return
-        if not isinstance(f, (int, float)) or isinstance(f, bool):
-            raise ValueError(
-                'whole_month_fraction must be None or a number in (0, 1]'
-            )
-        if not (0 < f <= 1):
-            raise ValueError(
-                f'whole_month_fraction must be in (0, 1], got {f!r}'
-            )
+        if f is not None:
+            if not isinstance(f, (int, float)) or isinstance(f, bool):
+                raise ValueError(
+                    'whole_month_fraction must be None or a number in (0, 1]'
+                )
+            if not (0 < f <= 1):
+                raise ValueError(
+                    f'whole_month_fraction must be in (0, 1], got {f!r}'
+                )
+        for name in ('daily_fdc_mapping', 'seam_blend'):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f'{name} must be a bool')
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +313,150 @@ def _tier2_scale_factors(obs_totals: list) -> list:
     return factors
 
 
+def _daily_fdc_pools(obs_daily: list) -> list:
+    """Per-file daily flow-duration pools for PATCH_EXCEED's quantile
+    mapping and injected-day spike audit.
+
+    ``pools[file_idx][m]`` is the sorted list of every valid observed day
+    value in calendar month ``m`` across all years of that file; key ``0``
+    is the all-months (annual) pool, the fallback when a month pool is
+    unusable.
+    """
+    pools: list = []
+    for obs in obs_daily:
+        per_month: dict = {m: [] for m in range(13)}
+        for (y, m), rec in obs.items():
+            if rec is None:
+                continue
+            dim = calendar.monthrange(y, m)[1]
+            for d in range(min(dim, len(rec.v))):
+                v = rec.v[d]
+                if v >= 0:
+                    per_month[m].append(v)
+                    per_month[0].append(v)
+        for m in per_month:
+            per_month[m].sort()
+        pools.append(per_month)
+    return pools
+
+
+def _fdc_usable(pool: list) -> bool:
+    """A pool can support quantile mapping if it has ≥2 values and spread."""
+    return len(pool) >= 2 and pool[-1] > pool[0]
+
+
+def _fdc_map(value: float, src: list, dst: list) -> float:
+    """Map ``value`` from the ``src`` daily FDC onto the ``dst`` daily FDC.
+
+    The value's fractional rank on the source curve (interpolated between
+    order statistics; tie runs take their midpoint rank) is evaluated on
+    the destination curve. Zero maps to zero. A value above the source
+    maximum is ratio-extrapolated from the curve endpoints
+    (``dst_max × value/src_max``) so an unprecedented donor flood still
+    maps to an unprecedented — but target-scaled — flood rather than
+    clamping to the destination maximum; below the source minimum the
+    same ratio rule applies at the low end. Both pools must satisfy
+    ``_fdc_usable``.
+    """
+    if value <= 0:
+        return 0.0
+    if value >= src[-1]:
+        return dst[-1] * (value / src[-1]) if src[-1] > 0 else dst[-1]
+    if value <= src[0]:
+        # src[0] > 0 here: value > 0 and value <= src[0]
+        return dst[0] * (value / src[0])
+    n = len(src)
+    lo = bisect.bisect_left(src, value)
+    hi = bisect.bisect_right(src, value)
+    if lo < hi:
+        idx = (lo + hi - 1) / 2
+    else:
+        below, above = src[lo - 1], src[lo]
+        idx = (lo - 1) + (value - below) / (above - below)
+    p = idx / (n - 1)
+    x = p * (len(dst) - 1)
+    k = int(x)
+    if k >= len(dst) - 1:
+        return dst[-1]
+    return dst[k] + (x - k) * (dst[k + 1] - dst[k])
+
+
+def _resolve_fdc(
+    fdc_pools: Optional[list], src_idx: int, month: int,
+) -> Optional[tuple]:
+    """Pick the ``(src_pool, dst_pool, pool_key)`` pair for FDC-mapping
+    day values from file ``src_idx`` onto file 1's distribution.
+
+    Prefers the calendar-month pools, falls back to the annual pools
+    (``pool_key`` 0), and returns ``None`` when neither pair is usable
+    (the caller falls back to the linear mean-ratio factor) or when the
+    source *is* file 1 — same river, nothing to reshape.
+    """
+    if not fdc_pools or src_idx == 0 or src_idx >= len(fdc_pools):
+        return None
+    for key in (month, 0):
+        sp = fdc_pools[src_idx].get(key, [])
+        dp = fdc_pools[0].get(key, [])
+        if _fdc_usable(sp) and _fdc_usable(dp):
+            return sp, dp, key
+    return None
+
+
+# Per-anchor cap on the seam-blend correction, so one noisy observed day at
+# a gap edge cannot blow the whole fill up (or crush it) by more than 3×.
+_SEAM_CORR_CAP = 3.0
+
+
+def _blend_seams(qD: list, src_tier: list, src_at) -> int:
+    """Blend each contiguous run of injected days into the real observed
+    days at its edges (mutates ``qD`` in place; returns runs corrected).
+
+    For a run ``[a, b]`` the correction at each edge is
+    ``observed ÷ source`` evaluated on the anchor day just outside the run,
+    where "source" is whatever filled the run's edge day (file 2 or the
+    donor), capped to ``[1/3, 3]``. Corrections are interpolated in log
+    space across the run; a run with only one usable anchor decays its
+    correction to ×1 at the far end, and a run with none is left alone.
+    """
+    dim = len(qD)
+    blended = 0
+    d = 0
+    while d < dim:
+        if src_tier[d] == 1:
+            d += 1
+            continue
+        a = d
+        while d < dim and src_tier[d] != 1:
+            d += 1
+        b = d - 1
+
+        def _corr(anchor: int, edge: int) -> Optional[float]:
+            if anchor < 0 or anchor >= dim or src_tier[anchor] != 1:
+                return None
+            src = src_at(src_tier[edge], anchor)
+            if src is None or src <= 0 or qD[anchor] <= 0:
+                return None
+            c = qD[anchor] / src
+            return min(max(c, 1.0 / _SEAM_CORR_CAP), _SEAM_CORR_CAP)
+
+        c_l = _corr(a - 1, a)
+        c_r = _corr(b + 1, b)
+        if c_l is None and c_r is None:
+            continue
+        blended += 1
+        run_len = b - a + 1
+        for i in range(run_len):
+            t = (i + 1) / (run_len + 1)
+            if c_l is not None and c_r is not None:
+                c = math.exp((1 - t) * math.log(c_l) + t * math.log(c_r))
+            elif c_l is not None:
+                c = c_l ** (1 - t)
+            else:
+                c = c_r ** t
+            qD[a + i] *= c
+    return blended
+
+
 def _per_month_distributions(
     gen_monthly: dict,
     obs_totals: list,
@@ -430,6 +601,9 @@ def _convert_month(
     tier2_scale: Optional[list] = None,
     tier_counters: Optional[dict] = None,
     whole_month_fraction: Optional[float] = None,
+    fdc_pools: Optional[list] = None,
+    daily_fdc_mapping: bool = False,
+    seam_blend: bool = False,
 ) -> DailyRecord:
     dim = calendar.monthrange(year, month)[1]
 
@@ -690,9 +864,11 @@ def _convert_month(
         # Cross-river rescale for donor day values (tier 3 and whole-month
         # replacement): when the donor comes from file 2, its values are
         # lifted to file-1's per-month scale before entering qD, else a mixed
-        # tier-1/tier-3 month gets a distorted shape. The factor is constant
-        # across the month, so for whole-month fills it cancels in the disag
-        # formula's ratio — applying it unconditionally is safe.
+        # tier-1/tier-3 month gets a distorted shape. Under the linear factor
+        # this is constant across the month, so it cancels in the disag
+        # formula's ratio for whole-month fills; the FDC map below is
+        # deliberately non-linear and does NOT cancel — reshaping the donor's
+        # distribution is its whole point.
         donor_scale = (
             tier2_scale[exceed_donor_file_idx].get(month, 1.0)
             if (exceed_donor is not None and tier2_scale
@@ -706,6 +882,48 @@ def _convert_month(
             tier2_scale[1].get(month, 1.0)
             if tier2_scale and len(tier2_scale) > 1 else 1.0
         )
+        # FDC quantile mapping (opt-in, PATCH_EXCEED): map injected day
+        # values through the source file's daily flow-duration curve onto
+        # file 1's, instead of the linear factor above. None → fall back to
+        # the linear factor. Source file 1 (same river) resolves to None by
+        # design — its values need no reshaping.
+        f2_fdc = donor_fdc = None
+        if method == DisagMethod.PATCH_EXCEED and daily_fdc_mapping:
+            f2_fdc = _resolve_fdc(fdc_pools, 1, month)
+            if exceed_donor is not None:
+                donor_fdc = _resolve_fdc(
+                    fdc_pools, exceed_donor_file_idx, month
+                )
+
+        def _src_val(tier: int, d: int) -> Optional[float]:
+            """The scaled/mapped value the given tier's source would inject
+            on day ``d``, or None if that source is missing there. Used by
+            the qD loop and re-used by seam blending to evaluate a run's
+            source on its anchor days."""
+            if tier == 2:
+                raw, fdc, lin = _day_val(rec2, d), f2_fdc, f2_scale
+            else:
+                raw, fdc, lin = (
+                    _day_val(exceed_donor, d), donor_fdc, donor_scale
+                )
+            if raw < 0:
+                return None
+            if fdc is not None:
+                return _fdc_map(raw, fdc[0], fdc[1])
+            return raw * lin
+
+        local_fdc = local_extrap = local_seams = 0
+
+        def _count_fdc(raw: float, fdc: Optional[tuple]) -> None:
+            nonlocal local_fdc, local_extrap
+            if fdc is not None:
+                local_fdc += 1
+                if raw > fdc[0][-1]:
+                    local_extrap += 1
+
+        # Per-day source tier for PATCH_EXCEED (1 = file 1, 2 = file 2,
+        # 3 = donor) — drives seam blending and the spike audit.
+        src_tier: list = []
         qD = []
         for d in range(dim):
             f1 = _day_val(rec1, d)
@@ -744,36 +962,78 @@ def _convert_month(
                 if whole_month_file2:
                     # Every day comes from file 2's coherent month (lifted to
                     # file-1's scale) — the tier-2 whole-month replacement.
-                    val = f2 * f2_scale
+                    val = _src_val(2, d)
+                    _count_fdc(f2, f2_fdc)
                     dec['f2'] += 1
                     local_t2 += 1
+                    src_tier.append(2)
                 elif whole_month_donor:
                     # Every day comes from the one coherent donor month.
-                    val = _day_val(exceed_donor, d) * donor_scale
+                    val = _src_val(3, d)
+                    _count_fdc(_day_val(exceed_donor, d), donor_fdc)
                     dec['oth'] += 1
                     local_t3 += 1
+                    src_tier.append(3)
                 elif f1 >= 0:
                     val = f1
                     dec['f1'] += 1
                     local_t1 += 1
+                    src_tier.append(1)
                 elif f2 >= 0:
-                    # Rescale file-2 day to file-1's per-month scale so a
-                    # mixed file-1/file-2 month doesn't get a distorted shape
-                    # when the two gauges sit on different rivers.
-                    val = f2 * f2_scale
+                    # Rescale/map file-2's day to file-1's per-month scale so
+                    # a mixed file-1/file-2 month doesn't get a distorted
+                    # shape when the two gauges sit on different rivers.
+                    val = _src_val(2, d)
+                    _count_fdc(f2, f2_fdc)
                     dec['f2'] += 1
                     local_t2 += 1
+                    src_tier.append(2)
                 elif exceed_donor is not None and d < len(exceed_donor.v):
-                    val = _day_val(exceed_donor, d) * donor_scale
+                    val = _src_val(3, d)
+                    _count_fdc(_day_val(exceed_donor, d), donor_fdc)
                     dec['oth'] += 1
                     local_t3 += 1
+                    src_tier.append(3)
                 else:
+                    val = -999.0
+                    src_tier.append(1)
+                if val is None:
                     val = -999.0
 
             else:
                 val = f1
 
             qD.append(max(val, 0.0))   # clamp negatives to zero
+
+        # --- Seam blending (opt-in, PATCH_EXCEED splice months only) ---
+        # Whole-month replacements are one coherent source — no seams. The
+        # blend runs before qM is summed so the monthly mass balance still
+        # holds after the corrections.
+        if (method == DisagMethod.PATCH_EXCEED and seam_blend
+                and not whole_month_file2 and not whole_month_donor
+                and (local_t2 or local_t3)):
+            local_seams = _blend_seams(qD, src_tier, _src_val)
+
+        # --- Injected-day spike audit (report-only, PATCH_EXCEED) ---
+        # Flag injected days whose final shape value exceeds file 1's
+        # largest observed day for the same calendar month — the signature
+        # of a flashier donor pushing an implausible flood into the month.
+        # qD is in file-1 scale (m3/s), so the comparison is like-for-like.
+        local_flags: list = []
+        local_audited = 0
+        if (method == DisagMethod.PATCH_EXCEED and fdc_pools
+                and len(src_tier) == dim):
+            f1_pool = fdc_pools[0].get(month, [])
+            if f1_pool:
+                f1_max = f1_pool[-1]
+                for d in range(dim):
+                    if src_tier[d] == 1:
+                        continue
+                    local_audited += 1
+                    if qD[d] > f1_max:
+                        local_flags.append(
+                            (year, month, d + 1, qD[d], f1_max, src_tier[d])
+                        )
 
         qM = sum(qD)
 
@@ -799,6 +1059,27 @@ def _convert_month(
             tier_counters['tier3_months'].add((year, month))
         if pending_match is not None:
             tier_counters['tier3_matches'].append(pending_match)
+        tier_counters['fdc_days'] += local_fdc
+        tier_counters['fdc_extrap_days'] += local_extrap
+        if daily_fdc_mapping:
+            # Track months where the mapping degraded, per source actually
+            # used, so the report can say where the linear/annual fallback
+            # applied rather than leaving it silent.
+            if local_t2:
+                if f2_fdc is None:
+                    tier_counters['fdc_linear_months'].add(month)
+                elif f2_fdc[2] == 0:
+                    tier_counters['fdc_annual_months'].add(month)
+            if local_t3 and exceed_donor_file_idx != 0:
+                if donor_fdc is None:
+                    tier_counters['fdc_linear_months'].add(month)
+                elif donor_fdc[2] == 0:
+                    tier_counters['fdc_annual_months'].add(month)
+        tier_counters['seam_runs'] += local_seams
+        if local_seams:
+            tier_counters['seam_months'].add((year, month))
+        tier_counters['spike_audited'] += local_audited
+        tier_counters['spike_flags'].extend(local_flags)
 
     # --- Finalise the routine decision notes (missing / patched already set) ---
     if dec['note'] == '':
@@ -812,20 +1093,26 @@ def _convert_month(
             # that factor on the row so the reader can see why the file-2 shape
             # was accepted and by how much it was lifted/dropped onto file-1's
             # scale — the same factor printed in the header's scale-factor table.
+            f2_how = (
+                'file-2 → file-1 FDC-mapped' if f2_fdc is not None
+                else f'file-2 → file-1 scale ×{f2_scale:.4f}'
+            )
             if dec['f1'] == 0:
                 dec['note'] = (
-                    'disaggregated from file 2 (file 1 fully missing; '
-                    f'file-2 → file-1 scale ×{f2_scale:.4f})'
+                    f'disaggregated from file 2 (file 1 fully missing; '
+                    f'{f2_how})'
                 )
             else:
                 dec['note'] = (
                     'disaggregated from file 1, gaps filled from file 2 '
-                    f'({dec["f2"]} day(s), file-2 → file-1 scale ×{f2_scale:.4f})'
+                    f'({dec["f2"]} day(s), {f2_how})'
                 )
         else:
             dec['note'] = 'disaggregated from file 1'
     if zero_fill:
         dec['note'] += ' (Observed monthly flow <= 0 — even fill)'
+    if tier_counters is not None and not zero_fill and local_seams:
+        dec['note'] += f' (seam-blended {local_seams} gap(s))'
 
     # --- Disaggregate ---
     values = []
@@ -857,7 +1144,9 @@ def disaggregate(
     obs_daily   : list of dicts; obs_daily[0] = file 1, obs_daily[1] = file 2
     no_files    : number of daily files actually supplied (0, 1, or 2)
     config      : optional DisagConfig; None reproduces the historic
-                  behaviour. Only PATCH_EXCEED reads any of its fields.
+                  behaviour. See DisagConfig for which methods read each
+                  field (whole_month_fraction: methods 1/2/5;
+                  daily_fdc_mapping, seam_blend: method 5 only).
 
     Returns
     -------
@@ -905,6 +1194,7 @@ def disaggregate(
     donor_dists: Optional[list] = None
     tier2_scale: Optional[list] = None
     tier_counters: Optional[dict] = None
+    fdc_pools: Optional[list] = None
     report_lines: list = []
     if method == DisagMethod.PATCH_EXCEED:
         obs_totals = [_monthly_totals_from_daily(obs_daily[f])
@@ -913,6 +1203,9 @@ def disaggregate(
             gen_monthly, obs_totals
         )
         tier2_scale = _tier2_scale_factors(obs_totals)
+        # Daily flow-duration pools: always built for method 5 — the spike
+        # audit reads file 1's pool even when FDC mapping is off.
+        fdc_pools = _daily_fdc_pools(obs_daily)
         tier_counters = {
             'tier1_days': 0,
             'tier2_days': 0,
@@ -923,6 +1216,18 @@ def disaggregate(
             # tuple per month actually patched from a donor — feeds the
             # tier-3 donor match-quality summary.
             'tier3_matches': [],
+            # FDC quantile-mapping observability (only grows when the
+            # daily_fdc_mapping knob is on).
+            'fdc_days': 0,
+            'fdc_extrap_days': 0,
+            'fdc_annual_months': set(),
+            'fdc_linear_months': set(),
+            # Seam-blending observability (only grows when seam_blend is on).
+            'seam_runs': 0,
+            'seam_months': set(),
+            # Injected-day spike audit (always on, report-only).
+            'spike_audited': 0,
+            'spike_flags': [],
         }
 
     # --- Period-of-record header (every method) ---
@@ -1002,6 +1307,29 @@ def disaggregate(
                 f'  month {m:2d}: {tier2_scale[1].get(m, 1.0):8.4f}'
             )
 
+    if method == DisagMethod.PATCH_EXCEED and config.daily_fdc_mapping:
+        report_lines.append(
+            'Daily FDC quantile mapping : enabled — injected file-2/donor '
+            "day values are mapped through the source file's daily "
+            "flow-duration curve onto file 1's (per calendar month; "
+            'annual-pool fallback, then the linear scale factor).'
+        )
+    if method == DisagMethod.PATCH_EXCEED and config.seam_blend:
+        report_lines.append(
+            'Seam blending : enabled — spliced gap runs are blended into '
+            'the observed days at their edges (log-interpolated correction, '
+            f'capped at ×{_SEAM_CORR_CAP:.0f} per anchor).'
+        )
+        if not config.daily_fdc_mapping:
+            # Ground-truth evaluation shows blending a *linearly*-scaled
+            # flashy fill amplifies its errors — the anchor corrections
+            # compound the scale misfit instead of fixing it.
+            report_lines.append(
+                'Warning: seam blending without daily FDC mapping can '
+                'amplify mis-scaled fills — combining it with '
+                'daily_fdc_mapping is recommended.'
+            )
+
     # --- Iterate months ---
     output_records: list = []
     decisions: dict = {}
@@ -1018,6 +1346,9 @@ def disaggregate(
             tier2_scale=tier2_scale,
             tier_counters=tier_counters,
             whole_month_fraction=whole_month_fraction,
+            fdc_pools=fdc_pools,
+            daily_fdc_mapping=config.daily_fdc_mapping,
+            seam_blend=config.seam_blend,
         )
         output_records.append(rec)
         year, month = _inc_month(year, month)
@@ -1098,5 +1429,59 @@ def disaggregate(
                     f'  matches worse than 1.0 pt   : '
                     f'{len(outliers)}  [{worst}{more}]'
                 )
+
+        # Injected-day spike audit — always on, report-only. An injected
+        # (tier-2/tier-3) day larger than anything file 1 ever recorded in
+        # that calendar month is the signature of a flashier donor pushing
+        # an implausible flood into the output; each one deserves a look.
+        if t2 + t3:
+            flags = tier_counters['spike_flags']
+            audited = tier_counters['spike_audited']
+            pct = 100.0 * len(flags) / audited if audited else 0.0
+            report_lines.append(
+                "Injected-day spike audit (vs file 1's same-calendar-month "
+                'observed max, file-1 scale):'
+            )
+            report_lines.append(
+                f'  flagged : {len(flags)} of {audited} audited injected '
+                f'day(s)  ({pct:.1f}%)'
+            )
+            if flags:
+                worst_flags = sorted(
+                    flags, key=lambda f: f[3] / f[4] if f[4] > 0 else 0.0,
+                    reverse=True,
+                )
+                shown = '; '.join(
+                    f'{y:4d}{m:3d} day {d:2d} (tier {t}) {v:.3f} vs {mx:.3f}'
+                    for y, m, d, v, mx, t in worst_flags[:5]
+                )
+                more = (f' (+{len(flags) - 5} more)'
+                        if len(flags) > 5 else '')
+                report_lines.append(f'  worst   : {shown}{more}')
+
+        if config.daily_fdc_mapping:
+            report_lines.append(
+                f'Daily FDC mapping summary : '
+                f'{tier_counters["fdc_days"]} injected day(s) mapped, '
+                f'{tier_counters["fdc_extrap_days"]} above the source curve '
+                f'(ratio-extrapolated)'
+            )
+            if tier_counters['fdc_annual_months']:
+                report_lines.append(
+                    f'  annual-pool fallback in calendar month(s) '
+                    f'{sorted(tier_counters["fdc_annual_months"])}'
+                )
+            if tier_counters['fdc_linear_months']:
+                report_lines.append(
+                    f'  linear-factor fallback in calendar month(s) '
+                    f'{sorted(tier_counters["fdc_linear_months"])}'
+                )
+
+        if config.seam_blend:
+            report_lines.append(
+                f'Seam blending summary : '
+                f'{tier_counters["seam_runs"]} gap run(s) blended across '
+                f'{len(tier_counters["seam_months"])} month(s)'
+            )
 
     return output_records, report_lines

@@ -16,14 +16,19 @@
 
 <header class="site-header">
 	<div class="brand">
+		<!-- Monthly volume bars disaggregating into a daily flow curve -->
 		<svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
 			<rect width="64" height="64" rx="14" fill="currentColor" />
+			<rect x="11" y="26" width="8" height="24" rx="2" fill="#fff" opacity=".38" />
+			<rect x="23" y="34" width="8" height="16" rx="2" fill="#fff" opacity=".38" />
+			<rect x="35" y="40" width="8" height="10" rx="2" fill="#fff" opacity=".38" />
+			<rect x="47" y="44" width="8" height="6" rx="2" fill="#fff" opacity=".38" />
 			<path
 				fill="none"
-				stroke="white"
-				stroke-width="4"
+				stroke="#fff"
+				stroke-width="4.5"
 				stroke-linecap="round"
-				d="M10 42c8 0 8-12 16-12s8 12 16 12 8-12 16-12"
+				d="M9 33 C13 20 17 16 21 24 S27 40 33 38 S41 30 47 38 S53 45 56 45"
 			/>
 		</svg>
 		<a href="/" class="brand-link">

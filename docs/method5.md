@@ -47,10 +47,11 @@ Tier 3 — synthetic donor month picked by exceedance percentile
   record that's "similarly wet" by percentile rank, and copies the
   donor's day-d value into the gappy slots.
 
-The .rep report logs every Tier-3 substitution (Tier-2 is silent
-because it's just observations). The output day file contains real
-data wherever real data was available, and a clearly-traceable
-synthetic shape elsewhere.
+The .rep report's decision log has one row per month naming each
+month's source split; tier-3 rows name the donor and the matched
+percentiles, tier-2 rows the file-2 → file-1 scale treatment. The
+output day file contains real data wherever real data was available,
+and a clearly-traceable synthetic shape elsewhere.
 
 ## Why exceedance percentile, and not absolute volume?
 
@@ -94,9 +95,11 @@ For target month `(Y, M)` with monthly volume `V_target`:
    smaller file index, then by earlier donor year.
 
 4. For each day still missing in the target month after Tiers 1
-   and 2, copy the donor's day-d value. Run the standard
-   disaggregation formula (see [algorithm.md](algorithm.md)) on the
-   resulting day-array.
+   and 2, copy the donor's day-d value (scaled — or FDC-mapped, see
+   [Injected-day normalisation](#injected-day-normalisation-optional)
+   — to file 1's magnitude when the donor comes from file 2). Run the
+   standard disaggregation formula (see [algorithm.md](algorithm.md))
+   on the resulting day-array.
 
 The percentile is computed by **rank** (not by binning), so it's
 independent of the binned exceedance computation in the
@@ -189,6 +192,95 @@ source that actually shaped them (file 2 → tier 2, donor → tier 3) in the
 coverage summary — so "how much was real vs borrowed" stays honest. The
 default (`whole_month_fraction=None`) leaves output byte-for-byte
 identical to splice mode.
+
+## Injected-day normalisation (optional)
+
+The linear tier-2 scale factor corrects the *average* scale difference
+between the two rivers, but nothing else. A smaller or steeper donor
+catchment is **flashier** — its floods are proportionally bigger relative
+to its baseflow — and a constant multiplier preserves that
+spike-to-baseflow ratio verbatim. The visible symptom: a stretch of
+normal-looking flows, then one huge injected day, because the donor
+catchment had rain that day. Worse, the disag formula normalises by the
+month's sum, so the inflated day also pushes every *real* day in that
+month down.
+
+Two opt-in `DisagConfig` knobs address this (method 5 only; defaults
+leave output byte-for-byte unchanged):
+
+### Daily FDC quantile mapping — `daily_fdc_mapping=True`
+
+CLI: `--daily-fdc-mapping`. Instead of the linear factor, each injected
+day value is mapped through the daily **flow-duration curves**: the
+value's rank position on the source file's daily FDC (per calendar month,
+across all its years) is evaluated on file 1's daily FDC. A donor day at
+its own 2 %-exceedance maps to file 1's 2 %-exceedance flow — a big day,
+but a big day *as the target river experiences big days*. This extends
+method 5's core idea (percentile rank carries across rivers where
+absolute magnitude doesn't) from months down to days, and is the standard
+FDC-based streamflow-transfer approach in the hydrology literature
+(Hughes & Smakhtin, 1996, *Hydrological Sciences Journal* 41(6)).
+
+Mechanics and fallbacks:
+
+- Mapping is per calendar month; if either month pool is unusable
+  (< 2 values, or flat) it falls back to the annual pools, then to the
+  linear factor. Fallbacks are listed in the report.
+- Zero maps to zero. A value above the source curve's maximum is
+  **ratio-extrapolated** from the endpoints (`dst_max × value/src_max`) —
+  an unprecedented donor flood stays unprecedented, at target scale, and
+  is counted in the report rather than clamped.
+- A donor drawn from file 1 itself is left untouched (same river —
+  nothing to reshape), so single-file runs are unaffected.
+- The map is monotone: the donor's day-to-day *pattern* (which day was
+  the peak, the recession order) is preserved; only magnitudes are
+  reshaped to the target's distribution.
+
+### Seam blending — `seam_blend=True`
+
+CLI: `--seam-blend`. In splice mode, each contiguous run of injected days
+is multiplied by a correction interpolated (in log space) between its two
+edges, where each edge correction is `observed ÷ source` evaluated on the
+real file-1 day just outside the run, capped at ×3 per anchor. This
+removes the step discontinuity where a borrowed shape butts against real
+observations. Runs touching a month boundary blend one-sided (the
+correction decays to ×1 mid-run); whole-month replacements have no seams
+and are untouched.
+
+**Use it together with `daily_fdc_mapping`.** Ground-truth evaluation on
+synthetic smooth-target/flashy-donor data (three seeds, ~1 250 injected
+days each) showed:
+
+| config | injected-day MAE | seam step error | spike-audit flags |
+|---|---|---|---|
+| linear (default) | 5.4 – 6.8 | 5.4 – 6.6 | 110 – 117 |
+| FDC mapping | 1.9 – 2.2 | 2.5 – 2.7 | 0 |
+| seam blending alone | 5.3 – 6.3 | 3.6 – 4.9 | 102 – 159 |
+| FDC + seam | **1.8 – 2.0** | **1.1 – 1.3** | 4 – 19 |
+
+FDC mapping is the main win (fill error −60 to −67 %, and the
+contamination of real days in spliced months roughly halves). Seam
+blending **on top of** FDC mapping gives the best overall result; alone
+it can *amplify* mis-scaled fills (the anchor corrections compound the
+scale misfit), so the report emits a warning when it's enabled without
+FDC mapping.
+
+### Injected-day spike audit (always on)
+
+Report-only — output is never affected. Every injected (tier-2/tier-3)
+day is compared, in file-1-scale shape units, against the largest value
+file 1 ever observed in that calendar month. Days above that ceiling are
+counted and the worst five listed:
+
+```
+Injected-day spike audit (vs file 1's same-calendar-month observed max, file-1 scale):
+  flagged : 3 of 60 audited injected day(s)  (5.0%)
+  worst   : 2003  6 day 22 (tier 2) 19.689 vs 19.491; ...
+```
+
+A non-trivial flagged count is the signature of a flashier donor pushing
+implausible floods into the output — and the cue to turn on
+`daily_fdc_mapping`.
 
 ## How it differs from Method 1 (`PATCH_CAL`)
 
@@ -283,17 +375,28 @@ It then contains, in order:
    ```
 
    File-2 day values are multiplied by the per-calendar-month factor
-   when used in tier-2 day patching. This corrects a distortion that
+   whenever they enter the shape array — tier-2 day patching *and*
+   tier-3 donor days drawn from file 2. This corrects a distortion that
    would otherwise hit mixed-source months when the two daily files
-   sit on different rivers of different absolute scale.
-3. **Decision log** — the single per-month list shared by every method.
+   sit on different rivers of different absolute scale. When
+   `daily_fdc_mapping` is on, the FDC map replaces this multiplication
+   (the table is still printed — the factors remain the documented
+   fallback for months whose FDC pools are unusable).
+3. **Enabled-knob banners** (only when the corresponding option is on):
+   a `Daily FDC quantile mapping : enabled — …` line, a
+   `Seam blending : enabled — …` line, and — when seam blending is
+   enabled without FDC mapping — a warning that the combination can
+   amplify mis-scaled fills.
+4. **Decision log** — the single per-month list shared by every method.
    Each row shows the day-count split across the three tiers (`F1` = file
    1 / tier 1, `F2` = file 2 / tier 2, `OTH` = donor / tier 3) and a
    `result / source` note. Tier-3 patched months name the donor and the
    matched percentiles; tier-2 months show the file-2 → file-1 scale
-   factor that was applied (the same factor from the table above), so
-   each row explains both what was used and why; dropped months carry
-   the reason inline:
+   factor that was applied (the same factor from the table above; with
+   `daily_fdc_mapping` on the clause reads `file-2 → file-1 FDC-mapped`
+   instead), and months where `seam_blend` corrected one or more gap
+   runs gain a `(seam-blended K gap(s))` suffix — so each row explains
+   both what was used and why; dropped months carry the reason inline:
 
    ```
    Decision log (one row per month):
@@ -315,7 +418,7 @@ It then contains, in order:
    2003  6    0   0   0   MISSING — donor file 2 2001  6 missing day(s) 15
    ```
 
-4. **Tier coverage summary** — day counts and their share of the whole
+5. **Tier coverage summary** — day counts and their share of the whole
    record, so "how much was real vs borrowed" is a glance, not a
    calculation:
 
@@ -326,7 +429,7 @@ It then contains, in order:
      Tier 3 (donor month)   :     30 day(s)  (  1.4%)  across   1 month(s)
    ```
 
-5. **Tier-3 donor match quality** (only when at least one donor fired) —
+6. **Tier-3 donor match quality** (only when at least one donor fired) —
    aggregates the per-month `target`/`donor` exceedance percentiles from
    the decision log into the quality metric for the method's core
    operation. A small mean gap means donors landed close to their targets
@@ -349,9 +452,12 @@ It then contains, in order:
    leap-year edge case above) — that's an honest limit of the data, not
    a matching error.
 
-Tier-2 day-level patches are *not* logged per-month — the same
-behaviour as Method 2 (`PATCH_FILE`). The summary line at the end is
-the only place to see how much tier-2 fired.
+After the match-quality block the report closes with the **injected-day
+spike audit** (always present when any day was injected), and — when the
+corresponding knobs are on — a **daily FDC mapping summary** (days
+mapped, extrapolations, fallback months) and a **seam blending summary**
+(gap runs blended). See
+[Injected-day normalisation](#injected-day-normalisation-optional).
 
 ## Limitations and assumptions
 
@@ -368,7 +474,10 @@ the only place to see how much tier-2 fired.
 - **Tier 3 produces a *single* donor month** — it doesn't average
   across nearby ranks. The choice is deliberate: averaging produces
   a synthetic shape that doesn't correspond to any real day pattern,
-  whereas a single donor preserves real day-to-day correlation.
+  whereas a single donor preserves real day-to-day correlation. (With
+  `daily_fdc_mapping` on, the donor's *magnitudes* are reshaped to the
+  target file's distribution, but the transform is monotone — the
+  donor's day-to-day pattern and event timing survive intact.)
 
 ## See also
 

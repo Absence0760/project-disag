@@ -106,18 +106,20 @@ test.describe('Run page', () => {
 		await expect(page.getByTestId('drop-daily2')).not.toBeVisible();
 	});
 
-	test('single-donor methods (1/2/5) reveal whole-month options; the toggle gates the percent input', async ({
+	test('algorithm options stay visible across methods; each toggle enables only where it applies', async ({
 		page
 	}) => {
 		await page.goto('/run');
 
-		// Method 0 has no single donor → no whole-month option.
-		await expect(page.getByTestId('whole-month-options')).not.toBeVisible();
+		// The options panel is always present; on method 0 the whole-month
+		// toggle is greyed out (no single donor), not hidden.
+		await expect(page.getByTestId('algo-options')).toBeVisible();
+		await expect(page.getByTestId('whole-month-toggle')).toBeDisabled();
 
-		// Methods 1, 2 and 5 each patch from one coherent donor → option shown.
+		// Methods 1, 2 and 5 each patch from one coherent donor → enabled.
 		for (const m of [1, 2, 5]) {
 			await page.getByTestId(`method-${m}`).check();
-			await expect(page.getByTestId('whole-month-options')).toBeVisible();
+			await expect(page.getByTestId('whole-month-toggle')).toBeEnabled();
 		}
 
 		// The percent input only appears once the option is enabled.
@@ -125,9 +127,32 @@ test.describe('Run page', () => {
 		await page.getByTestId('whole-month-toggle').check();
 		await expect(page.getByTestId('whole-month-percent')).toBeVisible();
 
-		// Switching to a method without a single donor (3) hides the block again.
+		// Switching to a method without a single donor (3) disables the toggle
+		// but keeps the panel — the setting survives to the next 1/2/5 pick.
 		await page.getByTestId('method-3').check();
-		await expect(page.getByTestId('whole-month-options')).not.toBeVisible();
+		await expect(page.getByTestId('whole-month-options')).toBeVisible();
+		await expect(page.getByTestId('whole-month-toggle')).toBeDisabled();
+		await page.getByTestId('method-5').check();
+		await expect(page.getByTestId('whole-month-toggle')).toBeChecked();
+		await expect(page.getByTestId('whole-month-percent')).toBeVisible();
+	});
+
+	test('fill-normalisation toggles are method-5 only; seam alone warns', async ({ page }) => {
+		await page.goto('/run');
+
+		// Not method 5 → both toggles visible but disabled.
+		await expect(page.getByTestId('fdc-toggle')).toBeDisabled();
+		await expect(page.getByTestId('seam-toggle')).toBeDisabled();
+
+		await page.getByTestId('method-5').check();
+		await expect(page.getByTestId('fdc-toggle')).toBeEnabled();
+		await expect(page.getByTestId('seam-toggle')).toBeEnabled();
+
+		// Seam blending without FDC mapping earns an inline caution.
+		await page.getByTestId('seam-toggle').check();
+		await expect(page.getByTestId('seam-warning')).toBeVisible();
+		await page.getByTestId('fdc-toggle').check();
+		await expect(page.getByTestId('seam-warning')).not.toBeVisible();
 	});
 
 	test('switching to exceed swaps method picker for intervals input', async ({ page }) => {

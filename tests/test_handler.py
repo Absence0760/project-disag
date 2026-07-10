@@ -410,6 +410,75 @@ class DisagValidationTests(HandlerTestBase):
         self.assertEqual(resp['statusCode'], 400)
         self.assertIn('monthly_key', _body(resp)['error'])
 
+    def test_non_bool_fdc_mapping_returns_400(self):
+        # A truthy string must not silently enable the flag.
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'daily_fdc_mapping': 'yes',
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('daily_fdc_mapping', _body(resp)['error'])
+
+    def test_non_bool_seam_blend_returns_400(self):
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/m.mon',
+                    'seam_blend': 1,
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('seam_blend', _body(resp)['error'])
+
+    def test_valid_fill_norm_flags_pass_that_gate(self):
+        # Valid booleans must not be what trips the 400 — the request then
+        # fails later on the missing monthly_key, proving the gate took them.
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'daily_fdc_mapping': True,
+                    'seam_blend': True,
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('monthly_key', _body(resp)['error'])
+
+    def test_null_fill_norm_flags_treated_as_off(self):
+        # JSON null for the boolean knobs means "omitted", not a type error.
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 5,
+                    'whole_month_fraction': 0.5,
+                    'daily_fdc_mapping': None,
+                    'seam_blend': None,
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 400)
+        self.assertIn('monthly_key', _body(resp)['error'])
+
     def test_foreign_monthly_key_returns_403(self):
         resp = handler.lambda_handler(
             _make_event(

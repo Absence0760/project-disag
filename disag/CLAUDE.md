@@ -44,6 +44,15 @@ than the default). Ignored by methods 0, 3, 4 (no single-donor patch step).
 Default `None` = day-by-day splice (unchanged). See
 [../docs/method5.md](../docs/method5.md#whole-month-replacement-optional).
 
+Method 5 has two further opt-in knobs for cross-river fills —
+`DisagConfig(daily_fdc_mapping=True)` (`--daily-fdc-mapping`) maps injected
+day values through daily flow-duration curves instead of the linear scale
+factor, and `DisagConfig(seam_blend=True)` (`--seam-blend`) blends splice
+seams into the neighbouring observed days. Use seam blending **with** FDC
+mapping, not alone. The `.rep` always carries an injected-day spike audit
+for method 5 (report-only). See
+[../docs/method5.md](../docs/method5.md#injected-day-normalisation-optional).
+
 ## Things to watch
 
 ### The Delphi backfill bug

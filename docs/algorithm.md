@@ -207,6 +207,19 @@ donor=25.0)`. Replaced days are credited to the source that shaped them
 real-vs-borrowed split stays honest. The default (`None`) leaves output
 byte-for-byte identical to before the option existed.
 
+**Injected-day normalisation (optional, PATCH_EXCEED only).**
+`DisagConfig(daily_fdc_mapping=True)` maps injected file-2/donor day
+values through the source file's daily flow-duration curve onto file 1's
+(per calendar month; annual-pool then linear-factor fallback) instead of
+the linear mean-ratio scale factor, so a flashier donor's flood days land
+at target-plausible magnitudes. `DisagConfig(seam_blend=True)` blends each
+spliced gap run into the observed days at its edges (log-interpolated
+`observed ÷ source` corrections, capped at ×3 per anchor) — use it
+together with `daily_fdc_mapping`, not alone. Both default off; the
+report always carries an injected-day spike audit for method 5
+regardless. Full detail and the ground-truth evaluation are in
+[method5.md](method5.md#injected-day-normalisation-optional).
+
 **Run window.** Every method (0–5) iterates over the full hydro-year
 span of `gen_monthly` — the daily files do **not** clamp the window
 on either end. Output length therefore always equals `gen_monthly`'s
@@ -247,6 +260,12 @@ the cross-river scale mismatch. Whole-month tier-2 or tier-3 fills
 where every day comes from file 2 are unaffected — the constant
 factor cancels in the disag formula's `qD/qM` ratio.
 
+With `DisagConfig(daily_fdc_mapping=True)` the linear multiplication is
+replaced by the daily FDC quantile map at both sites (the mean-ratio
+factors remain the fallback for months with unusable FDC pools). The
+map is deliberately non-linear, so it does **not** cancel for
+whole-month fills — reshaping the donor's distribution is its purpose.
+
 **Report contents (PATCH_EXCEED specifically).** The `.rep` file logs:
 
 - per-month tier-3 patches (donor file, donor year, `p_target`, donor
@@ -265,8 +284,14 @@ factor cancels in the disag formula's `qD/qM` ratio.
   and the rescale factor is non-trivial);
 - a **per-month tier breakdown table** with one row per iterated month
   showing T1 / T2 / T3 day counts plus the donor info or missing-reason;
-- a tier coverage summary at the end (Tier 1 / 2 / 3 day counts and
-  month counts).
+- a tier coverage summary (Tier 1 / 2 / 3 day counts and month counts);
+- a **tier-3 donor match-quality summary** (mean/max percentile gap,
+  donor source split, reuse count, worst offenders) when any donor fired;
+- an **injected-day spike audit** (always, when any day was injected):
+  tier-2/3 days above file 1's same-calendar-month observed max;
+- with the optional knobs on: enabled-knob banner lines up front and
+  closing **FDC mapping** / **seam blending** summaries (days mapped and
+  extrapolated, fallback months, gap runs blended).
 
 Contrast with method 1 (`PATCH_CAL`), which matches on absolute
 volume within `gen_monthly` only and assumes the donor's daily file

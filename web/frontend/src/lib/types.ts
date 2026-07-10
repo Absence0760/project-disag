@@ -27,6 +27,17 @@ export interface DisagRequest {
 	 * exceedance-matched donor (method 5). null/omitted = splice.
 	 */
 	whole_month_fraction?: number | null;
+	/**
+	 * Method 5 only. Map injected file-2/donor day values through the source
+	 * file's daily flow-duration curve onto file 1's, instead of the linear
+	 * mean-ratio scale factor. false/omitted = linear factor.
+	 */
+	daily_fdc_mapping?: boolean;
+	/**
+	 * Method 5 only. Blend each spliced gap run into the observed days at
+	 * its edges. Best combined with daily_fdc_mapping. false/omitted = off.
+	 */
+	seam_blend?: boolean;
 }
 
 export interface SeasonGroup {
