@@ -15,7 +15,7 @@ The repo has one Node workspace and several non-npm dependency surfaces:
 
 Plus:
 
-- **Root `package.json`** — pnpm workspace orchestration + pnpm overrides (currently the `cookie >= 0.7.0` override pinned via GHSA — see `pnpm-workspace.yaml`).
+- **Root `package.json`** — pnpm workspace orchestration + pnpm overrides (currently the `cookie >= 0.7.0` override pinned via GHSA — see `pnpm-workspace.yaml`), plus one real devDependency (`concurrently`, driving the `dev` orchestrator).
 - **GitHub Actions** — `.github/workflows/*.yml` — action SHA pinning vs `@v6` floating tags.
 - **Dependabot config** — `.github/dependabot.yml` — must cover the npm workspace + Terraform + GitHub Actions.
 
@@ -23,16 +23,16 @@ Plus:
 
 1. **`pnpm audit` on the frontend.** Run from the repo root:
    ```
-   pnpm --filter disag-md-web audit --audit-level=moderate
+   pnpm -C web/frontend audit --audit-level=moderate
    ```
-   `disag-md-web` is the workspace name declared in `web/frontend/package.json`. Collect moderate+ findings. For each: package, version, CVE, fix version, manifest path. The canonical resolution shape in this repo is the `cookie` override in `pnpm-workspace.yaml`'s `overrides` block — a transitive that upstream hasn't fixed gets pinned there, with a comment referencing the GHSA.
+   (`--filter disag-md-web audit` no longer works under pnpm 11 — it errors with `Unknown option: 'recursive'` — so target the workspace directory with `-C` instead.) Collect moderate+ findings. For each: package, version, CVE, fix version, manifest path. The canonical resolution shape in this repo is the `cookie` override in `pnpm-workspace.yaml`'s `overrides` block — a transitive that upstream hasn't fixed gets pinned there, with a comment referencing the GHSA.
 
 2. **Dependabot coverage.** Read `.github/dependabot.yml`. The expected shape for this repo is:
    - `package-ecosystem: "npm"` for `web/frontend` (the only npm workspace).
    - `package-ecosystem: "terraform"` for `web/infra` (Dependabot bumps Terraform provider versions inside `versions.tf`).
    - `package-ecosystem: "github-actions"` for `/` (Dependabot scans `.github/workflows/` from this root).
    - Schedule weekly; group where it reduces PR churn (svelte-ecosystem grouping is the usual win).
-   - **No npm entry at `/`** — the root `package.json` only holds workspace orchestration + pnpm overrides; nothing for Dependabot to bump there.
+   - `package-ecosystem: "npm"` for `/` — the root `package.json` carries a real devDependency (`concurrently`, used by the `dev` orchestrator script), so Dependabot must cover the root too. Flag if root npm coverage is missing.
    - Flag any missing surface, any non-weekly schedule, or any ungrouped flood of related packages.
 
 3. **Lockfile-sync workflow.** Dependabot edits `web/frontend/package.json` but never touches the root `pnpm-lock.yaml`, which breaks `web-ci.yml`'s `pnpm install --frozen-lockfile`. If this repo runs a compensating `dependabot-lockfile.yml` workflow that regenerates the lockfile on Dependabot PRs and commits the result back, verify:
