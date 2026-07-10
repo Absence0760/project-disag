@@ -21,6 +21,12 @@ walkthrough that shows what the tool does when invoked from the CLI.
 |------|---------------|
 | [exceed_demo/](exceed_demo/) | Three modes in one folder — Basic per-calendar-month curves (CLI), Seasonal grouping (driver script), and monthly↔daily Matching (driver script). |
 
+## Evaluation harnesses
+
+| Harness | What it measures |
+|---------|------------------|
+| [injected_day_eval/](injected_day_eval/) | Ground-truth fill error of Method 5's injected-day normalisation knobs (FDC mapping, seam blending) — the source of the results table in [docs/method5.md](../docs/method5.md#injected-day-normalisation-optional). No committed `data/`; the synthetic world is built in memory from fixed seeds. |
+
 ## How each demo is structured
 
 ```
