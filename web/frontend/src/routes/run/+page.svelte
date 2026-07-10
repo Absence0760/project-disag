@@ -642,7 +642,9 @@
 	.segmented label {
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		padding: 0.4rem 0.9rem;
+		min-height: 44px;
 		border-radius: calc(var(--radius-md) - 4px);
 		cursor: pointer;
 		color: var(--text-muted);
@@ -682,9 +684,12 @@
 		margin: 0;
 	}
 
+	/* 240px min keeps six cards on a balanced grid (3×2 desktop, 2×3 tablet,
+	   1-col mobile) — the page container is never wide enough to reach a
+	   ragged fourth column. */
 	.method-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 		gap: var(--space-3);
 	}
 
@@ -711,6 +716,11 @@
 			var(--shadow-sm),
 			0 0 0 1px var(--accent) inset;
 		background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface));
+	}
+	/* The requirements pill is accent-soft-on-accent; on the active card that
+	   sits on an accent-soft tint and washes out. Give it a solid surface. */
+	.method-card.active .badge {
+		background: var(--surface);
 	}
 	/* Route the focus ring to the visible card — the real radio is hidden. */
 	.method-card:has(input:focus-visible) {
@@ -770,6 +780,12 @@
 		}
 	}
 
+	/* Separate the outcome from the form so it doesn't butt against the
+	   actions row (the success card carries its own margin below). */
+	.alert.error {
+		margin-top: var(--space-5);
+	}
+
 	.success-card {
 		flex-direction: column;
 		align-items: stretch;
@@ -777,5 +793,19 @@
 	}
 	.success-card h3 {
 		margin: var(--space-2) 0;
+	}
+
+	/* On narrow screens let the primary tool switch fill the width so each
+	   option is a comfortable full-row tap target instead of three cramped
+	   pills that wrap unevenly. */
+	@media (max-width: 620px) {
+		.segmented {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.segmented label {
+			min-width: 0;
+		}
 	}
 </style>
