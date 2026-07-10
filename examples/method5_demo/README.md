@@ -67,7 +67,15 @@ python3 -m disag --no-gui --method 5 \
 Done — 72 months written (72 disaggregated, 0 missing).
 ```
 
-The `.rep` body has **zero** `Patched with file …` lines.
+Every decision-log row reads `disaggregated from file 1`, and the tier
+coverage summary credits 100 % of days to Tier 1:
+
+```
+Tier coverage summary (days):
+  Tier 1 (file 1)        :   2191 day(s)  (100.0%)
+  Tier 2 (file 2)        :      0 day(s)  (  0.0%)  across   0 month(s)
+  Tier 3 (donor month)   :      0 day(s)  (  0.0%)  across   0 month(s)
+```
 
 ---
 
@@ -86,20 +94,16 @@ python3 -m disag --no-gui --method 5 \
     --report  /tmp/s2.rep
 ```
 
-**Expected:**
+**Expected decision-log rows for the two gap months:**
 ```
-Done — 72 months written (72 disaggregated, 0 missing).
+2003  6    0  30   0   disaggregated from file 2 (file 1 fully missing; file-2 → file-1 scale ×3.3265)
+2005  6    0  30   0   disaggregated from file 2 (file 1 fully missing; file-2 → file-1 scale ×3.3265)
 ```
 
-The `.rep` body has **zero** `Patched with file …` lines. Tier 2
-day-level patching is *not* logged, by design — it's just observations
-from a different gauge.
-
-How to *prove* that something happened anyway: the daily values for Jun
-2003 and Jun 2005 in `/tmp/s2.day` will differ from the corresponding
-days in Scenario 1's output, because their shape now comes from gauge
-B's record at a smaller absolute scale (rescaled to River A's monthly
-volume).
+Both months fill entirely from gauge B, lifted to gauge A's June scale
+by the ×3.3265 factor from the report's scale-factor table (gauge B is
+≈ 30 % of gauge A's discharge). The tier coverage summary credits 60
+days to Tier 2 across 2 months, and no tier-3 donor fires.
 
 ---
 
@@ -118,15 +122,25 @@ python3 -m disag --no-gui --method 5 \
     --report  /tmp/s3.rep
 ```
 
-**Expected report body:**
+**Expected decision-log rows for the two gap months:**
 ```
-2005  6 Observed daily flow < 0,   Patched with file 1 2002  6 (target exceed%= 83.3, donor exceed%= 75.0)
+2003  6    0  30   0   disaggregated from file 2 (file 1 fully missing; file-2 → file-1 scale ×3.4182)
+2005  6    0   0  30   patched from donor: file 1 2002  6 (exceed% target=83.3 donor=75.0)
 ```
 
-One Tier-3 line. Cal Jun 2003 was silently filled by Tier 2 (gauge B's
-day values). Cal Jun 2005 had no Tier-2 source, so the algorithm
-percentile-matched it to gauge A's June 2002 — see the table below for
-the rank arithmetic.
+Cal Jun 2003 fills from Tier 2 (gauge B's day values, rescaled). Cal
+Jun 2005 had no Tier-2 source, so the algorithm percentile-matched it
+to gauge A's June 2002 — see the table below for the rank arithmetic.
+
+This scenario also shows the always-on **injected-day spike audit**
+doing its job: gauge B's rescaled 2003-06-22 value lands a hair above
+anything gauge A ever recorded in June, and the audit flags it —
+`flagged : 1 of 60 audited injected day(s)`, worst offender
+`2003  6 day 22 (tier 2) 19.689 vs 19.491`. Re-running with
+`--daily-fdc-mapping` maps the fill through the two gauges'
+flow-duration curves instead of the linear factor and the flag
+disappears (see
+[method5.md → Injected-day normalisation](../../docs/method5.md#injected-day-normalisation-optional)).
 
 ---
 
@@ -143,13 +157,13 @@ python3 -m disag --no-gui --method 5 \
     --report  /tmp/s4.rep
 ```
 
-**Expected report body:**
+**Expected decision-log rows for the two gap months:**
 ```
-2003  6 Observed daily flow < 0,   Patched with file 1 2004  6 (target exceed%= 33.3, donor exceed%= 25.0)
-2005  6 Observed daily flow < 0,   Patched with file 1 2002  6 (target exceed%= 83.3, donor exceed%= 75.0)
+2003  6    0   0  30   patched from donor: file 1 2004  6 (exceed% target=33.3 donor=25.0)
+2005  6    0   0  30   patched from donor: file 1 2002  6 (exceed% target=83.3 donor=75.0)
 ```
 
-Two Tier-3 lines — one per gappy month.
+Two Tier-3 rows — one per gappy month.
 
 ---
 
@@ -180,16 +194,20 @@ python3 -m disag --no-gui --method 5 \
 | 15..20 | gauge A's Jun 2005 (donor)     | 3 |
 | 21..30 | gauge A real value             | 1 |
 
-**Expected report body:**
+**Expected decision-log row for cal Jun 2003:**
 ```
-2003  6 Observed daily flow < 0,   Patched with file 1 2005  6 (target exceed%= 33.3, donor exceed%= 40.0)
+2003  6   20   4   6   patched from donor: file 1 2005  6 (exceed% target=33.3 donor=40.0)
 ```
+
+The `F1/F2/OTH` columns make the three-way split visible in one row:
+20 real gauge-A days, 4 gauge-B fills, 6 donor days.
 
 **Expected tier coverage summary:**
 ```
-Tier 1 (file 1)        :   2181 day(s)
-Tier 2 (file 2)        :      4 day(s)  across   1 month(s)
-Tier 3 (donor month)   :      6 day(s)  across   1 month(s)
+Tier coverage summary (days):
+  Tier 1 (file 1)        :   2181 day(s)  ( 99.5%)
+  Tier 2 (file 2)        :      4 day(s)  (  0.2%)  across   1 month(s)
+  Tier 3 (donor month)   :      6 day(s)  (  0.3%)  across   1 month(s)
 ```
 
 The 4 + 6 = 10 non-Tier-1 days line up exactly with the 10 days that
@@ -256,7 +274,8 @@ years in the daily file the resolution would tighten.
 If you want to break the algorithm to convince yourself it does fail
 loudly when it should, edit `generate.py` to also gap-out **all the
 other Junes** (so no donor exists), and rerun Scenario 4. The two
-gappy Junes will land in the output as `-99.99` sentinels, and the
-report will log a `No tier-3 donor available — month marked missing`
-line for each one (added by the algorithm-hardening pass — silent
-failure used to be possible and was a real footgun).
+gappy Junes will land in the output as `-99.99` sentinels, and their
+decision-log rows will read
+`MISSING — no exceedance donor available` (added by the
+algorithm-hardening pass — silent failure used to be possible and was
+a real footgun).

@@ -47,10 +47,11 @@ Tier 3 — synthetic donor month picked by exceedance percentile
   record that's "similarly wet" by percentile rank, and copies the
   donor's day-d value into the gappy slots.
 
-The .rep report logs every Tier-3 substitution (Tier-2 is silent
-because it's just observations). The output day file contains real
-data wherever real data was available, and a clearly-traceable
-synthetic shape elsewhere.
+The .rep report's decision log has one row per month naming each
+month's source split; tier-3 rows name the donor and the matched
+percentiles, tier-2 rows the file-2 → file-1 scale treatment. The
+output day file contains real data wherever real data was available,
+and a clearly-traceable synthetic shape elsewhere.
 
 ## Why exceedance percentile, and not absolute volume?
 
@@ -94,9 +95,11 @@ For target month `(Y, M)` with monthly volume `V_target`:
    smaller file index, then by earlier donor year.
 
 4. For each day still missing in the target month after Tiers 1
-   and 2, copy the donor's day-d value. Run the standard
-   disaggregation formula (see [algorithm.md](algorithm.md)) on the
-   resulting day-array.
+   and 2, copy the donor's day-d value (scaled — or FDC-mapped, see
+   [Injected-day normalisation](#injected-day-normalisation-optional)
+   — to file 1's magnitude when the donor comes from file 2). Run the
+   standard disaggregation formula (see [algorithm.md](algorithm.md))
+   on the resulting day-array.
 
 The percentile is computed by **rank** (not by binning), so it's
 independent of the binned exceedance computation in the
@@ -372,17 +375,28 @@ It then contains, in order:
    ```
 
    File-2 day values are multiplied by the per-calendar-month factor
-   when used in tier-2 day patching. This corrects a distortion that
+   whenever they enter the shape array — tier-2 day patching *and*
+   tier-3 donor days drawn from file 2. This corrects a distortion that
    would otherwise hit mixed-source months when the two daily files
-   sit on different rivers of different absolute scale.
-3. **Decision log** — the single per-month list shared by every method.
+   sit on different rivers of different absolute scale. When
+   `daily_fdc_mapping` is on, the FDC map replaces this multiplication
+   (the table is still printed — the factors remain the documented
+   fallback for months whose FDC pools are unusable).
+3. **Enabled-knob banners** (only when the corresponding option is on):
+   a `Daily FDC quantile mapping : enabled — …` line, a
+   `Seam blending : enabled — …` line, and — when seam blending is
+   enabled without FDC mapping — a warning that the combination can
+   amplify mis-scaled fills.
+4. **Decision log** — the single per-month list shared by every method.
    Each row shows the day-count split across the three tiers (`F1` = file
    1 / tier 1, `F2` = file 2 / tier 2, `OTH` = donor / tier 3) and a
    `result / source` note. Tier-3 patched months name the donor and the
    matched percentiles; tier-2 months show the file-2 → file-1 scale
-   factor that was applied (the same factor from the table above), so
-   each row explains both what was used and why; dropped months carry
-   the reason inline:
+   factor that was applied (the same factor from the table above; with
+   `daily_fdc_mapping` on the clause reads `file-2 → file-1 FDC-mapped`
+   instead), and months where `seam_blend` corrected one or more gap
+   runs gain a `(seam-blended K gap(s))` suffix — so each row explains
+   both what was used and why; dropped months carry the reason inline:
 
    ```
    Decision log (one row per month):
@@ -404,7 +418,7 @@ It then contains, in order:
    2003  6    0   0   0   MISSING — donor file 2 2001  6 missing day(s) 15
    ```
 
-4. **Tier coverage summary** — day counts and their share of the whole
+5. **Tier coverage summary** — day counts and their share of the whole
    record, so "how much was real vs borrowed" is a glance, not a
    calculation:
 
@@ -415,7 +429,7 @@ It then contains, in order:
      Tier 3 (donor month)   :     30 day(s)  (  1.4%)  across   1 month(s)
    ```
 
-5. **Tier-3 donor match quality** (only when at least one donor fired) —
+6. **Tier-3 donor match quality** (only when at least one donor fired) —
    aggregates the per-month `target`/`donor` exceedance percentiles from
    the decision log into the quality metric for the method's core
    operation. A small mean gap means donors landed close to their targets
@@ -437,10 +451,6 @@ It then contains, in order:
    one can sit several percentile points from the target (see the
    leap-year edge case above) — that's an honest limit of the data, not
    a matching error.
-
-Tier-2 day-level patches are *not* logged per-month — the same
-behaviour as Method 2 (`PATCH_FILE`). The summary line at the end is
-the only place to see how much tier-2 fired.
 
 After the match-quality block the report closes with the **injected-day
 spike audit** (always present when any day was injected), and — when the
@@ -464,7 +474,10 @@ mapped, extrapolations, fallback months) and a **seam blending summary**
 - **Tier 3 produces a *single* donor month** — it doesn't average
   across nearby ranks. The choice is deliberate: averaging produces
   a synthetic shape that doesn't correspond to any real day pattern,
-  whereas a single donor preserves real day-to-day correlation.
+  whereas a single donor preserves real day-to-day correlation. (With
+  `daily_fdc_mapping` on, the donor's *magnitudes* are reshaped to the
+  target file's distribution, but the transform is monotone — the
+  donor's day-to-day pattern and event timing survive intact.)
 
 ## See also
 
