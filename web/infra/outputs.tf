@@ -42,4 +42,7 @@ Push this into a GitHub repo variable (e.g. via `pnpm tf:export-vars`)
 so .github/workflows/deploy.yml can pick it up.
 EOT
   value       = data.aws_iam_role.github_deploy.arn
+  # The ARN embeds the AWS account ID — same CI-log leakage vector as
+  # api_endpoint above, so keep it out of plan/output text.
+  sensitive = true
 }

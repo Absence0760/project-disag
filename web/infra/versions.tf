@@ -10,6 +10,17 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    # Used by lambda.tf's null_resource / local_file build plumbing.
+    # Declared here so upgrades are pinned by constraint, not just
+    # whatever the lockfile happened to record.
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.3"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.9"
+    }
     # Prod secrets live ENCRYPTED in the private ../infra-secrets repo
     # (this repo is public), under disag/prod.sops.yaml, keyed by
     # alias/disag-sops. Edit them from THAT repo: `sops disag/prod.sops.yaml`.
