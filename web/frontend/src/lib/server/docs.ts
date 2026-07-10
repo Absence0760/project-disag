@@ -5,7 +5,9 @@
 // HTML once, at module load. Consumed by routes/docs/[slug]/+page.server.ts.
 
 import { marked } from 'marked';
-import { DOC_PAGES } from '$lib/docMeta';
+// Relative rather than `$lib/docMeta` so this module also loads under
+// Vitest (see docs.test.ts), whose config doesn't set up the alias.
+import { DOC_PAGES } from '../docMeta';
 
 // Raw markdown, imported straight from the repo's docs/ directory. Vite's
 // `?raw` query returns the file contents as a string at build time.
@@ -122,6 +124,18 @@ function slugify(text: string): string {
 	return seen === 0 ? base : `${base}-${seen}`;
 }
 
+// Escape a value for interpolation into a double-quoted HTML attribute.
+// Defensive: today only repo-authored docs flow through here, but a stray
+// quote in a heading or link target must not break out of the attribute.
+function escapeAttr(value: string): string {
+	return value
+		.replace(/&/g, '&amp;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}
+
 // Rewrite link/image targets, add heading ids, and harden outbound links.
 // Registered once, globally — marked applies it on every parse below.
 marked.use({
@@ -133,14 +147,14 @@ marked.use({
 	renderer: {
 		heading(token) {
 			const text = this.parser.parseInline(token.tokens);
-			const id = slugify(token.text);
+			const id = escapeAttr(slugify(token.text));
 			return `<h${token.depth} id="${id}">${text}</h${token.depth}>\n`;
 		},
 		link({ href, title, text }) {
 			const external = href.startsWith('http');
 			const attrs = external ? ' rel="noopener" target="_blank"' : '';
-			const t = title ? ` title="${title}"` : '';
-			return `<a href="${href}"${t}${attrs}>${text}</a>`;
+			const t = title ? ` title="${escapeAttr(title)}"` : '';
+			return `<a href="${escapeAttr(href)}"${t}${attrs}>${text}</a>`;
 		}
 	}
 });
