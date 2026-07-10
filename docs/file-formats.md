@@ -180,13 +180,23 @@ row carries:
   file-1 scale ×N)` when file 1 has no usable day that month, and
   `disaggregated from file 1, gaps filled from file 2 (K day(s),
   file-2 → file-1 scale ×N)` when file 2 only patched some days — the
-  `×N` is the per-month rescaling factor from the table above. A month
-  that fell back to an even split because the observed monthly total was
-  ≤ 0 is annotated inline.
+  `×N` is the per-month rescaling factor from the table above. When the
+  `daily_fdc_mapping` knob is on, that scale-factor clause reads
+  `file-2 → file-1 FDC-mapped` instead; when `seam_blend` corrected one
+  or more gap runs in the month the note gains a `(seam-blended K
+  gap(s))` suffix. A month that fell back to an even split because the
+  observed monthly total was ≤ 0 is annotated inline.
 
-Method 5 (PATCH_EXCEED) appends a tier coverage summary; any pre-run
-warnings (zero-target months, sparse/flat distributions, file-2 → file-1
-scale factors) precede the log.
+Method 5 (PATCH_EXCEED) appends a tier coverage summary, a donor
+match-quality block when any tier-3 donor fired, and an **injected-day
+spike audit** (always present when any day was injected) listing how
+many tier-2/tier-3 days exceed file 1's same-calendar-month observed
+maximum, plus the worst offenders. When the corresponding knobs are on,
+a daily-FDC-mapping summary (days mapped / extrapolated / fallback
+months) and a seam-blending summary (gap runs blended) follow. Any
+pre-run warnings (zero-target months, sparse/flat distributions,
+file-2 → file-1 scale factors, enabled-knob banners) precede the log.
+See [method5.md](method5.md#injected-day-normalisation-optional).
 
 ```
 --------------------------------------------------------------------------------

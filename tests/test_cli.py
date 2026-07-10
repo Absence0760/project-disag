@@ -228,6 +228,68 @@ class WholeMonthFractionCliTests(unittest.TestCase):
                     os.unlink(p)
 
 
+class InjectedDayFlagTests(unittest.TestCase):
+    """--daily-fdc-mapping / --seam-blend CLI plumbing (method 5 only)."""
+
+    def test_flags_reach_the_report(self):
+        out, rep = _tmp('.day'), _tmp('.rep')
+        try:
+            _run_cli(
+                '--method', '5', '--daily-fdc-mapping', '--seam-blend',
+                '--monthly', _demo('method5_demo', 'data', 'target.MON'),
+                '--daily1',  _demo('method5_demo', 'data',
+                                   'gauge_a_scattered.DAY'),
+                '--daily2',  _demo('method5_demo', 'data',
+                                   'gauge_b_scattered.DAY'),
+                '--output',  out, '--report', rep,
+            )
+            with open(rep) as f:
+                content = f.read()
+            self.assertIn('Daily FDC quantile mapping : enabled', content)
+            self.assertIn('Seam blending : enabled', content)
+            self.assertIn('Injected-day spike audit', content)
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_seam_blend_without_fdc_warns_in_report(self):
+        out, rep = _tmp('.day'), _tmp('.rep')
+        try:
+            _run_cli(
+                '--method', '5', '--seam-blend',
+                '--monthly', _demo('method5_demo', 'data', 'target.MON'),
+                '--daily1',  _demo('method5_demo', 'data',
+                                   'gauge_a_scattered.DAY'),
+                '--daily2',  _demo('method5_demo', 'data',
+                                   'gauge_b_scattered.DAY'),
+                '--output',  out, '--report', rep,
+            )
+            with open(rep) as f:
+                content = f.read()
+            self.assertIn('can amplify mis-scaled fills', content)
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_note_when_used_on_other_method(self):
+        out, rep = _tmp('.day'), _tmp('.rep')
+        try:
+            res = _run_cli(
+                '--method', '0', '--daily-fdc-mapping',
+                '--monthly', _demo('method5_demo', 'data', 'target.MON'),
+                '--daily1',  _demo('method5_demo', 'data',
+                                   'gauge_a_complete.DAY'),
+                '--output',  out, '--report', rep,
+            )
+            self.assertIn('only affect Method 5', res.stderr)
+        finally:
+            for p in (out, rep):
+                if os.path.exists(p):
+                    os.unlink(p)
+
+
 class HighMissingWarningTests(unittest.TestCase):
     """The warning that fires when method 0 leaves a lot of months missing."""
 

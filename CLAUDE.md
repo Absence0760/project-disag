@@ -51,6 +51,15 @@ python3 -m disag --no-gui --method 1 --whole-month-fraction 0.5 \
     --daily1  testfiles/RUKOKI-l.DAY \
     --output  /tmp/out.day --report /tmp/out.rep
 
+# Method-5 cross-river fill normalisation: map injected file-2/donor days
+# through daily flow-duration curves (instead of the linear scale factor)
+# and blend splice seams into neighbouring observed days. Use --seam-blend
+# together with --daily-fdc-mapping, not alone (docs/method5.md).
+python3 -m disag --no-gui --method 5 --daily-fdc-mapping --seam-blend \
+    --monthly testfiles/SINDILA.MON \
+    --daily1  testfiles/RUKOKI-l.DAY \
+    --output  /tmp/out.day --report /tmp/out.rep
+
 # Convert a Pitman .ANS monthly file into the NinhamShand .MON layout
 python3 -m disag.convert path/to/PUNRQ6.ANS path/to/PUNRQ6.MON
 

@@ -88,6 +88,20 @@ def main():
              'matched calendar month (method 1), file 2 (method 2), or file 2 '
              'then the exceedance donor (method 5). Default: splice day-by-day',
     )
+    parser.add_argument(
+        '--daily-fdc-mapping', action='store_true',
+        help='Method 5 only: map injected file-2/donor day values through '
+             "the source file's daily flow-duration curve onto file 1's "
+             '(per calendar month) instead of the linear mean-ratio scale '
+             "factor, so a flashier donor catchment's flood days land at "
+             'target-plausible magnitudes',
+    )
+    parser.add_argument(
+        '--seam-blend', action='store_true',
+        help='Method 5 only: blend each spliced gap run into the observed '
+             'days at its edges (log-interpolated correction, capped at x3 '
+             'per anchor) to remove step discontinuities at splice seams',
+    )
 
     args = parser.parse_args()
 
@@ -141,8 +155,17 @@ def main():
             'it is ignored for this method.',
             file=sys.stderr,
         )
+    if ((args.daily_fdc_mapping or args.seam_blend)
+            and method != DisagMethod.PATCH_EXCEED):
+        print(
+            'Note: --daily-fdc-mapping and --seam-blend only affect '
+            'Method 5 (PATCH_EXCEED); they are ignored for this method.',
+            file=sys.stderr,
+        )
     config = DisagConfig(
-        whole_month_fraction=args.whole_month_fraction
+        whole_month_fraction=args.whole_month_fraction,
+        daily_fdc_mapping=args.daily_fdc_mapping,
+        seam_blend=args.seam_blend,
     )
 
     required = {'monthly': args.monthly, 'output': args.output, 'report': args.report}

@@ -207,6 +207,19 @@ donor=25.0)`. Replaced days are credited to the source that shaped them
 real-vs-borrowed split stays honest. The default (`None`) leaves output
 byte-for-byte identical to before the option existed.
 
+**Injected-day normalisation (optional, PATCH_EXCEED only).**
+`DisagConfig(daily_fdc_mapping=True)` maps injected file-2/donor day
+values through the source file's daily flow-duration curve onto file 1's
+(per calendar month; annual-pool then linear-factor fallback) instead of
+the linear mean-ratio scale factor, so a flashier donor's flood days land
+at target-plausible magnitudes. `DisagConfig(seam_blend=True)` blends each
+spliced gap run into the observed days at its edges (log-interpolated
+`observed ÷ source` corrections, capped at ×3 per anchor) — use it
+together with `daily_fdc_mapping`, not alone. Both default off; the
+report always carries an injected-day spike audit for method 5
+regardless. Full detail and the ground-truth evaluation are in
+[method5.md](method5.md#injected-day-normalisation-optional).
+
 **Run window.** Every method (0–5) iterates over the full hydro-year
 span of `gen_monthly` — the daily files do **not** clamp the window
 on either end. Output length therefore always equals `gen_monthly`'s

@@ -100,6 +100,9 @@ class DisagApp(Tk):
         # The state lives on the app; the Options… dialog edits it.
         self._wm_enabled = BooleanVar(value=False)
         self._wm_percent = IntVar(value=50)
+        # Method-5-only fill normalisation (both off by default).
+        self._fdc_enabled = BooleanVar(value=False)
+        self._seam_enabled = BooleanVar(value=False)
         self._btn_options = ttk.Button(
             method_frame, text='Options…', command=self._open_options,
         )
@@ -218,18 +221,21 @@ class DisagApp(Tk):
         messagebox.showinfo('Conversion complete', msg)
 
     # ------------------------------------------------------------------
-    # Whole-month replacement options dialog (methods 1/2/5)
+    # Method options dialog (whole-month replacement, methods 1/2/5;
+    # fill normalisation, method 5 only)
     # ------------------------------------------------------------------
 
     def _open_options(self):
         dlg = Toplevel(self)
-        dlg.title('Whole-month replacement')
+        dlg.title('Method options')
         dlg.resizable(False, False)
         dlg.transient(self)
 
         # Edit copies; OK commits, Cancel discards.
         enabled = BooleanVar(value=self._wm_enabled.get())
         percent = IntVar(value=self._wm_percent.get())
+        fdc = BooleanVar(value=self._fdc_enabled.get())
+        seam = BooleanVar(value=self._seam_enabled.get())
 
         frm = ttk.Frame(dlg, padding=12)
         frm.grid(sticky='nsew')
@@ -263,8 +269,30 @@ class DisagApp(Tk):
         enabled.trace_add('write', _sync)
         _sync()
 
+        # Method-5-only fill normalisation. Greyed out for methods 1/2 so
+        # the dialog still documents what switching to method 5 unlocks.
+        is_m5 = DisagMethod(self._method_var.get()) == DisagMethod.PATCH_EXCEED
+        m5_state = 'normal' if is_m5 else 'disabled'
+        ttk.Separator(frm, orient='horizontal').grid(
+            row=3, column=0, columnspan=3, sticky='ew', pady=(2, 6))
+        ttk.Checkbutton(
+            frm, variable=fdc, state=m5_state,
+            text='Map injected days through daily flow-duration curves '
+                 '(method 5)',
+        ).grid(row=4, column=0, columnspan=3, sticky='w')
+        ttk.Checkbutton(
+            frm, variable=seam, state=m5_state,
+            text='Blend splice seams into neighbouring observed days '
+                 '(method 5)',
+        ).grid(row=5, column=0, columnspan=3, sticky='w')
+        ttk.Label(
+            frm, foreground='#555',
+            text='Seam blending works best combined with FDC mapping.',
+        ).grid(row=6, column=0, columnspan=3, sticky='w',
+               padx=(20, 0), pady=(2, 8))
+
         btns = ttk.Frame(frm)
-        btns.grid(row=3, column=0, columnspan=3, sticky='e')
+        btns.grid(row=7, column=0, columnspan=3, sticky='e')
         ttk.Button(btns, text='Cancel', command=dlg.destroy).pack(
             side='left', padx=(0, 6))
 
@@ -275,6 +303,8 @@ class DisagApp(Tk):
                 p = self._wm_percent.get()
             self._wm_percent.set(max(1, min(100, p)))
             self._wm_enabled.set(enabled.get())
+            self._fdc_enabled.set(fdc.get())
+            self._seam_enabled.set(seam.get())
             dlg.destroy()
         ttk.Button(btns, text='OK', command=_ok).pack(side='left')
 
@@ -290,11 +320,16 @@ class DisagApp(Tk):
     )
 
     def _whole_month_config(self, method: DisagMethod) -> DisagConfig:
-        """Build the run config from the current whole-month option state."""
+        """Build the run config from the current option-dialog state."""
         fraction = None
         if method in self._WHOLE_MONTH_METHODS and self._wm_enabled.get():
             fraction = self._wm_percent.get() / 100.0
-        return DisagConfig(whole_month_fraction=fraction)
+        is_m5 = method == DisagMethod.PATCH_EXCEED
+        return DisagConfig(
+            whole_month_fraction=fraction,
+            daily_fdc_mapping=is_m5 and self._fdc_enabled.get(),
+            seam_blend=is_m5 and self._seam_enabled.get(),
+        )
 
     # ------------------------------------------------------------------
     # Method-change callback
