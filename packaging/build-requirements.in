@@ -1,2 +1,6 @@
 pip==26.1.2
 pyinstaller==6.21.0
+
+# NB: after re-running pip-compile, restore the "Manual cross-platform
+# pins" section at the bottom of build-requirements.txt (macholib /
+# pefile / pywin32-ctypes) — see the comment there for why.
