@@ -134,9 +134,11 @@ resource "aws_cloudfront_distribution" "site" {
     path_pattern           = "/api/*"
     target_origin_id       = "api-gw"
     viewer_protocol_policy = "redirect-to-https"
-    # Only what the API actually serves (GET/POST routes + CORS preflight)
-    # — PUT/PATCH/DELETE are unused, so don't accept them at the edge.
-    allowed_methods            = ["GET", "HEAD", "OPTIONS", "POST"]
+    # CloudFront only accepts three allowed_methods sets: [GET, HEAD],
+    # [GET, HEAD, OPTIONS], or all seven — accepting POST forces the full
+    # set. Unused verbs (PUT/PATCH/DELETE) fall through to API Gateway,
+    # which has no routes for them and rejects with a 404.
+    allowed_methods            = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
     response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
