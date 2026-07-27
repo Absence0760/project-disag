@@ -53,7 +53,7 @@
     "deploy:web": "cd web/infra && aws s3 sync ../frontend/build/ \"s3://$(terraform output -raw frontend_bucket)/\" --delete && aws cloudfront create-invalidation --distribution-id \"$(terraform output -raw cloudfront_distribution_id)\" --paths '/*'"
   },
   "devDependencies": {
-    "concurrently": "10.0.3"
+    "concurrently": "10.0.4"
   },
   "//-- overrides --": "pnpm overrides live in pnpm-workspace.yaml for v10+ workspaces."
 }
