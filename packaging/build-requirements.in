@@ -1,4 +1,4 @@
-pip==26.2
+pip==26.2.1
 pyinstaller==6.21.0
 
 # NB: after re-running pip-compile, restore the "Manual cross-platform
