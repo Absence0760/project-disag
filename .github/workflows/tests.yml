@@ -74,6 +74,11 @@ jobs:
           fi
 
   ci-gate:
+    # NAME MUST BE UNIQUE ACROSS WORKFLOWS — see the matching comment on
+    # web-ci.yml's `Web CI gate`. Branch protection matches a required
+    # check by context name, so a second workflow reporting "CI gate"
+    # collapses into this one required context and the merge fires on
+    # whichever reports first. Never give another workflow this name.
     name: CI gate
     runs-on: ubuntu-latest
     if: always()
