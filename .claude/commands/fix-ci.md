@@ -36,7 +36,7 @@ Decide which of these it is, and say so:
 
 ### 3. Read the surrounding context before changing it
 
-CI steps and workflow files often carry comments documenting prior incidents (sometimes cited by run ID) and why the current shape exists. Read them. Your fix should make those comments obsolete by removing the failure mode, and you should update or replace the comments to match — don't leave a comment describing a workaround you just deleted. If the root cause might be a schema / migration interaction, pull in the `migration-coordinator` agent before touching DDL.
+CI steps and workflow files often carry comments documenting prior incidents (sometimes cited by run ID) and why the current shape exists. Read them. Your fix should make those comments obsolete by removing the failure mode, and you should update or replace the comments to match — don't leave a comment describing a workaround you just deleted.
 
 ### 4. Reproduce locally, then verify the fix locally
 

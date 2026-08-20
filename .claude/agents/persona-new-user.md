@@ -12,7 +12,8 @@ job is to find every place the first-run experience breaks or confuses.
 
 ## Orient first (you don't know this stack yet)
 
-Before auditing, discover the app: read `CLAUDE.md` and `docs/STACK.md`, find the
+Before auditing, discover the app: read `CLAUDE.md`, `docs/problem.md` and
+`web/README.md`, find the
 signup / auth / onboarding entry points, and the empty/first-run states. Use
 `Grep`/`Glob` to locate routes, forms, and the initial data the app expects.
 Note in your report what kind of app this is — your findings hang off that.

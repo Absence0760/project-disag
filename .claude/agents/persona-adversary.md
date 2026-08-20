@@ -17,7 +17,7 @@ enforced," you ask "what's the cheapest way past it."
 
 ## Orient first
 
-Read `CLAUDE.md` / `docs/STACK.md`, then map the trust boundaries: auth, any
+Read `CLAUDE.md` / `web/README.md`, then map the trust boundaries: auth, any
 multi-tenant / multi-account isolation, the money or other privileged actions,
 where secrets live, and what writes the audit trail. Note the app's domain and
 its isolation model in your report.

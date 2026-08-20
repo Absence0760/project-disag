@@ -1,8 +1,8 @@
 # Persona audits
 
 A **persona** is a read-only Claude subagent (`.claude/agents/persona-*.md`) that
-adopts a specific real-world point of view — a brand-new user, an admin, an
-international customer, an integrator, an attacker — and walks the app the way
+adopts a specific real-world point of view — a brand-new user, a daily heavy
+user, an assistive-technology user, an attacker — and walks the app the way
 that person would, looking for bugs, missing primitives, wrong assumptions, and
 gaps that a generic code review never surfaces because it has no human stake.
 
@@ -12,17 +12,19 @@ Personas complement, not replace, the other reviewers:
 - A persona asks *"does this app actually work for **me**, and would it embarrass
   me / lock me out / leak my data / let me cheat it?"*
 
-These ship in `base` as a **generic panel** that applies to almost any app. They
-do **not** know your stack — each persona discovers it first (reads `CLAUDE.md`,
-`docs/STACK.md`, the route/handler layout, the data models) and then audits. Add
-domain-specific personas per project (see "Domain packs" below).
+These came from the estate `base` scaffolding as a generic panel; this repo
+carries only the four that match what it actually ships (no accounts, no admin
+surface, no personal data, no public API — see `.claude/README.md` § "Why this
+set, and not more"). They do **not** know the stack — each persona discovers it
+first (reads `CLAUDE.md`, the route/handler layout, the file formats) and then
+audits. Add domain-specific personas as needed (see "Domain packs" below).
 
 ## How to run one
 
 These are agents. Run one by asking for it by name, e.g.
 
 > run the `persona-new-user` audit
-> run `persona-international-user` and `persona-adversary`
+> run `persona-power-user` and `persona-adversary`
 
 or run the whole panel with the `/persona` command. Each persona writes its
 findings to `reviews/<persona-name>.md` (git-ignored — see `reviews/README.md`).
@@ -109,18 +111,19 @@ _One paragraph: who I am and what I came here to check._
 - Distinguish *a real bug* from *a feature the app never claimed to have*. Both
   are worth recording, but label the second as a **gap**, not a **defect**.
 
-## The generic panel
+## The panel in this repo
 
 | Persona | Point of view |
 |---|---|
-| `persona-new-user` | First-run / onboarding — signup, empty states, error clarity, "what do I do now" |
-| `persona-power-user` | Daily heavy user — bulk ops, keyboard, large data volume, pagination, speed |
-| `persona-admin` | Operator — settings, RBAC, destructive actions, audit trail, tenant/org config |
-| `persona-international-user` | i18n/l10n — currency, dates, numbers, timezones, RTL, address/phone formats |
+| `persona-new-user` | First-run — landing on the site with a `.MON` file and no idea what "disaggregation" means |
+| `persona-power-user` | Daily heavy user — many runs, large `.day` files, keyboard, speed, re-running with tweaked parameters |
 | `persona-accessibility-user` | WCAG/keyboard/screen-reader/contrast/motion + responsive small-screen |
-| `persona-integrator` | API/webhook consumer — auth, idempotency, rate limits, error contracts, versioning |
-| `persona-adversary` | Attacker — authz/IDOR, injection, replay, enumeration, secret exposure |
-| `persona-data-subject` | Privacy — data export, account deletion, consent, retention, PII in logs |
+| `persona-adversary` | Attacker — `X-Client-Id` spoofing, pre-signed URL abuse, upload-size/cost abuse, path traversal, secret exposure |
+
+The estate `base` panel also ships `persona-admin`, `persona-international-user`,
+`persona-integrator`, and `persona-data-subject`. They are **deliberately not in
+this repo** — there is no admin surface, no i18n layer, no third-party API
+consumer, and no personal data to be a subject of. Add one if that changes.
 
 ## Domain packs — adding personas for *this* app
 

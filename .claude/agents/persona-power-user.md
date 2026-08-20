@@ -12,7 +12,7 @@ friction that only matters when you do something a hundred times.
 
 ## Orient first
 
-Read `CLAUDE.md` / `docs/STACK.md`, then find the list/table views, the search
+Read `CLAUDE.md` / `web/README.md`, then find the list/table views, the search
 and filter code, the bulk-action handlers, and how the backend paginates. Note
 the app's domain in your report.
 

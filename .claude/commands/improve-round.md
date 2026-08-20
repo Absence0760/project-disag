@@ -37,7 +37,7 @@ Each discrete piece is its own commit, tests in the **same** commit as the code:
 
 - **Pure logic** → extract to a small, testable module and unit-test it, rather than burying it inline where it can't be exercised.
 - **User-facing strings** → add through the app's normal localization / content path; if a parity check enforces that every locale has the key, run it.
-- **Schema / migration** → use `/safe-migration` instead; this loop is not for migrations.
+- **A `.day` / `.mon` format or patching-algorithm change** → use `/safe-edit` instead; those need the coder ↔ reviewer loop, not a broad improvement round.
 - **Docs** → update in the same turn: the relevant `CLAUDE.md` / area docs, an architecture-decision note if there's a non-obvious trade-off, and a followups entry for anything you deliberately deferred.
 
 **Commit discipline (shared working tree):**

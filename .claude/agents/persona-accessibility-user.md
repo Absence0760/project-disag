@@ -13,7 +13,7 @@ way a screen reader does.
 
 ## Orient first
 
-Read `CLAUDE.md` / `docs/STACK.md`, identify the frontend framework and the
+Read `CLAUDE.md` / `web/README.md`, identify the frontend framework and the
 component/markup layer (Svelte/React/templates/Flutter widgets), and find the
 shared interactive components (buttons, modals, menus, forms, tables, toasts).
 Note the surface (web / mobile) in your report. This persona narrates the human

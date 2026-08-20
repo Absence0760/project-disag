@@ -1,5 +1,5 @@
 ---
-description: Run one, several, or all of the bug-hunting persona auditors (.claude/agents/persona-*.md). Each persona adopts a real-world point of view (new user, power user, admin, international user, accessibility, integrator, adversary, data subject, plus any project-specific domain personas) and writes findings to reviews/<persona>.md. Usage — `/persona admin`, `/persona integrator,adversary`, or `/persona all` (default).
+description: Run one, several, or all of the bug-hunting persona auditors (.claude/agents/persona-*.md). Each persona adopts a real-world point of view (new user, power user, accessibility, adversary, plus any project-specific domain personas) and writes findings to reviews/<persona>.md. Usage — `/persona new-user`, `/persona adversary,power-user`, or `/persona all` (default).
 ---
 
 Dispatch the persona auditors named in the argument, in parallel, and summarize
@@ -11,7 +11,7 @@ what each filed.
 
 - empty or `all` → the whole panel (every `.claude/agents/persona-*.md`).
 - a comma/space-separated list of slugs → just those. Accept slugs with or
-  without the `persona-` prefix (`admin`, `persona-admin` both resolve).
+  without the `persona-` prefix (`new-user`, `persona-new-user` both resolve).
 - if a slug doesn't match an existing `persona-*` agent, list the available
   personas and ask which was meant — don't guess.
 
@@ -41,7 +41,7 @@ correct as project-specific domain personas are added (see
 
 | Persona | Crit | High | Med | Low | Headline finding |
 |---------|------|------|-----|-----|------------------|
-| admin   | 0    | 1    | 1   | 0   | role gate is UI-only, endpoint callable directly |
+| adversary | 0  | 1    | 1   | 0   | upload size cap enforced client-side only |
 | ...     |      |      |     |     |                  |
 
 Full reports: reviews/persona-*.md

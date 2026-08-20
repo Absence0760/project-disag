@@ -24,9 +24,8 @@ rule, and how to add project-specific domain personas — lives in
 
 ## Running the personas
 
-Ask for one by name (`run persona-admin`), several at once, or the whole panel
-via the `/persona` command. The generic panel that ships in every project:
-`persona-new-user`, `persona-power-user`, `persona-admin`,
-`persona-international-user`, `persona-accessibility-user`, `persona-integrator`,
-`persona-adversary`, `persona-data-subject`. Projects add their own domain
-personas alongside these.
+Ask for one by name (`run persona-new-user`), several at once, or the whole
+panel via the `/persona` command. The panel in this repo: `persona-new-user`,
+`persona-power-user`, `persona-accessibility-user`, `persona-adversary`. Add
+domain personas alongside these — `.claude/personas/README.md` § "Domain packs"
+explains how, and why the other four estate personas are not carried here.

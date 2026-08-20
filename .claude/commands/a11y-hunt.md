@@ -37,7 +37,7 @@ Reject, and don't burn a commit on: "feels cramped" (that's `ux-hunt`), a contra
 
 - If the project ships more than one surface (web, mobile, watch, desktop…), a contrast value or a missing label is usually wrong in the **same place on every surface** — fix them as a matched set, not one platform at a time.
 - **Reuse known-good resolved values** rather than re-deriving them: if a colour token or spacing value has already been tuned to clear AA, match it instead of inventing a new one.
-- The read-only `/audit/accessibility` command (via the `compliance-auditor` agent) is the upstream reporter; this loop fixes what it finds and adds the guard.
+- The read-only `/audit/accessibility` command is the upstream reporter; this loop fixes what it finds and adds the guard.
 
 ## The loop
 
@@ -47,7 +47,7 @@ Choose one bounded surface (a route + its components, a screen, a card cluster) 
 
 ### 2. Fan out read-only hunters (in parallel)
 
-Spawn hunters in a single message — `general-purpose` agents pointed at the surface's files (the web markup + its style tokens; any mobile/native widgets; any watch/desktop equivalent), each instructed to find **WCAG 2.2 AA violations** with the criterion named. Have them report, per finding: `file:line`, the criterion (e.g. "1.4.3"), the **measured value** (the two colours / the px size / the scale at which it clips), the threshold it misses, and which surfaces share the defect. The `compliance-auditor` (via `/audit/accessibility`) is the specialist if you want a deeper single-pass sweep first. `persona-accessibility-user` is available for an assistive-tech-user walkthrough of the flow.
+Spawn hunters in a single message — `general-purpose` agents pointed at the surface's files (the web markup + its style tokens; any mobile/native widgets; any watch/desktop equivalent), each instructed to find **WCAG 2.2 AA violations** with the criterion named. Have them report, per finding: `file:line`, the criterion (e.g. "1.4.3"), the **measured value** (the two colours / the px size / the scale at which it clips), the threshold it misses, and which surfaces share the defect. `/audit/accessibility` is the specialist if you want a deeper single-pass sweep first. `persona-accessibility-user` is available for an assistive-tech-user walkthrough of the flow.
 
 ### 3. Compute every numeric claim before touching code
 
