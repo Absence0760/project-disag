@@ -65,6 +65,10 @@ jobs:
   regenerate:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
+    outputs:
+      # Whether a sync is actually needed. The push job uses this to tell
+      # "nothing to do" apart from "could not do it" — see its gate step.
+      changed: ${{ steps.diff.outputs.changed }}
     # No `permissions:` override — inherits `contents: read` from the
     # workflow root AND has no access to any secret. Even if pnpm
     # install somehow ran attacker code, there's nothing to exfiltrate.
@@ -124,31 +128,49 @@ jobs:
       # `contents: read` is enough.
       contents: read
     steps:
-      - name: Skip if PAT is unset
+      # A missing PAT used to set skip=true and let this job go green, which
+      # made "the sync is disabled" indistinguishable from "the sync ran".
+      # This repo has never had the secret set, and #86 is sitting red on
+      # ERR_PNPM_OUTDATED_LOCKFILE right now with a green sync run against
+      # it — exactly the failure this gate should have made obvious.
+      - name: Gate on the PAT
         id: gate
         env:
           PAT: ${{ secrets.DEPENDABOT_LOCKFILE_PAT }}
+          CHANGED: ${{ needs.regenerate.outputs.changed }}
         run: |
-          if [ -z "$PAT" ]; then
-            echo "DEPENDABOT_LOCKFILE_PAT is not configured — skipping lockfile sync." >&2
-            echo "skip=true" >>"$GITHUB_OUTPUT"
-          else
+          if [ -n "$PAT" ]; then
             echo "skip=false" >>"$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          # No PAT. Whether that is a problem depends entirely on whether
+          # this PR actually needs its lockfile synced.
+          if [ "$CHANGED" = "true" ]; then
+            echo "::error title=Lockfile sync is disabled::This PR needs a lockfile sync but DEPENDABOT_LOCKFILE_PAT is not configured, so it cannot be pushed. The PR will fail its frozen-lockfile install until someone regenerates pnpm-lock.yaml by hand. Fix: create a fine-grained PAT scoped to this repo with Contents: Write, then 'gh secret set DEPENDABOT_LOCKFILE_PAT --app dependabot'. It must live in the Dependabot secrets store, NOT the Actions store — Dependabot-authored PRs cannot read Actions secrets."
+            exit 1
+          fi
+
+          echo "::warning title=Lockfile sync is disabled::DEPENDABOT_LOCKFILE_PAT is not configured. This PR happens not to need a lockfile sync, so nothing is broken right now, but the automation is inert and the next bump that does need one will fail."
+          echo "skip=true" >>"$GITHUB_OUTPUT"
+
+      # Gated on the regenerate job's verdict rather than on whether the
+      # download happened to work. This step used to carry
+      # `continue-on-error: true` with the next step keyed off
+      # `steps.download.outcome`, which was the same silent-skip defect as
+      # the PAT gate above: an artifact that genuinely failed to download —
+      # expired, throttled, API error — skipped the push and left the job
+      # green. `changed == 'true'` means the artifact was uploaded, so a
+      # failure here is real and should stop the job.
       - name: Download lockfile artifact
-        if: steps.gate.outputs.skip == 'false'
+        if: steps.gate.outputs.skip == 'false' && needs.regenerate.outputs.changed == 'true'
         id: download
-        # actions/download-artifact returns a non-fatal error when
-        # the artifact doesn't exist — that's the "no change" path
-        # from the regenerate job.
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        continue-on-error: true
         with:
           name: pnpm-lock
 
       - name: Push lockfile via Contents API
-        if: steps.gate.outputs.skip == 'false' && steps.download.outcome == 'success'
+        if: steps.gate.outputs.skip == 'false' && needs.regenerate.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.DEPENDABOT_LOCKFILE_PAT }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
