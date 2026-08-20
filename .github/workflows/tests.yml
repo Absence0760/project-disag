@@ -7,6 +7,16 @@ on:
   pull_request:
     branches:
       - main
+  # On-demand run against any ref. The only way to verify main itself
+  # without waiting for the weekly sweep below.
+  workflow_dispatch:
+  # Weekly sweep of main. Dependabot opens PRs Monday 06:00 UTC and
+  # dependabot-auto-merge.yml lands them by ~07:05; 09:00 is clear of that
+  # window, so the week's accumulated bumps get verified together. Those
+  # merges produce no push run of their own — see the comment block in
+  # dependabot-auto-merge.yml for why.
+  schedule:
+    - cron: '0 9 * * 1'
 
 # Cancel in-progress runs of the same workflow on the same ref.  Saves CI
 # time when multiple commits land in quick succession.

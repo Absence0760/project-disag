@@ -24,6 +24,14 @@ on:
       - '.github/workflows/web-ci.yml'
       - 'package.json'
       - 'scripts/check_root_scripts.mjs'
+  # On-demand run against any ref.
+  workflow_dispatch:
+  # Weekly sweep of main, after dependabot-auto-merge.yml's Monday window.
+  # Most bumps are npm and terraform, so this workflow — not tests.yml —
+  # is the one that would catch them. `schedule` carries no path filter,
+  # so the sweep runs the full job set regardless of what changed.
+  schedule:
+    - cron: '0 9 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
