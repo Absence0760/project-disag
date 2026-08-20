@@ -193,8 +193,10 @@ Outputs:
 The binary depends on the glibc on the build host. Building on
 **Ubuntu 22.04** produces a binary that runs on Ubuntu 22.04+,
 Debian 12+, RHEL 9+, and recent Fedoras — but **not** Ubuntu 18.04
-or RHEL 7. To support older distros, build on the oldest target glibc
-(use `ubuntu-20.04` or older in CI, or the Docker recipe below).
+or RHEL 7. To support older distros, build on the oldest target glibc.
+GitHub only keeps the latest two Ubuntu runner images, so `ubuntu-22.04`
+is now the oldest label available and CI cannot go below it — use the
+Docker recipe below instead.
 
 ### Building Linux binaries from a Mac (Docker)
 
