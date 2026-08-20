@@ -9,6 +9,36 @@ name: Dependabot auto-merge
 # Requires: Settings → General → Pull Requests → "Allow auto-merge"
 # enabled. Without it `gh pr merge --auto` no-ops; PRs sit waiting for
 # a human like before (degenerate, not destructive).
+#
+# ───────── Consequence: these merges run NO CI on main ─────────
+#
+# The merge below is authenticated with GITHUB_TOKEN, and GitHub does
+# not create workflow runs from GITHUB_TOKEN-authored pushes — its
+# documented recursive-workflow prevention ("events triggered by the
+# GITHUB_TOKEN will not create a new workflow run", exceptions being
+# workflow_dispatch and repository_dispatch only). So every bump this
+# workflow lands reaches main without tests.yml or web-ci.yml ever
+# running against the merged result.
+#
+# That went unnoticed for five weeks: between 2026-07-15 and 2026-08-20,
+# 14 of 15 merges to main came through here and none produced a run.
+# The PR-time `CI gate` had passed on each branch individually, which is
+# what branch protection enforces — but nothing re-verified the
+# combination.
+#
+# Two backstops now cover it, both deliberately outside this workflow:
+#
+#   1. Branch protection requires branches to be up to date before
+#      merging (`required_status_checks.strict = true`), so a PR's green
+#      `CI gate` is against a main that includes every prior merge.
+#   2. tests.yml and web-ci.yml carry a Monday-morning `schedule:` that
+#      sweeps main after this workflow's merge window, plus a
+#      `workflow_dispatch:` for on-demand verification.
+#
+# Swapping GITHUB_TOKEN for a PAT here would make these merges trigger
+# CI directly and would also fix the workflow-file skip below — but it
+# trades a scoped, auto-rotating token for a long-lived credential, so
+# the backstops are preferred until there's a reason to change.
 
 on:
   pull_request_target:
