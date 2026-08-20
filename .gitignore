@@ -47,3 +47,9 @@ secrets.enc.yaml
 web/infra/secrets.enc.yaml
 web/infra/secrets.yaml
 web/infra/secrets.json
+
+# Persona audit reports (.claude/agents/persona-*.md write here). Per-clone
+# working notes that go stale the moment code lands — regenerated, not
+# version-controlled. Only the README is tracked. See reviews/README.md.
+reviews/*
+!reviews/README.md
