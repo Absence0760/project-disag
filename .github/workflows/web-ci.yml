@@ -1,8 +1,16 @@
 name: Web CI
 
 # Lint + typecheck + build the SvelteKit frontend, and fmt + validate
-# the Terraform. Only runs when the web/ tree changes (the existing
-# `tests.yml` covers the Python packages).
+# the Terraform. `tests.yml` covers the Python packages.
+#
+# This workflow triggers on EVERY pull request to main, not just web ones.
+# It used to carry a workflow-level `paths:` filter, which meant a
+# docs-only PR produced no run at all — and therefore no `Web CI gate`
+# status. A required check that is never reported blocks a PR forever, so
+# the filter moved down to a per-job `if:` on the `changes` job below:
+# the workflow always runs and always reports its gate, but on a PR that
+# touches nothing web-shaped every real job skips and the gate goes green
+# in seconds.
 #
 # All third-party actions are SHA-pinned with a trailing version
 # comment per OpenSSF Scorecard's Pinned-Dependencies rule. Dependabot
@@ -12,18 +20,8 @@ name: Web CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'web/**'
-      - '.github/workflows/web-ci.yml'
-      - 'package.json'
-      - 'scripts/check_root_scripts.mjs'
   pull_request:
     branches: [main]
-    paths:
-      - 'web/**'
-      - '.github/workflows/web-ci.yml'
-      - 'package.json'
-      - 'scripts/check_root_scripts.mjs'
   # On-demand run against any ref.
   workflow_dispatch:
   # Weekly sweep of main, after dependabot-auto-merge.yml's Monday window.
@@ -41,10 +39,62 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether the rest of this workflow has anything to do. Replaces
+  # the workflow-level `paths:` filter that used to gate the whole run —
+  # see the header comment for why that had to move.
+  changes:
+    name: Detect web changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.detect.outputs.web }}
+    steps:
+      - name: Does this change touch the web surface?
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Anything that is not a pull_request — a push to main, the Monday
+          # sweep, a manual dispatch — runs the full set. There is no base to
+          # diff against, and those runs exist precisely to be exhaustive.
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Event is $EVENT, not pull_request — running every job."
+            echo "web=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The file list comes from the API, not from a diff against a
+          # fetched base: no fetch-depth games, and it is the same list
+          # GitHub itself shows on the PR.
+          files=$(gh api "repos/${REPO}/pulls/${PR}/files" --paginate --jq '.[].filename')
+          echo "Changed files:"
+          printf '%s\n' "$files" | sed 's/^/  /'
+
+          # pnpm-lock.yaml is in this list and was NOT in the old `paths:`
+          # filter — a lockfile-only change (exactly what
+          # dependabot-lockfile.yml commits) could previously reach main
+          # without the frontend ever being built against it.
+          if printf '%s\n' "$files" | grep -qE '^(web/|package\.json$|pnpm-lock\.yaml$|scripts/check_root_scripts\.mjs$|\.github/workflows/web-ci\.yml$)'; then
+            echo "web=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "Nothing web-shaped changed — every job below will skip."
+            echo "web=false" >>"$GITHUB_OUTPUT"
+          fi
+
   frontend:
     name: Frontend (SvelteKit)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -64,6 +114,8 @@ jobs:
     name: Frontend E2E (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     # The Playwright base image ships browsers + system deps preinstalled
     # so `playwright install` becomes a no-op and we don't pay for OS
     # package downloads on every run. Pin to the same version as the
@@ -98,6 +150,8 @@ jobs:
     name: Frontend E2E integration (real backend)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     # Same Playwright base image as the mocked job, plus python3 and
     # venv so local_server.py can boot the on-disk S3 stub and run real
     # disag/exceed code against the committed examples/ fixtures.
@@ -130,6 +184,8 @@ jobs:
   backend:
     name: Backend (Lambda zip build)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -161,6 +217,8 @@ jobs:
   terraform:
     name: Terraform (fmt + validate)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     timeout-minutes: 10
     defaults:
       run:
@@ -177,6 +235,8 @@ jobs:
   root-scripts:
     name: Root scripts guard
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     timeout-minutes: 5
     # Stdlib-only Node — no pnpm install needed. Validates the root
     # package.json scripts block against the estate format (CLAUDE.md).
@@ -213,10 +273,22 @@ jobs:
           echo "Playwright pin and devDep agree: $dep"
 
   ci-gate:
-    name: CI gate
+    # NAME MUST BE UNIQUE ACROSS WORKFLOWS. Branch protection matches a
+    # required check by its context name, so two workflows both reporting
+    # "CI gate" collapse into one required context and the merge fires on
+    # whichever reports first. That happened: on #94 tests.yml reported
+    # `CI gate` success at 07:01:25Z, this workflow reported `CI gate`
+    # failure at 07:04:44Z, and the PR merged at 07:01:27Z — landing a red
+    # web-ci on main and leaving the Playwright break unnoticed for 17
+    # days. `CI gate` (tests.yml) and `Web CI gate` (here) are now separate
+    # required contexts. Never give a third workflow either name.
+    name: Web CI gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [frontend, e2e, e2e-integration, backend, terraform, root-scripts]
+    # `changes` is in this list deliberately: if it errors, every job below
+    # it reports `skipped`, which the check below tolerates. Without
+    # `changes` here, a broken detector would read as an all-green gate.
+    needs: [changes, frontend, e2e, e2e-integration, backend, terraform, root-scripts]
     steps:
       - name: Require every upstream job to have passed
         env:
@@ -226,7 +298,7 @@ jobs:
           bad=$(echo "$NEEDS_JSON" | jq -r \
             'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key)=\(.value.result)"')
           if [ -n "$bad" ]; then
-            echo "::error::CI gate failing — upstream jobs did not pass:"
+            echo "::error::Web CI gate failing — upstream jobs did not pass:"
             echo "$bad"
             exit 1
           fi
