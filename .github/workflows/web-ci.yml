@@ -69,7 +69,7 @@ jobs:
     # package downloads on every run. Pin to the same version as the
     # @playwright/test devDep — drift causes hard-to-diagnose failures.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -102,7 +102,7 @@ jobs:
     # venv so local_server.py can boot the on-disk S3 stub and run real
     # disag/exceed code against the committed examples/ fixtures.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -186,6 +186,31 @@ jobs:
         with:
           node-version: '24'
       - run: node scripts/check_root_scripts.mjs
+
+      # The two E2E jobs run in the Playwright container, whose bundled
+      # browser binaries must match the @playwright/test devDep exactly. A
+      # mismatch surfaces as "Executable doesn't exist at
+      # /ms-playwright/chromium_headless_shell-<build>" — not as a version
+      # error — so it reads like a broken image rather than drift.
+      #
+      # Dependabot bumps the devDep but has no updater for a
+      # `container.image:` tag, so the pin drifts silently on every
+      # Playwright release. It did: the devDep moved to 1.62.1 on
+      # 2026-08-03 (#84) while the image stayed at 1.61.1, and every
+      # web-ci run failed for the 17 days nobody looked. The comment on
+      # the e2e job already said "pin to the same version" — a comment
+      # was not enough, hence this check.
+      - name: Playwright container pin matches the devDep
+        run: |
+          set -euo pipefail
+          dep=$(jq -r '.devDependencies["@playwright/test"]' web/frontend/package.json | sed 's/^[\^~]//')
+          pins=$(grep -oP 'mcr\.microsoft\.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+(?=-noble)' \
+                   .github/workflows/web-ci.yml | sort -u)
+          if [ "$(printf '%s' "$pins" | grep -c .)" -ne 1 ] || [ "$pins" != "$dep" ]; then
+            echo "::error::Playwright drift — @playwright/test is $dep but web-ci.yml pins [$(echo $pins)]. Bump every container image to v${dep}-noble."
+            exit 1
+          fi
+          echo "Playwright pin and devDep agree: $dep"
 
   ci-gate:
     name: CI gate
