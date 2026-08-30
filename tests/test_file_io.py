@@ -182,6 +182,72 @@ class DailyEdgeCaseTests(unittest.TestCase):
             os.unlink(path)
 
 
+class DailyRecordHeaderLayoutTests(unittest.TestCase):
+    """Byte-level column layout of the record-header line.
+
+    The round-trip tests can't catch a shift here: read_daily_file splits
+    the header on whitespace, so it parses a mis-aligned line just fine.
+    Downstream fixed-format readers do not — a 4-digit year overflowing a
+    3-wide field shifts every later column right by one and silently
+    corrupts the file for them. Assert the columns directly.
+    """
+
+    def _headers(self, records):
+        path = _tmp('.day')
+        try:
+            write_daily_file(path, records, HEADER)
+            with open(path) as f:
+                lines = f.read().splitlines()[DAILY_HEADER_LINES:]
+            # A record header is the only line whose first two tokens are
+            # integers; a 31-day month's trailing line also has three
+            # tokens, but they are all decimals.
+            return [
+                ln for ln in lines
+                if len(ln.split()) == 3
+                and all('.' not in tok for tok in ln.split()[:2])
+            ]
+        finally:
+            os.unlink(path)
+
+    def test_four_digit_year_header_is_16_columns(self):
+        records = [
+            DailyRecord(year=2024, month=11, v=[1.0] * 30),
+            DailyRecord(year=1981, month=10, v=[0.5] * 31),
+            DailyRecord(year=2025, month=1, v=[2.0] * 31),
+        ]
+        for line in self._headers(records):
+            self.assertEqual(len(line), 16, f'{line!r} is not 16 columns')
+            self.assertTrue(line.startswith(' '), f'{line!r} lost its leading space')
+
+    def test_header_fields_land_in_fixed_columns(self):
+        # Year cols 1-5, month 6-8, total 9-16 (1-indexed, right-justified).
+        line, = self._headers([DailyRecord(year=2024, month=11, v=[1.0] * 30)])
+        self.assertEqual(line[0:5], ' 2024')
+        self.assertEqual(line[5:8], ' 11')
+        self.assertEqual(int(line[0:5]), 2024)
+        self.assertEqual(int(line[5:8]), 11)
+        self.assertAlmostEqual(float(line[8:16]), 2.592, places=3)
+
+    def test_header_column_widths_hold_across_total_magnitudes(self):
+        # A wide total must not push the line past 16 chars, and a narrow
+        # one must stay right-justified in the same 8-char field.
+        for per_day, in ((0.001,), (1.0,), (40.0,)):
+            dim = 31
+            line, = self._headers(
+                [DailyRecord(year=2007, month=10, v=[per_day] * dim)]
+            )
+            self.assertEqual(len(line), 16, f'{line!r} is not 16 columns')
+            expected = per_day * dim / 1e6 * 3600 * 24
+            self.assertAlmostEqual(float(line[8:16]), expected, places=3)
+
+    def test_missing_month_header_stays_16_columns(self):
+        line, = self._headers(
+            [DailyRecord(year=2025, month=2, v=[MISSING] * 28)]
+        )
+        self.assertEqual(len(line), 16, f'{line!r} is not 16 columns')
+        self.assertAlmostEqual(float(line[8:16]), MISSING, places=2)
+
+
 class MonthlyReaderTests(unittest.TestCase):
     """read_monthly_file maps hydro-year rows to calendar (year, month) keys."""
 
