@@ -231,7 +231,11 @@ def _write_daily_record(fh, rec: DailyRecord) -> None:
     if total_mm3 < 0:
         total_mm3 = MISSING
 
-    fh.write(f'{rec.year:3d}{rec.month:3d}{total_mm3:10.3f}\n')
+    # Record header is a fixed 16-char line: year cols 1-5, month 6-8,
+    # total 9-16. The Pascal wrote `year:3, month:3, total:10:3`, which
+    # only lands on 16 chars for the 2-digit years of the era — a 4-digit
+    # year overflows the field and shifts every column right by one.
+    fh.write(f'{rec.year:5d}{rec.month:3d}{total_mm3:8.3f}\n')
 
     for dd in range(1, dim + 1):
         v = rec.v[dd - 1]
