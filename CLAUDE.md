@@ -63,6 +63,11 @@ python3 -m disag --no-gui --method 5 --daily-fdc-mapping --seam-blend \
 # Convert a Pitman .ANS monthly file into the NinhamShand .MON layout
 python3 -m disag.convert path/to/PUNRQ6.ANS path/to/PUNRQ6.MON
 
+# Flatten a .day file into two columns (date, flow) — one row per day, for
+# downstream tools that want a plain time series instead of the block layout
+python3 -m disag.columns /tmp/out.day /tmp/out.txt              # space-padded
+python3 -m disag.columns /tmp/out.day /tmp/out.csv --style csv --header
+
 # Exceed — flow-frequency analysis
 python3 -m exceed                                 # GUI (3 tabs)
 python3 -m exceed --no-gui \
@@ -87,6 +92,7 @@ python3 -m unittest tests.test_file_io         # files.py + report.py round-trip
 python3 -m unittest tests.test_exceed          # exceed/ package
 python3 -m unittest tests.test_cli             # subprocess-driven CLI
 python3 -m unittest tests.test_convert         # .ANS → .MON converter
+python3 -m unittest tests.test_columns         # .day → two-column flattener
 python3 -m unittest tests.test_missing_data    # missing-day/month/year edge cases
 python3 -m unittest tests.test_tier3           # PATCH_EXCEED tier-3 sub-processes
 ```
@@ -199,6 +205,7 @@ disag/              Python package — disaggregation
   files.py          File I/O — authoritative .day / .mon reader/writer
   algorithm.py      Core disaggregation logic (6 methods)
   convert.py        Pitman .ANS → NinhamShand .MON converter (`python -m disag.convert`)
+  columns.py        .day → two-column date/flow flattener (`python -m disag.columns`)
   gui.py            Tkinter GUI
   report.py         .rep file writer
   __main__.py       Entry point (GUI + CLI)
