@@ -10,15 +10,20 @@ version: 2
 #                    consumed by release.yml when building the user-
 #                    facing CLI binaries.
 #   npm            — root workspace (dev tooling, e.g. concurrently)
-#                    + web/frontend SvelteKit app.
+#                    + web/frontend SvelteKit app. ONE entry, at `/`:
+#                    pnpm-lock.yaml lives at the root and covers every
+#                    workspace member, so the root entry already bumps
+#                    web/frontend/package.json and re-locks in the same
+#                    commit. Listing /web/frontend as well made Dependabot
+#                    treat it as a standalone package and open a duplicate
+#                    PR that edited package.json with no lockfile — an
+#                    automatic ERR_PNPM_OUTDATED_LOCKFILE (#85 vs #86).
 #   terraform      — web/infra AWS provider + modules.
 #   github-actions — the workflows under .github/workflows/.
 
 updates:
   - package-ecosystem: npm
-    directories:
-      - /
-      - /web/frontend
+    directory: /
     schedule:
       interval: weekly
       day: monday
