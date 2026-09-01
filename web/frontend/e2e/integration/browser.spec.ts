@@ -58,6 +58,13 @@ test.describe('@integration browser', () => {
 		expect(outputUrl).toMatch(/output\.day/);
 		await expect(page.getByTestId('download-output')).toContainText(/\.day output/);
 
+		// The CSV companion is offered in the UI too, and its bytes are the
+		// flattened form of the same series.
+		const csvUrl = await page.getByTestId('download-columns').getAttribute('href');
+		expect(csvUrl, '.csv link present in DOM').toBeTruthy();
+		const csvBody = await (await request.get(csvUrl as string)).text();
+		expect(csvBody.trimEnd().split('\n')[0]).toMatch(/^\d{4}\/\d{2}\/\d{2},[-\d.]+$/);
+
 		// Fetch the actual bytes and confirm they look like a .day file.
 		const outputBody = await (await request.get(outputUrl as string)).text();
 		expect(outputBody.length, '.day body non-empty').toBeGreaterThan(0);

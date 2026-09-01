@@ -68,6 +68,16 @@ python3 -m disag.convert path/to/PUNRQ6.ANS path/to/PUNRQ6.MON
 python3 -m disag.columns /tmp/out.day /tmp/out.txt              # space-padded
 python3 -m disag.columns /tmp/out.day /tmp/out.csv --style csv --header
 
+# --columns makes that CSV a standard output of a disag run: it writes
+# /tmp/out-columns.csv (date,flow) alongside the .day and .rep. The web run
+# does this unconditionally — every /disag run publishes output.day,
+# output.csv and output.rep. Use `python -m disag.columns` for a different
+# delimiter, date format or a header row.
+python3 -m disag --no-gui --method 5 \
+    --monthly testfiles/SINDILA.MON \
+    --daily1  testfiles/RUKOKI-l.DAY \
+    --output  /tmp/out.day --report /tmp/out.rep --columns
+
 # Exceed — flow-frequency analysis
 python3 -m exceed                                 # GUI (3 tabs)
 python3 -m exceed --no-gui \

@@ -14,10 +14,13 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from disag.columns import (
+    COLUMNS_SUFFIX,
     DATE_WIDTH,
+    STYLE_SUFFIXES,
     VALUE_WIDTH,
     _cli,
     day_to_columns,
+    default_columns_path,
     format_value,
 )
 from disag.files import (
@@ -184,7 +187,7 @@ class ColumnCliTests(unittest.TestCase):
         self.addCleanup(os.unlink, self.src)
 
     def test_default_destination_matches_style(self):
-        for style, suffix in (('fixed', '.txt'), ('csv', '.csv'), ('tab', '.tsv')):
+        for style, suffix in sorted(STYLE_SUFFIXES.items()):
             with self.subTest(style=style):
                 expected = os.path.splitext(self.src)[0] + suffix
                 self.addCleanup(
@@ -197,6 +200,24 @@ class ColumnCliTests(unittest.TestCase):
     def test_missing_source_returns_error_code(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(_cli(['/nonexistent/nope.day', '--quiet']), 1)
+
+
+class DefaultColumnsPathTests(unittest.TestCase):
+    """The companion path a disag run writes its CSV to (--columns)."""
+
+    def test_replaces_the_day_extension(self):
+        self.assertEqual(
+            default_columns_path('/out/MUY-NS-disag-m5.DAY'),
+            '/out/MUY-NS-disag-m5' + COLUMNS_SUFFIX,
+        )
+
+    def test_leaves_dots_in_the_directory_alone(self):
+        self.assertEqual(
+            default_columns_path('/a.b/out.day'), '/a.b/out' + COLUMNS_SUFFIX
+        )
+
+    def test_extensionless_output_still_gets_a_csv(self):
+        self.assertEqual(default_columns_path('/out/run'), '/out/run' + COLUMNS_SUFFIX)
 
 
 if __name__ == '__main__':

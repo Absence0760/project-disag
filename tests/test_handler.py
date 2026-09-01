@@ -18,6 +18,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 # Make `import handler` resolve to web/backend/handler.py. Also put
@@ -40,6 +41,10 @@ import handler  # noqa: E402
 CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 OTHER_CLIENT = '22222222-2222-4222-8222-222222222222'
 CONVERT_FIXTURE = os.path.join(ROOT, 'examples', 'convert_demo', 'data', 'SAMPLE.ANS')
+DISAG_MONTHLY_FIXTURE = os.path.join(
+    ROOT, 'examples', 'method0_demo', 'data', 'target.MON')
+DISAG_DAILY_FIXTURE = os.path.join(
+    ROOT, 'examples', 'method0_demo', 'data', 'gauge_complete.DAY')
 
 
 def _make_event(
@@ -591,6 +596,77 @@ class ExceedValidationTests(HandlerTestBase):
         self.assertEqual(resp['statusCode'], 400)
 
 
+# ── /disag outputs ──────────────────────────────────────────────────
+
+
+class DisagRunOutputsTests(HandlerTestBase):
+    """A /disag run publishes three artifacts: .day, .csv and .rep."""
+
+    def setUp(self):
+        super().setUp()
+
+        def _download(Bucket, Key, local_path):
+            fixture = (
+                DISAG_DAILY_FIXTURE if Key.lower().endswith('.day')
+                else DISAG_MONTHLY_FIXTURE
+            )
+            shutil.copy(fixture, local_path)
+
+        self.s3.download_file.side_effect = _download
+        self.s3.generate_presigned_url.return_value = 'https://stub/get'
+
+    def _run(self):
+        resp = handler.lambda_handler(
+            _make_event(
+                method='POST',
+                path='/disag',
+                body={
+                    'method': 0,
+                    'monthly_key': f'inputs/{CLIENT_ID}/x/target.MON',
+                    'daily1_key': f'inputs/{CLIENT_ID}/x/gauge.DAY',
+                },
+            ),
+            None,
+        )
+        self.assertEqual(resp['statusCode'], 200, resp['body'])
+        return _body(resp)
+
+    def test_publishes_day_csv_and_rep(self):
+        body = self._run()
+        self.assertTrue(body['output_key'].endswith('output.day'))
+        self.assertTrue(body['columns_key'].endswith('output.csv'))
+        self.assertTrue(body['report_key'].endswith('output.rep'))
+        self.assertTrue(body['columns_url'])
+        upload_keys = [c.args[2] for c in self.s3.upload_file.call_args_list]
+        for suffix in ('output.day', 'output.csv', 'output.rep'):
+            self.assertTrue(
+                any(k.endswith(suffix) for k in upload_keys),
+                f'{suffix} was not uploaded (got {upload_keys})',
+            )
+
+    def test_csv_is_the_flattened_day_output(self):
+        # The uploaded CSV must be the two-column form of the same series
+        # the .day carries — one comma-separated row per calendar day.
+        # Read it during the upload call; _workdir deletes it on return.
+        uploaded = {}
+
+        def _capture(local, _bucket, key):
+            if key.endswith('.csv'):
+                with open(local) as fh:
+                    uploaded['csv'] = fh.read()
+
+        self.s3.upload_file.side_effect = _capture
+        self._run()
+
+        rows = uploaded['csv'].splitlines()
+        # method0_demo's target.MON is 36 whole months — 1095 days.
+        self.assertEqual(len(rows), 1095)
+        for row in (rows[0], rows[-1]):
+            date, _, value = row.partition(',')
+            self.assertRegex(date, r'^\d{4}/\d{2}/\d{2}$')
+            float(value)
+
+
 # ── /convert ────────────────────────────────────────────────────────
 
 
@@ -708,6 +784,41 @@ class GetRunTests(HandlerTestBase):
             None,
         )
         self.assertEqual(resp['statusCode'], 404)
+
+    def _listing(self, *names):
+        """Stub a runs/disag/<client>/<run>/ listing of the given files."""
+        run_id = '1700000000-abcdef12'
+        prefix = f'runs/disag/{CLIENT_ID}/{run_id}/'
+        contents = [
+            {'Key': prefix + n, 'Size': 1, 'LastModified': datetime(2026, 1, 1, tzinfo=timezone.utc)}
+            for n in sorted(names)
+        ]
+
+        def _list(Bucket, Prefix):
+            return {'Contents': contents if Prefix == prefix else []}
+
+        self.s3.list_objects_v2.side_effect = _list
+        self.s3.generate_presigned_url.return_value = 'https://stub/get'
+        resp = handler.lambda_handler(
+            _make_event(method='GET', path=f'/runs/{run_id}'), None,
+        )
+        self.assertEqual(resp['statusCode'], 200, resp['body'])
+        return _body(resp)
+
+    def test_csv_is_not_served_as_the_primary_output(self):
+        # output.csv sorts before output.day, so a "first key that isn't
+        # the .rep" rule would hand the frontend the CSV as the .day.
+        body = self._listing('output.csv', 'output.day', 'output.rep')
+        self.assertTrue(body['output_key'].endswith('output.day'))
+        self.assertTrue(body['columns_key'].endswith('output.csv'))
+        self.assertTrue(body['report_key'].endswith('output.rep'))
+
+    def test_run_without_a_csv_reports_no_columns(self):
+        # Runs published before the CSV became a standard output.
+        body = self._listing('output.day', 'output.rep')
+        self.assertTrue(body['output_key'].endswith('output.day'))
+        self.assertIsNone(body['columns_key'])
+        self.assertIsNone(body['columns_url'])
 
 
 if __name__ == '__main__':

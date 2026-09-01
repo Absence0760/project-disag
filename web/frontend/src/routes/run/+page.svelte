@@ -573,6 +573,11 @@
 					Download {outputLabel(result.output_key)}
 				</a>
 			{/if}
+			{#if result.columns_url}
+				<a class="btn secondary" href={result.columns_url} data-testid="download-columns">
+					Download .csv (date, flow)
+				</a>
+			{/if}
 			<a class="btn secondary" href={result.report_url} data-testid="download-report">
 				Download .rep report
 			</a>

@@ -68,6 +68,9 @@ export interface RunResult {
 	report_key: string;
 	output_url?: string;
 	report_url: string;
+	/** disag only: the .day output flattened to two columns (date,flow). */
+	columns_key?: string | null;
+	columns_url?: string | null;
 }
 
 export async function runDisag(

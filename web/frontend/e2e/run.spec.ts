@@ -35,8 +35,10 @@ async function stubBackend(page: Page) {
 				tool: 'disag',
 				created_at: '2026-05-17T12:00:00Z',
 				output_key: 'runs/disag/1700000000-abcdef12/output.day',
+				columns_key: 'runs/disag/1700000000-abcdef12/output.csv',
 				report_key: 'runs/disag/1700000000-abcdef12/output.rep',
 				output_url: 'https://stub.s3.local/output.day',
+				columns_url: 'https://stub.s3.local/output.csv',
 				report_url: 'https://stub.s3.local/output.rep'
 			})
 		})
@@ -212,6 +214,10 @@ test.describe('Run page', () => {
 			'href',
 			'https://stub.s3.local/output.day'
 		);
+		await expect(page.getByTestId('download-columns')).toHaveAttribute(
+			'href',
+			'https://stub.s3.local/output.csv'
+		);
 		await expect(page.getByTestId('download-report')).toHaveAttribute(
 			'href',
 			'https://stub.s3.local/output.rep'
@@ -235,6 +241,8 @@ test.describe('Run page', () => {
 		// Exceed now returns an SVG curve as its output: shown inline + downloadable.
 		await expect(page.getByTestId('curve-preview')).toBeVisible();
 		await expect(page.getByTestId('download-output')).toBeVisible();
+		// The two-column CSV is a disag artifact only.
+		await expect(page.getByTestId('download-columns')).toHaveCount(0);
 	});
 
 	test('exceed seasonal builder: toggling months posts season groups', async ({ page }) => {

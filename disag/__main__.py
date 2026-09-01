@@ -12,7 +12,8 @@ CLI mode
         --monthly  path/to/file.mon \\
         --daily1   path/to/file1.day \\
         --output   path/to/out.day \\
-        --report   path/to/out.rep
+        --report   path/to/out.rep \\
+        --columns              # optional: also out-columns.csv (date,flow)
 
 Methods
     0  One disaggregator file
@@ -81,6 +82,14 @@ def main():
     parser.add_argument('--output', '-o', help='Output daily file (.day)')
     parser.add_argument('--report', '-r', help='Report file (.rep)')
     parser.add_argument(
+        '--columns', nargs='?', const='', default=None, metavar='PATH',
+        help='Also write the daily output as a two-column CSV (date,flow — '
+             'one row per calendar day) for consumers that cannot parse the '
+             'fixed-width .day layout. PATH defaults to the --output name '
+             'with a -columns.csv suffix. For a different delimiter, date '
+             'format or a header row, run python -m disag.columns instead',
+    )
+    parser.add_argument(
         '--whole-month-fraction', type=_whole_month_fraction, metavar='F',
         help='Methods 1, 2, 5: when >= F of a month\'s days are missing from '
              'file 1 (F in (0, 1]), rebuild the whole month from one coherent '
@@ -137,6 +146,7 @@ def main():
         count_coverage,
         disaggregate,
     )
+    from .columns import day_to_columns, default_columns_path
     from .files import read_daily_file, read_monthly_file, write_daily_file
     from .report import write_report
 
@@ -212,6 +222,17 @@ def main():
 
     print(f'Report    : {args.report}')
     write_report(args.report, method, report_lines, records)
+
+    if args.columns is not None:
+        # Flatten the file just written rather than the in-memory records,
+        # so the CSV is provably the same series the consumer gets in the
+        # .day — it goes through the authoritative writer and reader.
+        columns_path = args.columns or default_columns_path(args.output)
+        print(f'Columns   : {columns_path}')
+        columns = day_to_columns(args.output, columns_path, style='csv')
+        print(f'            {columns.rows_written} daily rows '
+              f'({columns.first_date} → {columns.last_date}), '
+              f'{columns.missing_rows} missing')
 
     disagg, missing = count_coverage(records)
     pct_missing = (missing / len(records) * 100) if records else 0

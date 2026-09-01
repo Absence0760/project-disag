@@ -29,8 +29,15 @@ VALUE_WIDTH = 11
 
 # Separator per style; None means fixed-width columns.
 STYLE_SEPARATORS = {'fixed': None, 'csv': ',', 'tab': '\t'}
+STYLE_SUFFIXES = {'fixed': '.txt', 'csv': '.csv', 'tab': '.tsv'}
 DEFAULT_STYLE = 'fixed'
 DEFAULT_DATE_FORMAT = '%Y/%m/%d'
+
+# Suffix for the CSV that `python -m disag --columns` writes next to its
+# .day output: MUY-NS-disag-m5.DAY → MUY-NS-disag-m5-columns.csv. Kept
+# here so the run that produces the pair and any consumer looking for it
+# agree on one spelling.
+COLUMNS_SUFFIX = '-columns.csv'
 
 
 class ColumnResult(NamedTuple):
@@ -38,6 +45,11 @@ class ColumnResult(NamedTuple):
     first_date: datetime.date
     last_date: datetime.date
     missing_rows: int
+
+
+def default_columns_path(output: str) -> str:
+    """Companion CSV path for a .day output written by a disag run."""
+    return os.path.splitext(output)[0] + COLUMNS_SUFFIX
 
 
 def format_value(v: float) -> str:
@@ -148,8 +160,7 @@ def _cli(argv: list | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    suffix = {'fixed': '.txt', 'csv': '.csv', 'tab': '.tsv'}[args.style]
-    dst = args.dst or (os.path.splitext(args.src)[0] + suffix)
+    dst = args.dst or (os.path.splitext(args.src)[0] + STYLE_SUFFIXES[args.style])
 
     try:
         result = day_to_columns(

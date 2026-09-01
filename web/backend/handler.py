@@ -11,7 +11,7 @@ it in localStorage, and sends it on every API call as `X-Client-Id`.
 The backend uses that UUID to scope:
 
   - inputs : inputs/<client_id>/<uuid>/<safe-filename>
-  - outputs: runs/<tool>/<client_id>/<run_id>/{output.day,output.rep}
+  - outputs: runs/<tool>/<client_id>/<run_id>/{output.day,output.csv,output.rep}
 
 A client never sees runs that don't carry its own client_id in the
 key. Clearing the browser nukes history (no cross-device sync — the
@@ -67,6 +67,7 @@ from disag.algorithm import (  # noqa: E402
     DisagMethod,
     disaggregate,
 )
+from disag.columns import day_to_columns  # noqa: E402
 from disag.convert import ans_to_mon  # noqa: E402
 from disag.files import read_daily_file, read_monthly_file, write_daily_file  # noqa: E402
 from disag.report import write_report  # noqa: E402
@@ -134,7 +135,7 @@ def s3():
     return _s3_client
 
 # Inputs are written under inputs/<uuid>/<original-name>; outputs under
-# runs/<run_id>/{output.day,output.rep} — see history listing below.
+# runs/<run_id>/{output.day,output.csv,output.rep} — see history listing below.
 SAFE_FILENAME = re.compile(r'[^A-Za-z0-9._-]')
 
 
@@ -405,6 +406,7 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
         )
 
         output_path = workdir / 'output.day'
+        columns_path = workdir / 'output.csv'
         report_path = workdir / 'output.rep'
         header_info = {
             'monthly_file': monthly_path.name,
@@ -414,9 +416,13 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
         }
         write_daily_file(str(output_path), records, header_info)
         write_report(str(report_path), dm, report_lines, records)
+        # Flatten the file just written, not the in-memory records, so the
+        # CSV is provably the same series as the .day the user downloads.
+        day_to_columns(str(output_path), str(columns_path), style='csv')
 
         return _publish_run(
             client_id, run_id, 'disag', output=output_path, report=report_path,
+            columns=columns_path,
         )
 
 
@@ -686,11 +692,16 @@ def _handle_get_run(client_id: str, run_id: str) -> dict[str, Any]:
         contents = resp.get('Contents', [])
         if not contents:
             continue
-        # Output is anything that isn't the .rep — covers .day for disag
-        # and .mon for convert. Exceed has no output file at all.
-        report_key = next((c['Key'] for c in contents if c['Key'].endswith('.rep')), None)
+        # Output is anything that is neither the .rep nor the .csv — covers
+        # .day for disag and .mon for convert. Exceed has no output file at
+        # all. The .csv is disag's two-column companion series; it must be
+        # excluded explicitly, or (sorting before output.day) it would be
+        # served as the run's primary output.
+        keys = [c['Key'] for c in contents]
+        report_key = next((k for k in keys if k.endswith('.rep')), None)
+        columns_key = next((k for k in keys if k.endswith('.csv')), None)
         output_key = next(
-            (c['Key'] for c in contents if not c['Key'].endswith('.rep')),
+            (k for k in keys if not k.endswith(('.rep', '.csv'))),
             None,
         )
         if not report_key:
@@ -701,8 +712,10 @@ def _handle_get_run(client_id: str, run_id: str) -> dict[str, Any]:
             'tool': tool,
             'created_at': created,
             'output_key': output_key,
+            'columns_key': columns_key,
             'report_key': report_key,
             'output_url': _presign_get(output_key) if output_key else None,
+            'columns_url': _presign_get(columns_key) if columns_key else None,
             'report_url': _presign_get(report_key),
         }
     raise _ClientError(404, f'No run {run_id}')
@@ -749,6 +762,7 @@ def _publish_run(
     *,
     output: Path | None,
     report: Path,
+    columns: Path | None = None,
 ) -> dict[str, Any]:
     base = f'runs/{tool}/{client_id}/{run_id}'
     output_key = None
@@ -758,6 +772,10 @@ def _publish_run(
         # extension when surfacing download links.
         output_key = f'{base}/{output.name}'
         s3().upload_file(str(output), OUTPUTS_BUCKET, output_key)
+    columns_key = None
+    if columns:
+        columns_key = f'{base}/{columns.name}'
+        s3().upload_file(str(columns), OUTPUTS_BUCKET, columns_key)
     report_key = f'{base}/output.rep'
     s3().upload_file(str(report), OUTPUTS_BUCKET, report_key)
     return {
@@ -765,8 +783,10 @@ def _publish_run(
         'tool': tool,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'output_key': output_key,
+        'columns_key': columns_key,
         'report_key': report_key,
         'output_url': _presign_get(output_key) if output_key else None,
+        'columns_url': _presign_get(columns_key) if columns_key else None,
         'report_url': _presign_get(report_key),
     }
 
