@@ -23,6 +23,7 @@ Two modes:
 from __future__ import annotations
 
 import base64
+import errno
 import io
 import os
 import shutil
@@ -353,8 +354,33 @@ def main() -> None:
     port = LOCAL_S3_PORT
     if _local_s3 is not None:
         print(f'Local S3 stub: {LOCAL_S3_ROOT}', flush=True)
+    try:
+        server = ThreadingHTTPServer(('127.0.0.1', port), _Handler)
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        # Usually a dev server from an earlier session still holding the
+        # port. A traceback here reads like a code fault; say what it is
+        # and how to clear it.
+        print(
+            f'Port {port} is already in use — another dev server is probably '
+            f'still running.\n'
+            f'Free it with `lsof -ti tcp:{port} | xargs kill`, or start this '
+            f'one elsewhere with PORT=<n>.',
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     print(f'Listening on http://127.0.0.1:{port}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', port), _Handler).serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        # Ctrl+C reaches the whole `pnpm dev` process group. Without this
+        # the interrupt unwinds out of serve_forever's poll and prints a
+        # traceback that reads like a crash, when it's just the operator
+        # stopping the dev server.
+        print('\nShutting down.', flush=True)
+    finally:
+        server.server_close()
 
 
 if __name__ == '__main__':
