@@ -65,11 +65,5 @@ export const DOC_PAGES: DocPage[] = [
 		label: 'FAQ & troubleshooting',
 		blurb: 'Common errors and how to fix them.',
 		group: 'Help'
-	},
-	{
-		slug: 'building',
-		label: 'Building executables',
-		blurb: 'Per-OS PyInstaller build guide for the standalone CLI binaries.',
-		group: 'Help'
 	}
 ];

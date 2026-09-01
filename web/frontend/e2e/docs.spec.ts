@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { DOC_PAGES } from '../src/lib/docMeta';
 
 test.describe('Docs page', () => {
 	test('renders the headline sections and the on-page contents', async ({ page }) => {
@@ -62,8 +63,10 @@ test.describe('Docs page', () => {
 		await page.goto('/docs');
 		const side = page.locator('.docs-side');
 		await expect(side.getByRole('link', { name: 'Overview' })).toHaveClass(/active/);
-		// Every reference page is linked (kept in sync with DOC_PAGES).
-		await expect(side.locator('a[href^="/docs/"]')).toHaveCount(10);
+		// Every reference page is linked. Derived from DOC_PAGES rather than
+		// hardcoded — a literal count here goes stale the moment a doc is
+		// added or removed, and then fails for a reason unrelated to the bug.
+		await expect(side.locator('a[href^="/docs/"]')).toHaveCount(DOC_PAGES.length);
 	});
 
 	test('the overview "Go deeper" cards link into the rendered doc pages', async ({ page }) => {
