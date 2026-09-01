@@ -29,17 +29,29 @@ Run Date      : <YYYY-MM-DD HH:MM:SS>
 **Line 1 — month header**
 
 ```
-YYY MM  TTTTTTTTTT
+ YYYY MM   TTTTTT
 ```
 
-| Field | Width | Description |
-|-------|-------|-------------|
-| Year  | 3 chars (`%3d`; a 4-digit year ≥ 1000 simply overflows to 4) | Calendar year |
-| Month | 3 chars (`%3d`, right-justified) | Calendar month (1–12) |
-| Total | 10 chars, 3 decimal places | Monthly total in Mm3 (sum of daily values converted from m3/s) |
+| Field | Width | Columns | Description |
+|-------|-------|---------|-------------|
+| Year  | 5 chars (`%5d`, right-justified) | 1–5 | Calendar year |
+| Month | 3 chars (`%3d`, right-justified) | 6–8 | Calendar month (1–12) |
+| Total | 8 chars, 3 decimal places | 9–16 | Monthly total in Mm3 (sum of daily values converted from m3/s) |
 
-The three fields are written with no separators (`{year:3d}{month:3d}{total:10.3f}`);
+The three fields are written with no separators
+(`{year:5d}{month:3d}{total:8.3f}`), giving a **fixed 16-character line**;
 the gaps you see in examples are just field padding.
+
+The Pascal wrote this as `year:3, month:3, total:10:3`
+(`delphi_files/uFiles.pas:372`), which also lands on 16 characters — but only
+for the 2-digit years of the era (` 51  6     0.000`). A 4-digit year
+overflows the 3-wide field to 4 characters, dropping the leading space and
+shifting every column right by one, so the line runs to 17. Downstream
+fixed-format readers mis-slice every field after the year. The widths above
+keep the line at 16 for 4-digit years, which is what real files carry.
+
+Readers should still tolerate a 2-digit year (`if year < 1900: year += 1900`)
+— archive files predating the fix carry them.
 
 **Lines 2–5 — daily values**
 
