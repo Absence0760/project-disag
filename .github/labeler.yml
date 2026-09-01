@@ -2,45 +2,54 @@
 # `changed-files` list is the set of glob patterns that, if matched by any
 # changed file, applies the label.
 #
-# Adjust the path globs to match your project's actual layout — these are
-# sensible defaults for a pnpm-monorepo web app with infra + docs.
+# Globs match THIS repo's layout: two stdlib-only Python packages at the
+# root (disag/, exceed/) plus a web/ tree split into frontend / backend /
+# infra. Labels are additive and `sync-labels: true` in the workflow means
+# a label is also removed once a PR stops matching. Every label named here
+# must already exist in the repo — actions/labeler does not create them.
+
+"area:python":
+  - changed-files:
+      - any-glob-to-any-file:
+          - disag/**
+          - exceed/**
 
 "area:frontend":
   - changed-files:
       - any-glob-to-any-file:
-          - frontend/**
-          - apps/web/**
+          - web/frontend/**
 
 "area:backend":
   - changed-files:
       - any-glob-to-any-file:
-          - backend/**
-          - apps/backend/**
+          - web/backend/**
 
 "area:infra":
   - changed-files:
       - any-glob-to-any-file:
-          - infra/**
-          - .github/workflows/**
-          - .github/dependabot.yml
+          - web/infra/**
+          # All of .github/, not just workflows/ — CODEOWNERS, the
+          # labeler config itself and the issue/PR templates are
+          # repo plumbing too, and a PR touching only those would
+          # otherwise land with no area label at all.
+          - .github/**
+          - scripts/**
 
 "area:docs":
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.md"
           - docs/**
-          - "**/CLAUDE.md"
 
 "area:tests":
   - changed-files:
       - any-glob-to-any-file:
-          - "**/*.test.ts"
-          - "**/*.test.js"
-          - "**/*.spec.ts"
-          - "**/tests/**"
-          - "**/test/**"
-          - "**/__tests__/**"
-          - playwright/**
+          - tests/**
+          - examples/**
+          - web/frontend/e2e/**
+          - web/frontend/**/*.test.ts
+          - web/frontend/vitest.config.ts
+          - web/frontend/playwright.config.ts
 
 "area:claude":
   - changed-files:
@@ -50,11 +59,8 @@
 "area:deps":
   - changed-files:
       - any-glob-to-any-file:
-          - "**/package.json"
-          - "**/pnpm-lock.yaml"
-          - "**/pyproject.toml"
-          - "**/requirements*.txt"
-          - "**/Cargo.toml"
-          - "**/Cargo.lock"
-          - "**/go.mod"
-          - "**/go.sum"
+          - package.json
+          - pnpm-lock.yaml
+          - web/frontend/package.json
+          - web/backend/requirements*.txt
+          - .github/dependabot.yml
