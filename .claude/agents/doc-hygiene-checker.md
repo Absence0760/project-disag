@@ -9,7 +9,7 @@ You make "did the docs keep up with the diff?" a mechanical check. Every change 
 
 This repo's doc set lives in three places:
 
-- `docs/` — domain documentation: `algorithm.md`, `method5.md` (the PATCH_EXCEED deep-dive), `exceed.md`, `file-formats.md`, `problem.md`, `building.md` (the PyInstaller / per-OS build guide).
+- `docs/` — domain documentation: `algorithm.md`, `method5.md` (the PATCH_EXCEED deep-dive), `exceed.md`, `file-formats.md`, `problem.md`.
 - `CLAUDE.md` files — operator notes at the repo root, in `disag/`, in `exceed/`, and in `web/` (as `web/README.md`).
 - E2E and infra READMEs — `web/frontend/e2e/README.md`, `web/infra/`'s tfvars example. (Prod secrets and their `.sops.yaml` live in the private `../infra-secrets` repo, not here.)
 

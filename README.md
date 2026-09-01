@@ -15,33 +15,19 @@ source is preserved in [`delphi_files/`](delphi_files/).
 
 ---
 
-## Download (pre-built executables)
+## Getting it
 
-Pre-built single-file executables for Windows, macOS, and Linux are produced
-by [`.github/workflows/release.yml`](.github/workflows/release.yml) and
-attached to each tagged release on GitHub. Each archive contains both
-`disag` and `exceed` and has no Python dependency — just download, unpack,
-and run:
+The web app is the supported way to run this — upload your files, pick a
+method, download the results. No install.
 
-| Platform | Archive | How to run |
-|----------|---------|-----------|
-| Windows  | `disag-windows-x64.zip`  | Unzip, double-click `disag.exe` (GUI) or run from `cmd` (CLI) |
-| macOS    | `disag-macos-arm64.tar.gz` | `tar xzf … && ./disag` (you may need to allow it in System Settings → Privacy & Security on first run) |
-| Linux    | `disag-linux-x64.tar.gz` | `tar xzf … && ./disag` |
+To run it locally instead, see [Running from source](#running-from-source)
+below; the packages are stdlib-only, so a stock Python 3.14 is all you need.
 
-To build them yourself on the current OS:
-
-```bash
-pip install pyinstaller
-python packaging/build.py --clean
-# → dist/disag, dist/exceed (or .exe on Windows)
-```
-
-PyInstaller does not cross-compile, so each OS must be built on a matching
-machine (or via the GitHub Actions matrix above). For full per-platform
-build instructions — including a Docker recipe for building Linux binaries
-on a Mac, code-signing notes, and troubleshooting — see
-[docs/building.md](docs/building.md).
+> **Standalone executables are no longer built.** Tagged releases up to
+> `v0.1.0` carry PyInstaller binaries for Windows, macOS and Linux; they are
+> still attached to that release and still work, but they predate the web app
+> and are not maintained. The build pipeline was removed in favour of the web
+> app and running from source.
 
 ## Running from source
 
@@ -202,7 +188,6 @@ web/                Browser front-end + AWS Lambda back-end (see web/README.md)
 
 tests/              Stdlib unittest suite (140+ tests, no external deps)
 examples/           Per-method runnable demos with deterministic mock data
-packaging/          PyInstaller build script for the standalone CLI binaries
 delphi_files/       Original Delphi/Pascal source (reference only)
 docs/               Detailed technical documentation
 ```

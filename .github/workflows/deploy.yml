@@ -2,8 +2,10 @@ name: Deploy (release-gated)
 
 # Production deploys for the web app. Two jobs, both fired on
 # release:published filtered to:
-#   - tags starting with `web-v` (so Python-tool releases tagged
-#     `v*` don't accidentally redeploy the site — see release.yml)
+#   - tags starting with `web-v`. The `v*` namespace belonged to the
+#     standalone-binary releases; that pipeline is gone, but the filter
+#     stays — the old `v*` tags still exist, and re-cutting one must
+#     never redeploy production.
 #   - non-prereleases
 #
 # Authentication: GitHub Actions OIDC → assume the IAM role created

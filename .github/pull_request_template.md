@@ -19,7 +19,6 @@
 - [ ] `web/backend/` (Python Lambda handler + local shim)
 - [ ] `web/infra/` (Terraform)
 - [ ] `web/frontend/e2e/` (Playwright)
-- [ ] `packaging/` (PyInstaller build)
 - [ ] CI / GitHub Actions (`.github/`)
 - [ ] Docs only (`docs/`, `*.md`, `CLAUDE.md`)
 
