@@ -116,6 +116,56 @@ describe('api.ts: request shape', () => {
 	});
 });
 
+describe('api.ts: downloadRunArchive', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		vi.resetModules();
+	});
+
+	function mockBlobOk(blob: Blob) {
+		return vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			blob: async () => blob
+		});
+	}
+
+	it('GETs the archive route with the client id and no json content-type', async () => {
+		const fetchSpy = mockBlobOk(new Blob(['zip']));
+		vi.stubGlobal('fetch', fetchSpy);
+
+		const api = await import('./api');
+		await api.downloadRunArchive('1700000000-abcdef12');
+
+		const [url, init] = fetchSpy.mock.calls[0];
+		expect(url).toBe('/api/runs/1700000000-abcdef12/archive');
+		expect(init.headers['x-client-id']).toMatch(/^[0-9a-f-]{36}$/);
+		// A JSON content-type on a GET would be a lie about the request
+		// body and can trip a CORS preflight; the header must be absent.
+		expect(init.headers['content-type']).toBeUndefined();
+	});
+
+	it('url-encodes the run id segment', async () => {
+		const fetchSpy = mockBlobOk(new Blob(['zip']));
+		vi.stubGlobal('fetch', fetchSpy);
+
+		const api = await import('./api');
+		await api.downloadRunArchive('weird id/with slashes');
+
+		expect(fetchSpy.mock.calls[0][0]).toBe('/api/runs/weird%20id%2Fwith%20slashes/archive');
+	});
+
+	it('surfaces the backend error message on a 413', async () => {
+		const fetchSpy = mockFetchErr(413, '{"error":"too large — use the individual file links"}');
+		vi.stubGlobal('fetch', fetchSpy);
+
+		const api = await import('./api');
+		await expect(api.downloadRunArchive('1700000000-abcdef12')).rejects.toThrow(
+			/413.*individual file links/
+		);
+	});
+});
+
 describe('api.ts: error handling', () => {
 	beforeEach(() => {
 		localStorage.clear();

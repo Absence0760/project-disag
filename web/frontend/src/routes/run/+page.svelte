@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { requestUpload, putToS3, runConvert, runDisag, runExceed } from '$lib/api';
 	import { isSvgOutput, outputLabel } from '$lib/format';
+	import DownloadAllButton from '$lib/DownloadAllButton.svelte';
 	import type { DisagMethod, RunResult, SeasonGroup, Tool } from '$lib/types';
 	import FileDrop from '$lib/FileDrop.svelte';
 
@@ -581,6 +582,7 @@
 			<a class="btn secondary" href={result.report_url} data-testid="download-report">
 				Download .rep report
 			</a>
+			<DownloadAllButton runId={result.run_id} />
 			<a class="btn ghost" href="/history">View all runs →</a>
 		</div>
 	</div>

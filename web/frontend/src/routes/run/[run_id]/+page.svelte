@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { getRun } from '$lib/api';
 	import { fmtDateTime, isSvgOutput, outputLabel } from '$lib/format';
+	import DownloadAllButton from '$lib/DownloadAllButton.svelte';
 	import type { RunResult } from '$lib/types';
 
 	let result = $state<RunResult | null>(null);
@@ -85,6 +86,7 @@
 			<a class="btn secondary" href={result.report_url} data-testid="download-report">
 				Download .rep report
 			</a>
+			<DownloadAllButton runId={result.run_id} />
 			<a class="btn ghost" href="/history">View all runs →</a>
 		</div>
 	</div>

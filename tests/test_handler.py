@@ -10,6 +10,7 @@ stays pure-stdlib — each test that touches S3 patches
 shape.
 """
 
+import base64
 import io
 import json
 import os
@@ -17,6 +18,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import zipfile
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
@@ -819,6 +821,125 @@ class GetRunTests(HandlerTestBase):
         self.assertTrue(body['output_key'].endswith('output.day'))
         self.assertIsNone(body['columns_key'])
         self.assertIsNone(body['columns_url'])
+
+
+# ── /runs/{id}/archive ──────────────────────────────────────────────
+
+
+class RunArchiveTests(HandlerTestBase):
+    """GET /runs/{id}/archive zips a run's artifacts into one download."""
+
+    RUN_ID = '1700000000-abcdef12'
+
+    def setUp(self):
+        super().setUp()
+        self.files = {
+            'output.day': b'day bytes\n',
+            'output.csv': b'1981/10/01,0.214\n',
+            'output.rep': b'report bytes\n',
+        }
+
+    def _stub_listing(self, tool='disag', sizes=None):
+        prefix = f'runs/{tool}/{CLIENT_ID}/{self.RUN_ID}/'
+        contents = [
+            {
+                'Key': prefix + name,
+                'Size': (sizes or {}).get(name, len(body)),
+                'LastModified': datetime(2026, 1, 1, tzinfo=timezone.utc),
+            }
+            for name, body in self.files.items()
+        ]
+
+        def _list(Bucket, Prefix):
+            return {'Contents': contents if Prefix == prefix else []}
+
+        def _get(Bucket, Key):
+            return {'Body': io.BytesIO(self.files[Key.rsplit('/', 1)[1]])}
+
+        self.s3.list_objects_v2.side_effect = _list
+        self.s3.get_object.side_effect = _get
+
+    def _request(self, run_id=None, client_id=CLIENT_ID):
+        return handler.lambda_handler(
+            _make_event(
+                method='GET',
+                path=f'/runs/{run_id or self.RUN_ID}/archive',
+                client_id=client_id,
+            ),
+            None,
+        )
+
+    def test_returns_a_zip_of_every_artifact(self):
+        self._stub_listing()
+        resp = self._request()
+        self.assertEqual(resp['statusCode'], 200, resp['body'])
+        self.assertTrue(resp['isBase64Encoded'])
+        self.assertEqual(resp['headers']['content-type'], 'application/zip')
+        self.assertEqual(
+            resp['headers']['content-disposition'],
+            f'attachment; filename="run-{self.RUN_ID}.zip"',
+        )
+        zf = zipfile.ZipFile(io.BytesIO(base64.b64decode(resp['body'])))
+        self.assertEqual(sorted(zf.namelist()), sorted(self.files))
+        for name, body in self.files.items():
+            self.assertEqual(zf.read(name), body)
+
+    def test_zip_members_are_flat_names_not_s3_keys(self):
+        # A key path inside the archive would make consumers unzip into
+        # runs/disag/<client-id>/... and leak the client id onto disk.
+        self._stub_listing()
+        zf = zipfile.ZipFile(io.BytesIO(base64.b64decode(self._request()['body'])))
+        for name in zf.namelist():
+            self.assertNotIn('/', name)
+
+    def test_exceed_run_with_two_artifacts(self):
+        self.files = {'output.svg': b'<svg/>', 'output.rep': b'rep'}
+        self._stub_listing(tool='exceed')
+        zf = zipfile.ZipFile(io.BytesIO(base64.b64decode(self._request()['body'])))
+        self.assertEqual(sorted(zf.namelist()), ['output.rep', 'output.svg'])
+
+    def test_foreign_run_returns_404(self):
+        # Scoped by client_id in the prefix: another browser's run is
+        # indistinguishable from one that never existed.
+        self._stub_listing()
+        resp = self._request(client_id=OTHER_CLIENT)
+        self.assertEqual(resp['statusCode'], 404)
+
+    def test_malformed_run_id_returns_400(self):
+        resp = self._request(run_id='not-a-run-id')
+        self.assertEqual(resp['statusCode'], 400)
+        # The bad id must never reach an S3 prefix.
+        self.s3.list_objects_v2.assert_not_called()
+
+    def test_unknown_run_returns_404(self):
+        self.s3.list_objects_v2.return_value = {'Contents': []}
+        self.s3.list_objects_v2.side_effect = None
+        self.assertEqual(self._request()['statusCode'], 404)
+
+    def test_oversized_run_returns_413_without_downloading(self):
+        self._stub_listing(sizes={'output.day': handler.MAX_ARCHIVE_SOURCE_BYTES + 1})
+        resp = self._request()
+        self.assertEqual(resp['statusCode'], 413)
+        self.assertIn('individual file links', _body(resp)['error'])
+        # The point of the pre-check is to bail before pulling bytes.
+        self.s3.get_object.assert_not_called()
+
+    def test_zip_too_big_for_the_gateway_returns_413(self):
+        # Incompressible payload, so ZIP_DEFLATED can't shrink it under
+        # the cap: exercises the post-zip check, not the size pre-check.
+        big = os.urandom(handler.MAX_ARCHIVE_RESPONSE_BYTES)
+        self.files = {'output.day': big}
+        self._stub_listing()
+        resp = self._request()
+        self.assertEqual(resp['statusCode'], 413)
+        self.assertIn('individual file links', _body(resp)['error'])
+
+    def test_archive_path_is_not_read_as_a_run_id(self):
+        # '/runs/<id>/archive' also matches the generic '/runs/' route,
+        # whose split would hand _handle_get_run '<id>/archive'. The
+        # archive route has to win — assert it returns a zip, not a 400.
+        self._stub_listing()
+        self.assertEqual(self._request()['headers']['content-type'], 'application/zip')
 
 
 if __name__ == '__main__':

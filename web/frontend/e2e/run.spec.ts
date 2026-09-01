@@ -44,6 +44,15 @@ async function stubBackend(page: Page) {
 		})
 	);
 
+	await page.route('**/runs/*/archive', (route: Route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/zip',
+			headers: { 'content-disposition': 'attachment; filename="run-stub.zip"' },
+			body: 'PK\u0005\u0006' + '\u0000'.repeat(18)
+		})
+	);
+
 	await page.route('**/exceed', (route: Route) =>
 		route.fulfill({
 			status: 200,
@@ -222,6 +231,34 @@ test.describe('Run page', () => {
 			'href',
 			'https://stub.s3.local/output.rep'
 		);
+
+		// "Download all" is script-driven (it has to send x-client-id), so
+		// assert the actual download fires, not just that a link exists.
+		const download = page.waitForEvent('download');
+		await page.getByTestId('download-all').click();
+		expect((await download).suggestedFilename()).toBe('run-1700000000-abcdef12.zip');
+		await expect(page.getByTestId('download-all-error')).toHaveCount(0);
+	});
+
+	test('download all: a backend failure is surfaced, not swallowed', async ({ page }) => {
+		await stubBackend(page);
+		await page.route('**/runs/*/archive', (route: Route) =>
+			route.fulfill({
+				status: 413,
+				contentType: 'application/json',
+				body: JSON.stringify({ error: 'too large — use the individual file links' })
+			})
+		);
+		await page.goto('/run');
+		await attachFile(page, 'drop-monthly', 'SINDILA.MON');
+		await attachFile(page, 'drop-daily1', 'RUKOKI-l.DAY');
+		await page.getByTestId('submit').click();
+		await expect(page.getByTestId('run-success')).toBeVisible();
+
+		await page.getByTestId('download-all').click();
+		await expect(page.getByTestId('download-all-error')).toContainText(/individual file links/);
+		// The per-file links must still work when the archive doesn't.
+		await expect(page.getByTestId('download-output')).toBeVisible();
 	});
 
 	test('exceed flow: monthly-only submit renders the curve preview + download links', async ({

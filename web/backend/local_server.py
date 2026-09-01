@@ -22,6 +22,8 @@ Two modes:
 
 from __future__ import annotations
 
+import base64
+import io
 import os
 import shutil
 import sys
@@ -47,7 +49,7 @@ os.environ.setdefault('ALLOWED_ORIGIN', '*')
 #
 # Mirrors the subset of boto3's S3 client that handler.py uses:
 #   - generate_presigned_url (put_object | get_object)
-#   - upload_file / download_file
+#   - upload_file / download_file / get_object
 #   - list_objects_v2 / get_paginator('list_objects_v2')
 #
 # Pre-signed URLs point back at this server on /_local-s3/{action}/{bucket}/{key}.
@@ -115,6 +117,11 @@ class _LocalS3:
 
     def download_file(self, bucket: str, key: str, dest: str) -> None:
         shutil.copyfile(self._path(bucket, key), dest)
+
+    def get_object(self, Bucket: str, Key: str) -> dict:
+        # boto3 hands back a streaming body; the archive route only
+        # needs .read(), so a BytesIO is a faithful enough stand-in.
+        return {'Body': io.BytesIO(self._path(Bucket, Key).read_bytes())}
 
     def list_objects_v2(self, Bucket: str, Prefix: str = '', **_: Any) -> dict:
         bucket_root = self.root / Bucket
@@ -286,7 +293,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         payload = resp.get('body', '')
-        if isinstance(payload, str):
+        # API Gateway decodes a base64-framed body back to bytes before
+        # it reaches the browser (that's how /archive returns a zip).
+        # Without mirroring it here, dev would serve the base64 text.
+        if resp.get('isBase64Encoded'):
+            payload = base64.b64decode(payload)
+        elif isinstance(payload, str):
             payload = payload.encode('utf-8')
         if payload:
             self.wfile.write(payload)
