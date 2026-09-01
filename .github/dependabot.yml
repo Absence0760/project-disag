@@ -1,14 +1,13 @@
 version: 2
 
 # Ecosystems present in this repo:
-#   pip            — disag/ + exceed/ + tests/ are stdlib-only by
-#                    policy (see project-root CLAUDE.md). web/backend
-#                    uses boto3 from the Lambda runtime — no
-#                    requirements file there either. The single pip
-#                    surface is packaging/build-requirements.txt
-#                    (PyInstaller + pip, hash-pinned via pip-compile),
-#                    consumed by release.yml when building the user-
-#                    facing CLI binaries.
+#   pip            — NONE. disag/ + exceed/ + tests/ are stdlib-only by
+#                    policy (see project-root CLAUDE.md) and web/backend
+#                    uses boto3 from the Lambda runtime, so neither has a
+#                    requirements file. The one pip surface was
+#                    packaging/build-requirements.txt, removed with the
+#                    standalone-binary build. Nothing to track — do not
+#                    re-add an entry without a manifest for it to read.
 #   npm            — root workspace (dev tooling, e.g. concurrently)
 #                    + web/frontend SvelteKit app. ONE entry, at `/`:
 #                    pnpm-lock.yaml lives at the root and covers every
@@ -101,15 +100,3 @@ updates:
       actions:
         patterns: ['*']
         update-types: ['minor', 'patch']
-
-  - package-ecosystem: pip
-    directory: /packaging
-    schedule:
-      interval: weekly
-      day: monday
-      time: '06:00'
-      timezone: Etc/UTC
-    open-pull-requests-limit: 3
-    labels:
-      - dependencies
-      - python

@@ -233,7 +233,6 @@ web/                SvelteKit frontend + AWS Lambda backend + Terraform (see web
 
 tests/              Stdlib unittest suite (no third-party deps)
 examples/           Per-method runnable demos with deterministic mock data
-packaging/          PyInstaller build script for the standalone CLI binaries
 delphi_files/       Original Pascal source — reference only, do not modify
 docs/               Detailed technical documentation
   algorithm.md      Disag formula and per-method behaviour
@@ -241,7 +240,6 @@ docs/               Detailed technical documentation
   file-formats.md   .day / .mon / .rep on-disk layout
   exceed.md         Exceedance algorithm and matching logic
   problem.md        Domain context — what this tool actually solves
-  building.md       PyInstaller per-OS build guide (Linux / macOS / Windows)
 testfiles/          Sample input files (gitignored)
 ```
 

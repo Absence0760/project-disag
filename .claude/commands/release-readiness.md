@@ -1,34 +1,35 @@
 ---
-description: Pre-tag readiness gate for a release. Checks main is clean, CI green, tests pass, demo generators don't drift, and (for web releases) e2e green + tf plan clean + GitHub repo variables aligned. Read-only — never tags or deploys.
-argument-hint: <kind> (python | web)
+description: Pre-tag readiness gate for a web release. Checks main is clean, CI green, tests pass, demo generators don't drift, e2e green, tf plan clean and GitHub repo variables aligned. Read-only — never tags or deploys.
+argument-hint: (web)
 ---
 
 Run a pre-tag readiness audit. Report a green/red checklist; never tag, push, or publish. The user does the actual `git tag` after they've reviewed the report.
 
 ## Why this exists
 
-The repo has two independent release flows:
+The repo has one release flow:
 
-- **`v*` tags** trigger [`.github/workflows/release.yml`](../../.github/workflows/release.yml) — PyInstaller binaries for `disag` and `exceed` on Linux + macOS + Windows, published as a GitHub Release.
 - **`web-v*` tags** trigger [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) — `aws lambda update-function-code` + `aws s3 sync` + `cloudfront create-invalidation`, gated by the `production` GitHub environment.
 
-Both are irreversible-ish (the Python release can be deleted; the Lambda + S3 deploy needs a rollback tag to undo). This command catches the obvious "you forgot to push", "CI is red", "you have uncommitted work" failures before the tag goes out.
+It's irreversible-ish: the Lambda + S3 deploy needs a rollback tag to undo. This command catches the obvious "you forgot to push", "CI is red", "you have uncommitted work" failures before the tag goes out.
+
+(There used to be a second flow — `v*` tags building PyInstaller binaries. Those predate the web app, were never downloaded, and the pipeline was removed; releases up to `v0.1.0` keep their attached binaries.)
 
 ## When to use
 
 **Right fit:** you're about to cut a release and want a single yes/no.
 
 **Wrong fit — refuse:**
-- Argument doesn't match `python` or `web`.
+- Argument names a release kind that doesn't exist.
 - The user is on a feature branch (not `main`) — explain that releases tag from `main`, ask whether to switch.
 
 ## Procedure
 
 ### 1. Validate the argument
 
-Accept exactly one of: `python`, `web`. Aliases: `cli` / `v` → `python`; `frontend` / `backend` / `web-v` → `web`.
+`web` is the only kind. Accept it, or no argument at all. Aliases: `frontend` / `backend` / `web-v` → `web`. If the user passes `python` / `cli` / `v`, say the standalone-binary release was retired and there is nothing to gate, then stop.
 
-If `$ARGUMENTS` is empty, ask the user which kind — don't guess.
+If `$ARGUMENTS` is empty, proceed with `web` — it's the only kind.
 
 ### 2. Confirm we're on main
 
@@ -96,39 +97,6 @@ git diff --exit-code -- examples/
 Clean → green. Any diff → red ("demo data drift — re-commit `examples/` before tagging").
 
 ### 4. Kind-specific gates
-
-#### `python` (tag pattern: `v*`)
-
-**4a. Last `v*` tag and commit delta**
-
-```
-last=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo '(none)')
-git rev-list --count "$last"..HEAD -- disag exceed tests examples packaging
-```
-
-Zero touching the relevant paths → red ("no new code since `<last>` — nothing to release").
-
-**4b. Changelog draft**
-
-```
-git log --oneline "$last"..HEAD -- disag exceed tests examples packaging
-```
-
-List as the changelog draft for the GitHub Release notes.
-
-**4c. PyInstaller build sanity**
-
-The release workflow runs `python packaging/build.py --clean` on three OSes. A local Linux build is a cheap pre-flight:
-
-```
-python3 packaging/build.py --clean 2>/dev/null && ls dist/disag dist/exceed
-```
-
-Both binaries present → green. Failure → red. Skippable with `⚠ skipped — PyInstaller not installed` if `pyinstaller` isn't on PATH.
-
-**4d. tk-availability note**
-
-`stock macOS Python's _tkinter is broken` — confirm root `CLAUDE.md`'s macOS guidance hasn't drifted. This is a note (⚠), not a gate.
 
 #### `web` (tag pattern: `web-v*`)
 
@@ -211,9 +179,9 @@ Exit 0 → green. Failure → red ("sops decrypt failing — SSO creds for the K
 ### 5. Build the report
 
 ```
-# Release readiness — `<kind>`
+# Release readiness — `web`
 
-Proposed tag: `<v|web-v><x.y.z>` (suggest based on the user's input or last tag)
+Proposed tag: `web-v<x.y.z>` (suggest based on the user's input or last tag)
 
 ## Universal gates
 
@@ -226,13 +194,13 @@ Proposed tag: `<v|web-v><x.y.z>` (suggest based on the user's input or last tag)
 | Python tests | ✓ / ✗ | ... |
 | Demo generators no-drift | ✓ / ✗ | ... |
 
-## Kind-specific (`<kind>`)
+## Web gates
 
 | Gate | Status | Detail |
 |---|---|---|
-| Last tag | — | `<v|web-v><x.y.z>` (<n> days ago) |
+| Last tag | — | `web-v<x.y.z>` (<n> days ago) |
 | Commits since last tag | ✓ / ✗ | <count> |
-| ...kind-specific extras... | | |
+| ...web extras... | | |
 
 ## Changelog draft
 
@@ -252,7 +220,7 @@ End with:
 
 > If everything's green, the next step is:
 > ```
-> gh release create <v|web-v><x.y.z> \
+> gh release create web-v<x.y.z> \
 >     --title '<short title>' \
 >     --generate-notes
 > ```
