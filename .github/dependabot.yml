@@ -48,6 +48,23 @@ updates:
           - 'prettier-*'
       minor-and-patch:
         update-types: ['minor', 'patch']
+    ignore:
+      # TypeScript 7 is the native (tsgo) rewrite, and svelte-check 4.7.6
+      # — the latest — refuses a plain TS 7 install outright:
+      #
+      #   Error: TypeScript 7 support currently requires both TypeScript 7
+      #   and TypeScript 6 installed in your project, and requires using
+      #   the --tsgo or --tsgo-experimental-api flag.
+      #
+      # Taking it means carrying two TypeScript installs under an npm
+      # alias and putting an experimental flag in `check:web`, which is a
+      # required merge gate — a migration, not a bump, and it buys nothing
+      # for a dev-only type-checker. #112 was closed for this reason.
+      #
+      # REVISIT when svelte-check supports TS 7 with a single install;
+      # drop this entry then. Minor and patch updates still come through.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: terraform
     directory: /web/infra
