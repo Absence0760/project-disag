@@ -1,6 +1,22 @@
 pip==26.2.1
 pyinstaller==6.22.2
 
-# NB: after re-running pip-compile, restore the "Manual cross-platform
-# pins" section at the bottom of build-requirements.txt (macholib /
-# pefile / pywin32-ctypes) — see the comment there for why.
+# PyInstaller's platform-conditional dependencies, declared here rather
+# than left to pip-compile. pip-compile only resolves for the platform it
+# runs on (Linux, in the docs and in Dependabot's regeneration), so these
+# never appear in the output on their own — and in --require-hashes mode
+# pip then refuses to install on macOS or Windows entirely:
+#
+#     ERROR: In --require-hashes mode, all requirements must have their
+#     versions pinned with ==. These do not: macholib>=1.8
+#
+# They used to live as a hand-maintained block at the bottom of
+# build-requirements.txt with a note asking whoever regenerated the file
+# to paste them back. That lost twice — 6c21be7 (#82) and ceaf717 (#101),
+# both Dependabot regenerations, which no note can reach. Declaring them
+# as direct requirements here means any regeneration carries them
+# through. tests/test_packaging_requirements.py fails if they go missing
+# again.
+macholib==1.16.4 ; sys_platform == "darwin"
+pefile==2024.8.26 ; sys_platform == "win32"
+pywin32-ctypes==0.2.3 ; sys_platform == "win32"
