@@ -152,6 +152,71 @@ class HappyPathRunTests(unittest.TestCase):
                     os.unlink(p)
 
 
+class ColumnsFlagTests(unittest.TestCase):
+    """--columns writes the two-column CSV next to the .day output."""
+
+    def _run_method0(self, *extra):
+        out = _tmp('.day')
+        rep = _tmp('.rep')
+        self.addCleanup(
+            lambda: [os.unlink(p) for p in (out, rep) if os.path.exists(p)]
+        )
+        res = _run_cli(
+            '--method', '0',
+            '--monthly', _demo('method0_demo', 'data', 'target.MON'),
+            '--daily1',  _demo('method0_demo', 'data', 'gauge_complete.DAY'),
+            '--output',  out,
+            '--report',  rep,
+            *extra,
+        )
+        return out, res
+
+    def test_no_csv_without_the_flag(self):
+        out, _ = self._run_method0()
+        self.assertFalse(os.path.exists(out[:-4] + '-columns.csv'))
+
+    def test_default_path_is_output_stem_plus_columns_csv(self):
+        out, res = self._run_method0('--columns')
+        csv = out[:-4] + '-columns.csv'
+        self.addCleanup(lambda: os.path.exists(csv) and os.unlink(csv))
+        self.assertTrue(os.path.exists(csv), res.stdout)
+        self.assertIn(csv, res.stdout)
+        with open(csv) as f:
+            rows = f.read().splitlines()
+        # 36 whole months of daily data, comma-separated, no header.
+        self.assertEqual(len(rows), 1095)
+        self.assertRegex(rows[0], r'^\d{4}/\d{2}/\d{2},[-\d.]+$')
+
+    def test_explicit_path_is_honoured(self):
+        csv = _tmp('.csv')
+        self.addCleanup(lambda: os.path.exists(csv) and os.unlink(csv))
+        out, res = self._run_method0('--columns', csv)
+        self.assertIn(csv, res.stdout)
+        with open(csv) as f:
+            self.assertEqual(len(f.read().splitlines()), 1095)
+        self.assertFalse(os.path.exists(out[:-4] + '-columns.csv'))
+
+    def test_csv_matches_the_day_output_day_for_day(self):
+        # The CSV is flattened from the written .day, so every value must
+        # appear in both — a drift here means the two disagree on disk.
+        sys.path.insert(0, ROOT)
+        from disag.columns import format_value
+        from disag.files import read_daily_file
+
+        out, _ = self._run_method0('--columns')
+        csv = out[:-4] + '-columns.csv'
+        self.addCleanup(lambda: os.path.exists(csv) and os.unlink(csv))
+        records = read_daily_file(out)
+        expected = [
+            format_value(v)
+            for _, rec in sorted(records.items())
+            for v in rec.v
+        ]
+        with open(csv) as f:
+            got = [line.split(',')[1] for line in f.read().splitlines()]
+        self.assertEqual(got, expected)
+
+
 class WholeMonthFractionCliTests(unittest.TestCase):
     """The --whole-month-fraction flag: validation, note, and effect."""
 

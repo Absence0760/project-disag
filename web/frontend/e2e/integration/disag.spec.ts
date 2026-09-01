@@ -35,6 +35,14 @@ test.describe('@integration disag', () => {
 
 		const output = await fetchText(request, result.output_url!);
 		expect(output.length, '.day output non-empty').toBeGreaterThan(0);
+
+		// The two-column CSV ships alongside every disag run: one row per
+		// calendar day, flattened from the .day above.
+		expect(result.columns_url, 'columns_url present').toBeTruthy();
+		const csv = await fetchText(request, result.columns_url!);
+		const rows = csv.trimEnd().split('\n');
+		expect(rows).toHaveLength(1095); // 36 whole months
+		expect(rows[0]).toMatch(/^\d{4}\/\d{2}\/\d{2},[-\d.]+$/);
 	});
 
 	test('method 0 with gaps — gap month is dropped, not patched', async ({ request }) => {

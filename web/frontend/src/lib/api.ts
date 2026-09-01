@@ -92,3 +92,30 @@ export async function listRuns(): Promise<RunSummary[]> {
 export async function getRun(runId: string): Promise<RunResult> {
 	return jsonFetch<RunResult>(`/runs/${encodeURIComponent(runId)}`);
 }
+
+/**
+ * Every artifact of one run, zipped by the backend into a single file.
+ *
+ * Fetched rather than linked: /archive is scoped by the `x-client-id`
+ * header like the rest of the API, and a plain <a href> can't send one.
+ * The blob comes back same-origin through CloudFront's /api/* behaviour,
+ * so this needs no CORS rule on the outputs bucket (it has none — the
+ * individual download links are presigned S3 GETs, which don't need it).
+ */
+export async function downloadRunArchive(runId: string): Promise<Blob> {
+	const res = await fetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/archive`, {
+		headers: { 'x-client-id': getClientId() }
+	});
+	if (!res.ok) {
+		const body = await res.text();
+		let detail = body;
+		try {
+			const parsed = JSON.parse(body) as { error?: unknown };
+			if (typeof parsed.error === 'string') detail = parsed.error;
+		} catch {
+			/* non-JSON body — fall through with the raw text */
+		}
+		throw new Error(`${res.status} ${res.statusText}: ${detail}`);
+	}
+	return res.blob();
+}

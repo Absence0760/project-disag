@@ -67,6 +67,14 @@ export interface RunResult {
 	report_key: string;
 	output_url?: string;
 	report_url: string;
+	/**
+	 * disag only: the daily output flattened to two columns (date,flow), one
+	 * row per calendar day, for consumers that can't parse the fixed-width
+	 * .day layout. Absent on exceed/convert runs and on disag runs made
+	 * before the CSV became a standard output.
+	 */
+	columns_key?: string | null;
+	columns_url?: string | null;
 }
 
 export interface RunSummary {

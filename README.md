@@ -93,6 +93,39 @@ python3 -m disag --no-gui \
 
 Run `python3 -m disag --help` for full usage.
 
+### A two-column CSV instead of the `.day` block layout
+
+`.day` files are fixed-width blocks — compact, but they assume the consumer
+knows the format. Add `--columns` to a run and it also writes a plain time
+series, one row per calendar day:
+
+```bash
+python3 -m disag --no-gui \
+    --method 0 \
+    --monthly  ./testfiles/SINDILA.MON \
+    --daily1   ./testfiles/RUKOKI-l.DAY \
+    --output   ./test_output.day \
+    --report   ./test_output.rep \
+    --columns                          # → ./test_output-columns.csv
+```
+
+```
+1981/10/01,0.214
+1981/10/02,0.225
+```
+
+`--columns PATH` puts it somewhere else. Missing days are kept, carrying the
+`-99.99` sentinel, so the series has no unexplained gaps. To flatten a `.day`
+you already have — or to change the delimiter, date format, or add a header
+row — run the flattener directly:
+
+```bash
+python3 -m disag.columns path/to/input.day path/to/output.csv --style csv
+```
+
+The web app publishes this CSV on every disaggregation run; see
+[docs/file-formats.md](docs/file-formats.md#two-column-export).
+
 ### Converting a Pitman `.ANS` file to a `.MON`
 
 The disag tool reads NinhamShand-style `.MON` monthly files. If your

@@ -92,6 +92,41 @@ For February (28 days), line 6 is blank.
 
 ---
 
+### Two-column export
+
+`python -m disag.columns` flattens a `.day` file into one row per calendar
+day, for downstream tools that want a plain time series rather than the block
+layout:
+
+```
+1981/10/01      0.214
+1981/10/02      0.225
+```
+
+Date column is left-justified in 10 characters, value right-justified in the
+next 11. `--style csv` / `--style tab` swap the padding for a delimiter,
+`--date-format` takes any `strftime` pattern, and `--header` adds a
+`Date`/`Flow` title row.
+
+The CSV form is also a standard output of a disaggregation run, so a consumer
+that can't read the block layout needs no second step:
+
+- `python -m disag … --columns` writes `<output>-columns.csv` next to the
+  `.day` and `.rep` (`--columns PATH` to place it elsewhere).
+- Every web `/disag` run publishes `output.csv` alongside `output.day` and
+  `output.rep`, and the run page offers it as its own download.
+
+Both flatten the `.day` file just written rather than the in-memory series, so
+the CSV is provably the same numbers the `.day` carries. They emit the CSV
+style with no header — for a different delimiter, date format or a title row,
+run `python -m disag.columns` against the `.day` afterwards.
+
+Every calendar day of every month in the source gets a row, **missing days
+included** — they carry the `-99.99` sentinel. Dropping them would leave a
+gap the consumer cannot distinguish from a month that was never in the file.
+Values keep the decimal convention above, so they render identically in both
+formats.
+
 ## Pitman monthly output (`.ANS`) — and converting to `.mon`
 
 Some upstream tools (the Pitman stochastic streamflow model in particular)

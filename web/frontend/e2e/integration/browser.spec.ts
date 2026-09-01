@@ -15,6 +15,7 @@
 
 import { expect, test } from '@playwright/test';
 import { API, fixturePath } from './_fixtures';
+import { readFile } from 'node:fs/promises';
 
 async function attachFixture(
 	page: import('@playwright/test').Page,
@@ -57,6 +58,23 @@ test.describe('@integration browser', () => {
 		expect(outputUrl, '.day output link present').toBeTruthy();
 		expect(outputUrl).toMatch(/output\.day/);
 		await expect(page.getByTestId('download-output')).toContainText(/\.day output/);
+
+		// The CSV companion is offered in the UI too, and its bytes are the
+		// flattened form of the same series.
+		const csvUrl = await page.getByTestId('download-columns').getAttribute('href');
+		expect(csvUrl, '.csv link present in DOM').toBeTruthy();
+		const csvBody = await (await request.get(csvUrl as string)).text();
+		expect(csvBody.trimEnd().split('\n')[0]).toMatch(/^\d{4}\/\d{2}\/\d{2},[-\d.]+$/);
+
+		// Download all: a real zip built by the backend, carrying every
+		// artifact this run produced.
+		const zip = page.waitForEvent('download');
+		await page.getByTestId('download-all').click();
+		const saved = await zip;
+		expect(saved.suggestedFilename()).toMatch(/^run-\d+-[0-9a-f]{8}\.zip$/);
+		const zipPath = await saved.path();
+		const zipHead = (await readFile(zipPath)).subarray(0, 2).toString('latin1');
+		expect(zipHead, 'zip local-file-header magic').toBe('PK');
 
 		// Fetch the actual bytes and confirm they look like a .day file.
 		const outputBody = await (await request.get(outputUrl as string)).text();

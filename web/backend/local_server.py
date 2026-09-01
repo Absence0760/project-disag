@@ -22,6 +22,9 @@ Two modes:
 
 from __future__ import annotations
 
+import base64
+import errno
+import io
 import os
 import shutil
 import sys
@@ -47,7 +50,7 @@ os.environ.setdefault('ALLOWED_ORIGIN', '*')
 #
 # Mirrors the subset of boto3's S3 client that handler.py uses:
 #   - generate_presigned_url (put_object | get_object)
-#   - upload_file / download_file
+#   - upload_file / download_file / get_object
 #   - list_objects_v2 / get_paginator('list_objects_v2')
 #
 # Pre-signed URLs point back at this server on /_local-s3/{action}/{bucket}/{key}.
@@ -115,6 +118,11 @@ class _LocalS3:
 
     def download_file(self, bucket: str, key: str, dest: str) -> None:
         shutil.copyfile(self._path(bucket, key), dest)
+
+    def get_object(self, Bucket: str, Key: str) -> dict:
+        # boto3 hands back a streaming body; the archive route only
+        # needs .read(), so a BytesIO is a faithful enough stand-in.
+        return {'Body': io.BytesIO(self._path(Bucket, Key).read_bytes())}
 
     def list_objects_v2(self, Bucket: str, Prefix: str = '', **_: Any) -> dict:
         bucket_root = self.root / Bucket
@@ -286,7 +294,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         payload = resp.get('body', '')
-        if isinstance(payload, str):
+        # API Gateway decodes a base64-framed body back to bytes before
+        # it reaches the browser (that's how /archive returns a zip).
+        # Without mirroring it here, dev would serve the base64 text.
+        if resp.get('isBase64Encoded'):
+            payload = base64.b64decode(payload)
+        elif isinstance(payload, str):
             payload = payload.encode('utf-8')
         if payload:
             self.wfile.write(payload)
@@ -341,8 +354,33 @@ def main() -> None:
     port = LOCAL_S3_PORT
     if _local_s3 is not None:
         print(f'Local S3 stub: {LOCAL_S3_ROOT}', flush=True)
+    try:
+        server = ThreadingHTTPServer(('127.0.0.1', port), _Handler)
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        # Usually a dev server from an earlier session still holding the
+        # port. A traceback here reads like a code fault; say what it is
+        # and how to clear it.
+        print(
+            f'Port {port} is already in use — another dev server is probably '
+            f'still running.\n'
+            f'Free it with `lsof -ti tcp:{port} | xargs kill`, or start this '
+            f'one elsewhere with PORT=<n>.',
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     print(f'Listening on http://127.0.0.1:{port}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', port), _Handler).serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        # Ctrl+C reaches the whole `pnpm dev` process group. Without this
+        # the interrupt unwinds out of serve_forever's poll and prints a
+        # traceback that reads like a crash, when it's just the operator
+        # stopping the dev server.
+        print('\nShutting down.', flush=True)
+    finally:
+        server.server_close()
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ it in localStorage, and sends it on every API call as `X-Client-Id`.
 The backend uses that UUID to scope:
 
   - inputs : inputs/<client_id>/<uuid>/<safe-filename>
-  - outputs: runs/<tool>/<client_id>/<run_id>/{output.day,output.rep}
+  - outputs: runs/<tool>/<client_id>/<run_id>/{output.day,output.csv,output.rep}
 
 A client never sees runs that don't carry its own client_id in the
 key. Clearing the browser nukes history (no cross-device sync — the
@@ -25,6 +25,7 @@ POST /exceed         → ExceedRequest               → RunResult
 POST /convert        → ConvertRequest              → RunResult
 GET  /runs                                         → [RunSummary]   (scoped to caller)
 GET  /runs/{run_id}                                → RunResult      (must match caller)
+GET  /runs/{run_id}/archive                        → application/zip (must match caller)
 
 Environment
 -----------
@@ -33,6 +34,7 @@ OUTPUTS_BUCKET    Bucket for run outputs + reports
 UPLOAD_TTL        Seconds for presigned POST URLs (default 300)
 DOWNLOAD_TTL      Seconds for presigned GET URLs  (default 600)
 MAX_UPLOAD_BYTES  Per-file upload size cap        (default 10 MiB)
+MAX_ARCHIVE_SOURCE_BYTES  Summed run bytes /archive will zip (default 20 MiB)
 ALLOWED_ORIGIN    CORS allow-origin — unset = no CORS header emitted
                   (production should set this explicitly to the CloudFront URL)
 """
@@ -41,6 +43,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import io
 import json
 import os
 import re
@@ -49,6 +52,7 @@ import sys
 import time
 import traceback
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -67,6 +71,7 @@ from disag.algorithm import (  # noqa: E402
     DisagMethod,
     disaggregate,
 )
+from disag.columns import day_to_columns  # noqa: E402
 from disag.convert import ans_to_mon  # noqa: E402
 from disag.files import read_daily_file, read_monthly_file, write_daily_file  # noqa: E402
 from disag.report import write_report  # noqa: E402
@@ -103,6 +108,23 @@ DOWNLOAD_TTL = int(os.environ.get('DOWNLOAD_TTL', '600'))
 # does NOT support size conditions, which is why uploads use POST.
 MAX_UPLOAD_BYTES = int(os.environ.get('MAX_UPLOAD_BYTES', str(10 * 1024 * 1024)))
 
+# /archive zips a run's artifacts into the HTTP response rather than a
+# stored object, so two ceilings apply. The first bounds what we're
+# willing to pull into Lambda memory; the second is API Gateway's hard
+# 6 MB response cap, which base64 inflates into at 4/3 — checked on the
+# encoded payload because that's the number the gateway measures. Both
+# raise a 413 pointing at the individual presigned links, which have no
+# such ceiling. A 44-year daily run is ~0.5 MB raw, so neither fires in
+# normal use.
+MAX_ARCHIVE_SOURCE_BYTES = int(
+    os.environ.get('MAX_ARCHIVE_SOURCE_BYTES', str(20 * 1024 * 1024))
+)
+MAX_ARCHIVE_RESPONSE_BYTES = 5_500_000
+_ARCHIVE_TOO_LARGE = (
+    'This run is too large to download as one archive — '
+    'use the individual file links instead'
+)
+
 # Intentionally no default — emitting `*` would let an attacker host a
 # malicious page that posts to our API on a victim's behalf. Production
 # Lambda env sets this to the CloudFront URL; local dev sets it via
@@ -134,7 +156,7 @@ def s3():
     return _s3_client
 
 # Inputs are written under inputs/<uuid>/<original-name>; outputs under
-# runs/<run_id>/{output.day,output.rep} — see history listing below.
+# runs/<run_id>/{output.day,output.csv,output.rep} — see history listing below.
 SAFE_FILENAME = re.compile(r'[^A-Za-z0-9._-]')
 
 
@@ -166,6 +188,8 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             return _respond(200, _handle_convert(client_id, _body(event)))
         if method == 'GET' and path == '/runs':
             return _respond(200, _handle_list_runs(client_id))
+        if method == 'GET' and re.fullmatch(r'/runs/[^/]+/archive', path):
+            return _handle_download_archive(client_id, path.split('/')[2])
         if method == 'GET' and path.startswith('/runs/'):
             run_id = path.split('/', 2)[2]
             return _respond(200, _handle_get_run(client_id, run_id))
@@ -265,6 +289,34 @@ def _respond(status: int, body: Any) -> dict[str, Any]:
         'statusCode': status,
         'headers': headers,
         'body': payload,
+    }
+
+
+def _respond_binary(
+    payload: bytes, content_type: str, filename: str
+) -> dict[str, Any]:
+    """A binary response, base64-framed the way API Gateway expects.
+
+    `filename` reaches a Content-Disposition header, so it must never
+    carry a quote or CRLF. Every caller derives it from a RUN_ID_RE-
+    validated run id, which is digits, a hyphen and hex — assert rather
+    than escape, so a future caller with a looser source fails loudly
+    here instead of injecting a header.
+    """
+    assert '"' not in filename and '\r' not in filename and '\n' not in filename
+    headers = {
+        'content-type': content_type,
+        'content-disposition': f'attachment; filename="{filename}"',
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
+        'access-control-allow-headers': 'content-type, x-client-id',
+    }
+    if ALLOWED_ORIGIN:
+        headers['access-control-allow-origin'] = ALLOWED_ORIGIN
+    return {
+        'statusCode': 200,
+        'headers': headers,
+        'body': base64.b64encode(payload).decode('ascii'),
+        'isBase64Encoded': True,
     }
 
 
@@ -405,6 +457,7 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
         )
 
         output_path = workdir / 'output.day'
+        columns_path = workdir / 'output.csv'
         report_path = workdir / 'output.rep'
         header_info = {
             'monthly_file': monthly_path.name,
@@ -414,9 +467,13 @@ def _handle_disag(client_id: str, body: dict[str, Any]) -> dict[str, Any]:
         }
         write_daily_file(str(output_path), records, header_info)
         write_report(str(report_path), dm, report_lines, records)
+        # Flatten the file just written, not the in-memory records, so the
+        # CSV is provably the same series as the .day the user downloads.
+        day_to_columns(str(output_path), str(columns_path), style='csv')
 
         return _publish_run(
             client_id, run_id, 'disag', output=output_path, report=report_path,
+            columns=columns_path,
         )
 
 
@@ -686,11 +743,16 @@ def _handle_get_run(client_id: str, run_id: str) -> dict[str, Any]:
         contents = resp.get('Contents', [])
         if not contents:
             continue
-        # Output is anything that isn't the .rep — covers .day for disag
-        # and .mon for convert. Exceed has no output file at all.
-        report_key = next((c['Key'] for c in contents if c['Key'].endswith('.rep')), None)
+        # Output is anything that is neither the .rep nor the .csv — covers
+        # .day for disag and .mon for convert. Exceed has no output file at
+        # all. The .csv is disag's two-column companion series; it must be
+        # excluded explicitly, or (sorting before output.day) it would be
+        # served as the run's primary output.
+        keys = [c['Key'] for c in contents]
+        report_key = next((k for k in keys if k.endswith('.rep')), None)
+        columns_key = next((k for k in keys if k.endswith('.csv')), None)
         output_key = next(
-            (c['Key'] for c in contents if not c['Key'].endswith('.rep')),
+            (k for k in keys if not k.endswith(('.rep', '.csv'))),
             None,
         )
         if not report_key:
@@ -701,10 +763,46 @@ def _handle_get_run(client_id: str, run_id: str) -> dict[str, Any]:
             'tool': tool,
             'created_at': created,
             'output_key': output_key,
+            'columns_key': columns_key,
             'report_key': report_key,
             'output_url': _presign_get(output_key) if output_key else None,
+            'columns_url': _presign_get(columns_key) if columns_key else None,
             'report_url': _presign_get(report_key),
         }
+    raise _ClientError(404, f'No run {run_id}')
+
+
+def _handle_download_archive(client_id: str, run_id: str) -> dict[str, Any]:
+    """Zip every artifact of one run into a single download.
+
+    Built on demand rather than stored: a run's files already live in
+    S3 individually, and a fourth stored object would duplicate them
+    for the lifetime of the 30-day lifecycle rule to serve a
+    convenience button.
+    """
+    _require_buckets()
+    if not RUN_ID_RE.match(run_id):
+        raise _ClientError(400, 'Invalid run_id format')
+    for tool in TOOLS:
+        prefix = f'runs/{tool}/{client_id}/{run_id}/'
+        resp = s3().list_objects_v2(Bucket=OUTPUTS_BUCKET, Prefix=prefix)
+        contents = resp.get('Contents', [])
+        if not contents:
+            continue
+        if sum(c['Size'] for c in contents) > MAX_ARCHIVE_SOURCE_BYTES:
+            raise _ClientError(413, _ARCHIVE_TOO_LARGE)
+        buf = io.BytesIO()
+        # Sorted so the archive's member order is stable run to run.
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for key in sorted(c['Key'] for c in contents):
+                body = s3().get_object(Bucket=OUTPUTS_BUCKET, Key=key)['Body'].read()
+                zf.writestr(key.rsplit('/', 1)[1], body)
+        archive = buf.getvalue()
+        # 4/3 is base64's exact expansion — check it here rather than
+        # letting API Gateway truncate the response into a corrupt zip.
+        if len(archive) * 4 / 3 > MAX_ARCHIVE_RESPONSE_BYTES:
+            raise _ClientError(413, _ARCHIVE_TOO_LARGE)
+        return _respond_binary(archive, 'application/zip', f'run-{run_id}.zip')
     raise _ClientError(404, f'No run {run_id}')
 
 
@@ -749,6 +847,7 @@ def _publish_run(
     *,
     output: Path | None,
     report: Path,
+    columns: Path | None = None,
 ) -> dict[str, Any]:
     base = f'runs/{tool}/{client_id}/{run_id}'
     output_key = None
@@ -758,6 +857,10 @@ def _publish_run(
         # extension when surfacing download links.
         output_key = f'{base}/{output.name}'
         s3().upload_file(str(output), OUTPUTS_BUCKET, output_key)
+    columns_key = None
+    if columns:
+        columns_key = f'{base}/{columns.name}'
+        s3().upload_file(str(columns), OUTPUTS_BUCKET, columns_key)
     report_key = f'{base}/output.rep'
     s3().upload_file(str(report), OUTPUTS_BUCKET, report_key)
     return {
@@ -765,8 +868,10 @@ def _publish_run(
         'tool': tool,
         'created_at': datetime.now(timezone.utc).isoformat(),
         'output_key': output_key,
+        'columns_key': columns_key,
         'report_key': report_key,
         'output_url': _presign_get(output_key) if output_key else None,
+        'columns_url': _presign_get(columns_key) if columns_key else None,
         'report_url': _presign_get(report_key),
     }
 

@@ -10,6 +10,12 @@ Files flow through S3: the browser uploads to a pre-signed POST URL
 downloads via pre-signed GETs. Previous runs live under
 `runs/<tool>/<run-id>/` and surface on the History page.
 
+The per-file links are presigned S3 GETs, but **Download all** is a
+same-origin `/api/*` fetch: the archive route is scoped by the
+`X-Client-Id` header like every other endpoint, and a plain `<a href>`
+can't send one. That also keeps the outputs bucket free of a CORS rule —
+only the inputs bucket needs one, for the upload POST.
+
 ## Layout
 
 ```
@@ -298,10 +304,11 @@ pnpm deploy                     # build → tf:apply → deploy:web
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/upload` | POST | Returns a pre-signed S3 POST (policy + fields) for one input file, with a `content-length-range` size cap. |
-| `/disag`  | POST | Runs `disag.algorithm.disaggregate`. |
+| `/disag`  | POST | Runs `disag.algorithm.disaggregate`. Publishes three artifacts: the `.day` output, a two-column `.csv` of the same series (date, flow — one row per calendar day), and the `.rep` report. |
 | `/exceed` | POST | Flow-frequency curves per calendar month (or per free-form `seasons` group). Returns an SVG curve as `output` plus the tabular `.rep`. |
 | `/runs`   | GET  | Lists stored runs. |
-| `/runs/{run_id}` | GET | Returns pre-signed download URLs for a run's output + report. |
+| `/runs/{run_id}` | GET | Returns pre-signed download URLs for a run's output + report, plus the two-column `.csv` on disag runs. |
+| `/runs/{run_id}/archive` | GET | Every artifact of one run, zipped into a single `application/zip` response (built on demand, not stored). 413s past `MAX_ARCHIVE_SOURCE_BYTES` or API Gateway's 6 MB response cap — the individual presigned links have no such ceiling. |
 
 ## Compute notes
 
