@@ -78,11 +78,20 @@ jobs:
           echo "Changed files:"
           printf '%s\n' "$files" | sed 's/^/  /'
 
-          # pnpm-lock.yaml is in this list and was NOT in the old `paths:`
-          # filter — a lockfile-only change (exactly what
-          # dependabot-lockfile.yml commits) could previously reach main
-          # without the frontend ever being built against it.
-          if printf '%s\n' "$files" | grep -qE '^(web/|package\.json$|pnpm-lock\.yaml$|scripts/check_root_scripts\.mjs$|\.github/workflows/web-ci\.yml$)'; then
+          # Two entries here are not obviously "web" and both got added
+          # after something broke main:
+          #
+          #   pnpm-lock.yaml — a lockfile-only change (exactly what
+          #   dependabot-lockfile.yml commits) could reach main without the
+          #   frontend ever being built against it.
+          #
+          #   docs/ — the docs site imports the repo's markdown at BUILD
+          #   time (`import x from '../../../../../docs/x.md?raw'` in
+          #   src/lib/server/docs.ts). Deleting or renaming a doc breaks
+          #   `pnpm build:web`, but with docs/ absent from this filter the
+          #   whole web suite skipped and the PR went green — #119 removed
+          #   docs/building.md and landed a red main exactly that way.
+          if printf '%s\n' "$files" | grep -qE '^(web/|docs/|package\.json$|pnpm-lock\.yaml$|scripts/check_root_scripts\.mjs$|\.github/workflows/web-ci\.yml$)'; then
             echo "web=true" >>"$GITHUB_OUTPUT"
           else
             echo "Nothing web-shaped changed — every job below will skip."

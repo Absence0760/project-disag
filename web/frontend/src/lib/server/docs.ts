@@ -20,7 +20,6 @@ import converter from '../../../../../docs/converter.md?raw';
 import fileFormats from '../../../../../docs/file-formats.md?raw';
 import glossary from '../../../../../docs/glossary.md?raw';
 import faq from '../../../../../docs/faq.md?raw';
-import building from '../../../../../docs/building.md?raw';
 
 const GITHUB_BASE = 'https://github.com/Absence0760/project-disag';
 
@@ -33,8 +32,7 @@ const RAW: Record<string, string> = {
 	converter,
 	'file-formats': fileFormats,
 	glossary,
-	faq,
-	building
+	faq
 };
 
 // Order and membership come from the shared DOC_PAGES list so the rendered
@@ -96,7 +94,7 @@ function rewriteHref(href: string): string {
 }
 
 // GitHub-style heading slugs, so the in-page tables of contents some docs
-// carry (e.g. building.md) resolve to real element ids. Reset before each
+// carry resolve to real element ids. Reset before each
 // parse — see DOCS below; parsing is synchronous so there's no interleaving.
 let headingSlugs = new Map<string, number>();
 
