@@ -53,18 +53,17 @@ describe('getClientId', () => {
 		// SvelteKit static mode renders the landing page on the server
 		// first, then hydrates. In the server pass `localStorage` is
 		// undefined and we should mint a throwaway without exploding.
-		// Use Reflect.deleteProperty so jsdom's window keeps its other
-		// fields intact.
-		const orig = globalThis.localStorage;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(globalThis as any).localStorage = undefined;
+		// jsdom exposes localStorage as a getter-only accessor, so plain
+		// assignment throws under Vitest 5 — stub it instead.
+		vi.stubGlobal('localStorage', undefined);
 		try {
 			const { getClientId } = await import('./clientId');
-			const id = getClientId();
-			expect(id).toMatch(UUID_RE);
+			expect(getClientId()).toMatch(UUID_RE);
 		} finally {
-			globalThis.localStorage = orig;
+			vi.unstubAllGlobals();
 		}
+		// The SSR branch must not persist its throwaway.
+		expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 	});
 });
 
