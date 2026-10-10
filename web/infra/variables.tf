@@ -161,6 +161,17 @@ EOT
   default     = 0
 }
 
+variable "alarm_tier" {
+  type        = string
+  description = "Which CloudWatch alarms to create. \"essential\" (default) = CloudFront 5xx, API Gateway 5xx and Lambda high-invocations, 3 alarm metrics. \"full\" adds the per-Lambda errors, throttles, concurrency and p99 alarms (7). \"none\" creates no alarms. The 10-alarm-metric free tier is shared across the whole AWS Organization; see alarms.tf. The Budget is unaffected."
+  default     = "essential"
+
+  validation {
+    condition     = contains(["full", "essential", "none"], var.alarm_tier)
+    error_message = "alarm_tier must be one of \"full\", \"essential\", \"none\"."
+  }
+}
+
 variable "budget_alert_email" {
   type        = string
   description = "Email subscriber for budget + Lambda alarms. Empty = no SNS subscription created (alarms still fire, you just won't be paged)."

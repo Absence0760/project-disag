@@ -97,6 +97,27 @@ resource "aws_budgets_budget" "monthly" {
   }
 }
 
+# ── Alarm tier — what fits the CloudWatch free tier ──────────────────
+#
+# The CloudWatch free tier is 10 alarm metrics shared across the whole
+# AWS Organization, not 10 per account, and the other projects already
+# spend 7 of them. `var.alarm_tier = "essential"` (the default) keeps 3
+# single-metric alarms that cover what the rest would catch:
+#
+#   - cloudfront_5xx — the site itself failing.
+#   - apigw_5xx — every API failure the Lambda alarms below would see,
+#     surfaced where users see it: a Lambda error comes back as a 502,
+#     a throttle as a 503, an overrun as a 504.
+#   - lambda_high_invocations — the abuse / stuck-client-loop spend
+#     signal, which no 5xx carries and the Budget only sees a day late.
+#
+# The per-Lambda errors / throttles / concurrency / p99 alarms are kept
+# declared and created only at "full" (~$0.10 per alarm per month).
+locals {
+  alarms_essential = var.alarm_tier != "none"
+  alarms_full      = var.alarm_tier == "full"
+}
+
 # ── Lambda alarms — invocations, errors, throttles, concurrency ──────
 #
 # Thresholds tuned for a small hydrology tool. Re-tune upward if real
@@ -104,6 +125,7 @@ resource "aws_budgets_budget" "monthly" {
 # changed" signal, not a steady-state notification.
 
 resource "aws_cloudwatch_metric_alarm" "lambda_high_invocations" {
+  count               = local.alarms_essential ? 1 : 0
   alarm_name          = "${local.name_prefix}-lambda-high-invocations"
   alarm_description   = "Lambda invocation rate > 1000 in 5 min — likely abuse or a stuck client loop."
   namespace           = "AWS/Lambda"
@@ -121,6 +143,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_high_invocations" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  count               = local.alarms_full ? 1 : 0
   alarm_name          = "${local.name_prefix}-lambda-errors"
   alarm_description   = "Lambda errors > 10 in 5 min — investigate via CloudWatch Logs."
   namespace           = "AWS/Lambda"
@@ -138,6 +161,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_concurrent_executions" {
+  count               = local.alarms_full ? 1 : 0
   alarm_name          = "${local.name_prefix}-lambda-concurrency"
   alarm_description   = "Lambda concurrent executions > 50 — abnormal load, may hit account limits soon."
   namespace           = "AWS/Lambda"
@@ -155,6 +179,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_concurrent_executions" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
+  count               = local.alarms_full ? 1 : 0
   alarm_name          = "${local.name_prefix}-lambda-throttles"
   alarm_description   = "Lambda throttled — account concurrency limit reached; users are seeing failures."
   namespace           = "AWS/Lambda"
@@ -176,6 +201,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
 # the timeout per invocation. P99 > 25s flags requests creeping toward
 # the 29s API Gateway ceiling before they start 504'ing.
 resource "aws_cloudwatch_metric_alarm" "lambda_duration_p99" {
+  count               = local.alarms_full ? 1 : 0
   alarm_name          = "${local.name_prefix}-lambda-duration-p99"
   alarm_description   = "Lambda P99 duration > 25 s — approaching the 29 s API Gateway ceiling; investigate before 504s land."
   namespace           = "AWS/Lambda"
@@ -202,6 +228,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration_p99" {
 # alarm has to be created there too (hence the us_east_1 provider
 # alias declared in providers.tf).
 resource "aws_cloudwatch_metric_alarm" "cloudfront_5xx" {
+  count               = local.alarms_essential ? 1 : 0
   provider            = aws.us_east_1
   alarm_name          = "${local.name_prefix}-cloudfront-5xx"
   alarm_description   = "CloudFront 5xx rate > 1 % over 10 min — origin failures or cache-miss storms."
@@ -225,6 +252,7 @@ resource "aws_cloudwatch_metric_alarm" "cloudfront_5xx" {
 # e.g. 503s when reserved_concurrency is exhausted, or 504s when an
 # invocation overruns the 30 s integration timeout.
 resource "aws_cloudwatch_metric_alarm" "apigw_5xx" {
+  count               = local.alarms_essential ? 1 : 0
   alarm_name          = "${local.name_prefix}-apigw-5xx"
   alarm_description   = "API Gateway 5xx > 10 in 5 min — integration failures, throttling, or timeouts."
   namespace           = "AWS/ApiGateway"
