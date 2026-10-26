@@ -20,19 +20,19 @@
 		"e2e:all": "playwright test && PLAYWRIGHT_PROJECT=integration playwright test"
 	},
 	"devDependencies": {
-		"@playwright/test": "1.63.0",
+		"@playwright/test": "1.64.1",
 		"@sveltejs/adapter-static": "3.0.10",
 		"@sveltejs/kit": "2.70.3",
-		"@sveltejs/vite-plugin-svelte": "7.3.0",
-		"jsdom": "^30.0.1",
-		"marked": "18.0.12",
-		"prettier": "3.9.6",
+		"@sveltejs/vite-plugin-svelte": "7.3.1",
+		"jsdom": "^30.1.3",
+		"marked": "18.1.1",
+		"prettier": "3.9.10",
 		"prettier-plugin-svelte": "4.1.1",
-		"svelte": "5.57.0",
-		"svelte-check": "4.7.6",
+		"svelte": "5.57.2",
+		"svelte-check": "4.7.7",
 		"typescript": "6.0.3",
-		"vite": "8.3.0",
-		"vitest": "^5.0.0"
+		"vite": "8.3.5",
+		"vitest": "^5.0.5"
 	},
 	"engines": {
 		"node": ">=24"
