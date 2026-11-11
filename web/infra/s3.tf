@@ -17,12 +17,12 @@ resource "random_id" "bucket_suffix" {
 
 resource "aws_s3_bucket" "inputs" {
   bucket        = "${local.name_prefix}-inputs-${random_id.bucket_suffix.hex}"
-  force_destroy = var.environment != "prod"
+  force_destroy = true # decommissioned 2026-11: let destroy empty the buckets
 }
 
 resource "aws_s3_bucket" "outputs" {
   bucket        = "${local.name_prefix}-outputs-${random_id.bucket_suffix.hex}"
-  force_destroy = var.environment != "prod"
+  force_destroy = true # decommissioned 2026-11: let destroy empty the buckets
 
   # Outputs carry the user-visible run artefacts (.day + .rep files).
   # A stray `terraform destroy` in prod would lose every history page
@@ -35,20 +35,20 @@ resource "aws_s3_bucket" "outputs" {
   # non-prod workspace requires manually flipping this line (and the
   # frontend bucket's) to false first.
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false # decommissioned 2026-11
   }
 }
 
 resource "aws_s3_bucket" "frontend" {
   bucket        = "${local.name_prefix}-frontend-${random_id.bucket_suffix.hex}"
-  force_destroy = var.environment != "prod"
+  force_destroy = true # decommissioned 2026-11: let destroy empty the buckets
 
   # Re-creating the frontend bucket changes its name (random_id suffix
   # is stable, but the bucket policy + CloudFront OAC binding both
   # have to be reapplied). Same prevent_destroy rationale — and same
   # literal-only caveat — as outputs above.
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false # decommissioned 2026-11
   }
 }
 
