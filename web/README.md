@@ -1,5 +1,11 @@
 # web/ — Disag-MD web UI
 
+> **Decommissioned (November 2026).** The hosted deployment
+> (`disag.jaredhoward.com`, CloudFront + Lambda + S3 in the `disag` AWS
+> account) has been torn down and `deploy.yml` no longer fires on releases.
+> The disag/exceed tools are used locally only — see the root README. The
+> code below is kept for reference; `pnpm dev` still runs it locally.
+
 A SvelteKit single-page app in front of an AWS Lambda backend that
 wraps the `disag/` and `exceed/` Python packages from this repo.
 

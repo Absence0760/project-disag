@@ -22,6 +22,13 @@ Per-package notes live in [disag/CLAUDE.md](disag/CLAUDE.md) and
 problem this project actually solves, with worked examples — see
 [docs/problem.md](docs/problem.md).
 
+## Status: local-only (web decommissioned November 2026)
+
+The hosted web app (`web/`, `disag.jaredhoward.com`) has been decommissioned.
+The tools are used locally only, via `python -m disag` / `python -m exceed`.
+Don't propose redeploying, re-enabling `deploy.yml`'s release trigger, or
+running `tf:apply` against `web/infra/` without the user asking.
+
 ## Dependencies
 
 Python ≥ 3.14 (matches the deployed Lambda runtime and the only line still

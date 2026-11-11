@@ -17,11 +17,16 @@ source is preserved in [`delphi_files/`](delphi_files/).
 
 ## Getting it
 
-The web app is the supported way to run this — upload your files, pick a
-method, download the results. No install.
+> **The hosted web app has been decommissioned (November 2026).**
+> `disag.jaredhoward.com` and its AWS backend were torn down after the site
+> saw no real use. This tool is now used **locally only**.
 
-To run it locally instead, see [Running from source](#running-from-source)
-below; the packages are stdlib-only, so a stock Python 3.14 is all you need.
+Run it from source — see [Running from source](#running-from-source) below.
+The packages are stdlib-only, so a stock Python 3.14 is all you need, and
+both tools ship a Tkinter GUI and a `--no-gui` CLI.
+
+The SvelteKit app under [`web/`](web/) is kept for reference and still runs
+locally against the Lambda shim (`pnpm dev`), but nothing deploys it.
 
 > **Standalone executables are no longer built.** Tagged releases up to
 > `v0.1.0` carry PyInstaller binaries for Windows, macOS and Linux; they are

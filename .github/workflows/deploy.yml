@@ -18,9 +18,9 @@ name: Deploy (release-gated)
 # Backend deploys first so the static site never points at a stale
 # API contract.
 
+# DECOMMISSIONED 2026-11: the hosted web app was torn down; the release
+# trigger is removed so no tag can redeploy it. See README.md.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
