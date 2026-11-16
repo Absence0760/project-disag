@@ -67,7 +67,7 @@ Both `0` → green. Behind → red ("origin is ahead — pull first"). Ahead →
 gh run list --branch main --limit 5 --json status,conclusion,workflowName,headSha,createdAt
 ```
 
-The relevant workflows are `Tests` (tests.yml) and `Web CI` (web-ci.yml). Security workflows (security/gitleaks/scorecard) and dependabot-auto-merge are informational — note their status but don't block.
+The relevant workflows are `Tests` (tests.yml) and `Web CI` (web-ci.yml). Security workflows (security/secret-scan/scorecard) and dependabot-auto-merge are informational — note their status but don't block.
 
 For each blocking workflow:
 - `status=completed` and `conclusion=success` → green.

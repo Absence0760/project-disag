@@ -343,7 +343,7 @@ Workflows added at the repo root in `.github/workflows/`:
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | `security.yml` | push / PR / Mondays | CodeQL on python, javascript-typescript, actions. |
-| `gitleaks.yml` | push / PR / Mondays | Secret scan, full history weekly. |
+| `secret-scan.yml` | push / PR / Mondays | TruffleHog secret scan, full history weekly. |
 | `scorecard.yml` | push / Mondays | OpenSSF Scorecard → Security tab + scorecard.dev. |
 | `dependabot-auto-merge.yml` | dependabot PRs | Auto-merge minor + patch updates. |
 | `web-ci.yml` | push / PR touching `web/**` | Frontend lint/check/build, backend zip smoke build, terraform fmt+validate, mocked + integration Playwright. |
