@@ -59,7 +59,7 @@
 	<div class="footer-inner">
 		<span> Python port of the 1991 Disag-MD Pascal tool (AJ Greyling; H Beuster 2007). </span>
 		<span class="muted">
-			<a href="https://github.com/Absence0760/project-disag" rel="noopener">Source</a>
+			<a href="https://github.com/jaredhoward-dev/project-disag" rel="noopener">Source</a>
 			· pure stdlib · AWS Lambda
 		</span>
 	</div>
