@@ -157,7 +157,13 @@ jobs:
 
   e2e-integration:
     name: Frontend E2E integration (real backend)
-    runs-on: ubuntu-latest
+    # Pinned to 24.04 (not ubuntu-latest): setup-python mounts the HOST
+    # toolcache into the container, and ubuntu-latest moved to 26.04 in
+    # Nov 2026, whose CPython builds need a newer libssl than the noble
+    # Playwright image ships (pip: "ssl module is not available"). Keep
+    # the host release equal to the container's (noble) until the image
+    # tag moves to a 26.04 base.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.web == 'true'
