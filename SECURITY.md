@@ -52,8 +52,10 @@ Automated controls already in place:
 
 - CodeQL on Python, TypeScript/JavaScript, and GitHub Actions
   (`.github/workflows/security.yml`).
-- gitleaks secret scanning on every push + a weekly full-history
-  sweep (`.github/workflows/gitleaks.yml`).
+- TruffleHog secret scanning on every push and PR + a weekly
+  full-history sweep (`.github/workflows/secret-scan.yml`); a verified
+  (live) or unverifiable credential fails it. The gitleaks pre-commit
+  hook (`.pre-commit-config.yaml`) is the local layer.
 - OpenSSF Scorecard (`.github/workflows/scorecard.yml`) results
   published to <https://scorecard.dev>.
 - Dependabot for npm, terraform, and github-actions

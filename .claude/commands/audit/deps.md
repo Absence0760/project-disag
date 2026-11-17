@@ -45,7 +45,7 @@ Plus:
 4. **GitHub Actions pinning.** Grep `.github/workflows/` for `uses: <action>@<ref>`.
    - Floating refs (`@main`, `@v6`) are supply-chain risks for actions that can be force-pushed by the publisher.
    - SHA pins (`@<sha>`) are the safer default for workflows that touch `${{ secrets.* }}` or deploy.
-   - Flag floating refs on `deploy.yml` (the production-environment deploy workflow), `gitleaks.yml`, `scorecard.yml`. `web-ci.yml`, `security.yml`, `dependabot-auto-merge.yml` are lower-stakes but worth surfacing too.
+   - Flag floating refs on `deploy.yml` (the production-environment deploy workflow), `secret-scan.yml`, `scorecard.yml`. `web-ci.yml`, `security.yml`, `dependabot-auto-merge.yml` are lower-stakes but worth surfacing too.
    - The SHA pin pattern this repo uses is `uses: foo/bar@<40-char-sha> # vX.Y.Z` — the trailing comment carries the human-readable version. Flag if a SHA pin lacks the comment (the next reviewer can't tell what version they're auditing).
 
 5. **Override hygiene.** Read `pnpm-workspace.yaml`'s `overrides` block. For each override:
