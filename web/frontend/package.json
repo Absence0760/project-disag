@@ -20,7 +20,7 @@
 		"e2e:all": "playwright test && PLAYWRIGHT_PROJECT=integration playwright test"
 	},
 	"devDependencies": {
-		"@playwright/test": "1.65.0",
+		"@playwright/test": "1.65.1",
 		"@sveltejs/adapter-static": "3.0.10",
 		"@sveltejs/kit": "2.70.3",
 		"@sveltejs/vite-plugin-svelte": "7.3.1",
