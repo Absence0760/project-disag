@@ -17,7 +17,7 @@ for historical reference but don't receive security backports.
 If you find a security issue, please use GitHub's private
 vulnerability reporting:
 
-1. Go to <https://github.com/Absence0760/project-disag/security/advisories/new>.
+1. Go to <https://github.com/jaredhoward-dev/project-disag/security/advisories/new>.
 2. Describe the issue, the affected component, and a minimal
    reproduction if you have one.
 
@@ -26,7 +26,7 @@ Please don't open a public issue or PR with vulnerability details
 until a fix is available.
 
 For non-vulnerability bug reports, the regular [issues
-tracker](https://github.com/Absence0760/project-disag/issues) is
+tracker](https://github.com/jaredhoward-dev/project-disag/issues) is
 fine.
 
 ## What's in scope
