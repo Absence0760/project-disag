@@ -783,6 +783,7 @@
 	}
 
 	.segmented label {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -817,14 +818,20 @@
 		margin-top: 0.1rem;
 	}
 
-	/* Visually hidden but still keyboard-focusable and click-targetable
-	   (Playwright treats `pointer-events: none` as un-actionable). */
+	/* Invisible but still keyboard-focusable and click-targetable
+	   (Playwright treats `pointer-events: none` as un-actionable). It
+	   covers the whole label and sits above the text, so a click anywhere
+	   on the segment lands on the radio itself; a 1px input under the
+	   label's text fails Playwright >= 1.65's hit-target check. */
 	.segmented input {
 		position: absolute;
-		width: 1px;
-		height: 1px;
+		inset: 0;
+		width: 100%;
+		height: 100%;
 		opacity: 0;
 		margin: 0;
+		z-index: 1;
+		cursor: pointer;
 	}
 
 	/* 240px min keeps six cards on a balanced grid (3×2 desktop, 2×3 tablet,
