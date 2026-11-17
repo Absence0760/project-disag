@@ -21,7 +21,7 @@ import fileFormats from '../../../../../docs/file-formats.md?raw';
 import glossary from '../../../../../docs/glossary.md?raw';
 import faq from '../../../../../docs/faq.md?raw';
 
-const GITHUB_BASE = 'https://github.com/Absence0760/project-disag';
+const GITHUB_BASE = 'https://github.com/jaredhoward-dev/project-disag';
 
 const RAW: Record<string, string> = {
 	problem,
